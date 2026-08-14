@@ -92,6 +92,65 @@ try {
   console.error('[mg-dsh-desktop] dsh prerequisite check failed:', error)
 }
 
+// ── 1b. pnpm prerequisite (same logic as dsh) ──────────────────────────────
+// `dsh plugin` forwards to pnpm, and the shell needs it for manual plugin
+// management. The bundle registration itself uses a junction and does NOT
+// depend on pnpm (see bin/launcher.mjs), so this is an environment-completeness
+// step, not a hard requirement.
+
+function findPnpm() {
+  try {
+    const probe = spawnSync('pnpm.cmd', ['--version'], { encoding: 'utf8', timeout: 15000, windowsHide: true })
+    if (probe.status === 0) return 'pnpm.cmd'
+  } catch {
+    // Fall through to PATH search below.
+  }
+  const candidates = []
+  for (const dir of (process.env.PATH ?? '').split(';')) {
+    if (dir === '') continue
+    for (const name of ['pnpm.cmd', 'pnpm.exe', 'pnpm']) {
+      candidates.push(nativePath(join(dir, name)))
+    }
+  }
+  try {
+    const npmPrefix = spawnSync(process.env.ComSpec, ['/d', '/s', '/c', 'npm prefix -g'], { encoding: 'utf8', windowsHide: true })
+    if (npmPrefix.status === 0) {
+      const prefix = nativePath(npmPrefix.stdout.trim())
+      for (const dir of process.platform === 'win32' ? [prefix] : [join(prefix, 'bin')]) {
+        for (const name of ['pnpm.cmd', 'pnpm.exe', 'pnpm']) {
+          candidates.push(join(dir, name))
+        }
+      }
+    }
+  } catch {
+    // npm unavailable; PATH search only.
+  }
+  for (const candidate of candidates) {
+    if (existsSync(candidate)) return candidate
+  }
+  return null
+}
+
+function installPnpm() {
+  console.log('[mg-dsh-desktop] pnpm not found; installing pnpm globally…')
+  const result = spawnSync(process.env.ComSpec, ['/d', '/s', '/c', 'npm install -g pnpm'], {
+    encoding: 'utf8', timeout: 180000, windowsHide: true, stdio: 'inherit',
+  })
+  return result.status === 0
+}
+
+try {
+  if (findPnpm() !== null) {
+    console.log('[mg-dsh-desktop] pnpm prerequisite OK')
+  } else if (installPnpm()) {
+    console.log('[mg-dsh-desktop] pnpm installed')
+  } else {
+    console.error('[mg-dsh-desktop] could not install pnpm automatically. Run manually: npm install -g pnpm')
+  }
+} catch (error) {
+  console.error('[mg-dsh-desktop] pnpm prerequisite check failed:', error)
+}
+
 // ── 2. Desktop shortcut (Windows only) ──────────────────────────────────────
 
 if (process.platform !== 'win32') {
