@@ -1,5 +1,5 @@
 /**
- * marec-dsh-desktop browser half — registers a settings card into the dsh
+ * mg-dsh-desktop browser half — registers a settings card into the dsh
  * settings → plugins page and bridges tray commands from the desktop shell.
  *
  * The card reads/writes the shell config through this plugin's own HTTP
@@ -10,14 +10,14 @@
  * command-line `dsh web` never mounts the bundle at all.
  *
  * The tray bridge: the desktop shell dispatches tray commands into the page
- * as custom window events; `__marecShellReady` lets the host retry until
+ * as custom window events; `__mgShellReady` lets the host retry until
  * this listener is mounted, so a tray click during the SPA boot is not lost.
  *
  * Registration follows the official client-plugin contract (see dsh-web-ui's
  * dsh-pet): declare the slot shape, then `slots.inject('settings.plugin.item',
  * ...)`.
  *
- * @module marec-dsh-desktop/client
+ * @module mg-dsh-desktop/client
  */
 
 import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
@@ -32,7 +32,7 @@ import { injectCardStyle } from './style.ts'
  * The desktop shell's dispatch probe retries until this is set, so it must
  * never depend on the settings card (or any other feature) mounting.
  */
-;(window as { __marecShellReady?: boolean }).__marecShellReady = true
+;(window as { __mgShellReady?: boolean }).__mgShellReady = true
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface SlotMap {
@@ -70,23 +70,23 @@ function handleShellCommand(ctx: ClientContext, event: Event): void {
     }
   }).workspaces
   if (workspaces === undefined || workspaces.startSession === undefined) {
-    console.warn('[marec-dsh-desktop] new-task ignored: workspaces service unavailable')
+    console.warn('[mg-dsh-desktop] new-task ignored: workspaces service unavailable')
     return
   }
   const known = detail.workspaceId !== undefined
     && workspaces.list?.getSnapshot?.()?.items?.some(
       (item) => item.workspaceId === detail.workspaceId,
     ) === true
-  console.log(`[marec-dsh-desktop] new-task${known ? ` in workspace ${detail.workspaceId}` : ''}`)
+  console.log(`[mg-dsh-desktop] new-task${known ? ` in workspace ${detail.workspaceId}` : ''}`)
   workspaces.startSession(known ? detail.workspaceId : undefined)
 }
 
 /** Client plugin body. */
 export function apply(ctx: ClientContext): void {
   // Tray → page bridge listener, registered before anything fallible: the
-  // shell retries its dispatch until __marecShellReady, so a listener that
+  // shell retries its dispatch until __mgShellReady, so a listener that
   // never registers (card injection failure) would look like a dead button.
-  window.addEventListener('marec:shell-command', (event) => handleShellCommand(ctx, event))
+  window.addEventListener('mg:shell-command', (event) => handleShellCommand(ctx, event))
 
   const slots = ctx.get('slots')
   if (slots === undefined) return
@@ -99,12 +99,12 @@ export function apply(ctx: ClientContext): void {
     slots.inject('settings.plugin.item', function* () {
       yield slots.register({
         name: 'settings.plugin.item',
-        id: 'marec-dsh-desktop',
+        id: 'mg-dsh-desktop',
         order: 30,
       }, (props: DesktopSettingsCardProps) => DesktopSettingsCard(props))
     })
   } catch (error) {
     // Card mounting must never take down the tray bridge.
-    console.warn('[marec-dsh-desktop] settings card injection failed:', error)
+    console.warn('[mg-dsh-desktop] settings card injection failed:', error)
   }
 }

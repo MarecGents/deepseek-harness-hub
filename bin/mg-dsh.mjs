@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * mg-dsh — the marec-dsh-desktop launcher command. Boots `dsh web` with the
+ * mg-dsh — the mg-dsh-desktop launcher command. Boots `dsh web` with the
  * desktop-shell marker set, so the plugin opens the native window and injects
  * the plugin config page. Anything after `mg-dsh` is forwarded to `dsh web`.
  *

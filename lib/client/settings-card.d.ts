@@ -1,5 +1,5 @@
 /**
- * marec-dsh-desktop settings card — one card in the dsh settings → plugins
+ * mg-dsh-desktop settings card — one card in the dsh settings → plugins
  * page, styled after the official PluginCard (collapsible header, themed
  * controls, save/discard footer). It edits the shell config (window size,
  * theme, tray behavior) through this plugin's own HTTP routes, and shows the

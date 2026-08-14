@@ -21,7 +21,7 @@
  * Tray → page bridge: tray commands that need the web UI ("New task") are
  * dispatched into the page as custom window events. The browser half listens
  * and runs the official client flow, so the UI updates itself. The dispatch
- * retries until the page's listener signals ready (`__marecShellReady`),
+ * retries until the page's listener signals ready (`__mgShellReady`),
  * covering the SPA still booting when the user clicks the tray.
  */
 import { Application } from '@webviewjs/webview';

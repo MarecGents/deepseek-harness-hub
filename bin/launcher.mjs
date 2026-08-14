@@ -4,7 +4,7 @@
  * bundle is installed into the `web` profile, boots `dsh web` with output
  * redirected to a log file, and exits with dsh's exit code.
  *
- * The window itself is opened by the marec-dsh-desktop bundle plugin inside the
+ * The window itself is opened by the mg-dsh-desktop bundle plugin inside the
  * dsh process; closing it quits dsh, which ends this launcher.
  */
 
@@ -15,7 +15,7 @@ import { homedir } from 'node:os'
 import { fileURLToPath } from 'node:url'
 
 const PACKAGE_ROOT = dirname(dirname(fileURLToPath(import.meta.url)))
-const BUNDLE_NAME = 'marec-dsh-desktop'
+const BUNDLE_NAME = 'mg-dsh-desktop'
 const LOG_FILE = join(PACKAGE_ROOT, 'dsh.log')
 
 function log(message) {
@@ -88,7 +88,7 @@ function findDsh() {
 /** Show a Windows message box (the launcher runs hidden, so stderr is invisible). */
 function alert(message) {
   try {
-    const ps = `[System.Windows.Forms.MessageBox]::Show('${message.replaceAll("'", "''")}', 'marec-dsh-desktop')`
+    const ps = `[System.Windows.Forms.MessageBox]::Show('${message.replaceAll("'", "''")}', 'mg-dsh-desktop')`
     spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command',
       'Add-Type -AssemblyName System.Windows.Forms; ' + ps], { windowsHide: true })
   } catch {
@@ -97,7 +97,7 @@ function alert(message) {
 }
 
 /**
- * Make sure `marec-dsh-desktop` is part of the web profile's bundle list using
+ * Make sure `mg-dsh-desktop` is part of the web profile's bundle list using
  * the official `dsh plugin` flow (first double-click self-installs, later
  * ones skip straight to boot).
  */
@@ -159,7 +159,7 @@ function main() {
     })
     dshCmd = findDsh()
     if (dshCmd === null || install.status !== 0) {
-      const message = 'marec-dsh-desktop could not find or install the dsh CLI.\n\nPlease run: npm install -g @deepseek-ai/dsh'
+      const message = 'mg-dsh-desktop could not find or install the dsh CLI.\n\nPlease run: npm install -g @deepseek-ai/dsh'
       log(message)
       alert(message)
       process.exit(1)
@@ -168,7 +168,7 @@ function main() {
   log(`using dsh: ${dshCmd}`)
 
   if (!ensureBundleInstalled(dshCmd)) {
-    alert('marec-dsh-desktop could not register itself with the web profile.\nSee the dsh.log file next to the package for details.')
+    alert('mg-dsh-desktop could not register itself with the web profile.\nSee the dsh.log file next to the package for details.')
     process.exit(1)
   }
 
@@ -182,7 +182,7 @@ function main() {
     stdio: ['ignore', 'pipe', 'pipe'],
     env: {
       ...process.env,
-      // Tells the marec-dsh-desktop bundle plugin that this process was started
+      // Tells the mg-dsh-desktop bundle plugin that this process was started
       // from the desktop shortcut: it opens the window and registers the
       // settings card. A plain `dsh web` on a command line leaves both off.
       MG_DSH_DESKTOP_LAUNCHED: '1',
@@ -195,7 +195,7 @@ function main() {
   child.stderr.on('data', logStream)
   child.on('error', (error) => {
     log(`dsh failed to start: ${error.message}`)
-    alert('marec-dsh-desktop could not start dsh. See dsh.log for details.')
+    alert('mg-dsh-desktop could not start dsh. See dsh.log for details.')
     process.exit(1)
   })
   child.on('exit', (code) => {

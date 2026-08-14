@@ -51,7 +51,7 @@ export function setTitleBarDark(hwnd: bigint, dark: boolean): boolean {
   try {
     return koffiSet(hwnd, dark)
   } catch (error) {
-    console.warn(`[marec-dsh-desktop] dwm koffi call failed: ${String(error)}`)
+    console.warn(`[mg-dsh-desktop] dwm koffi call failed: ${String(error)}`)
     return false
   }
 }
@@ -73,13 +73,13 @@ export function setTitleBarDarkPowerShell(hwnd: bigint, dark: boolean): void {
       windowsHide: true,
     })
     child.stdout.on('data', (chunk: Buffer) => {
-      console.log(`[marec-dsh-desktop] dwm ps(${hwnd}, ${dark ? 'dark' : 'light'}) -> ${chunk.toString().trim()}`)
+      console.log(`[mg-dsh-desktop] dwm ps(${hwnd}, ${dark ? 'dark' : 'light'}) -> ${chunk.toString().trim()}`)
     })
     child.stderr.on('data', (chunk: Buffer) => {
-      console.warn(`[marec-dsh-desktop] dwm ps script error: ${chunk.toString().trim()}`)
+      console.warn(`[mg-dsh-desktop] dwm ps script error: ${chunk.toString().trim()}`)
     })
     child.on('error', (error) => {
-      console.warn(`[marec-dsh-desktop] dwm ps spawn failed: ${error.message}`)
+      console.warn(`[mg-dsh-desktop] dwm ps spawn failed: ${error.message}`)
     })
   } catch {
     // Best-effort; win.setTheme still runs alongside.

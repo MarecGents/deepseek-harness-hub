@@ -1,5 +1,5 @@
 /**
- * marec-dsh-desktop host half — the desktop shell over the web-app layer.
+ * mg-dsh-desktop host half — the desktop shell over the web-app layer.
  *
  * Launch gating: the desktop window, the config API, and the settings
  * namespace are active ONLY when the process was started by this project —
@@ -10,7 +10,7 @@
  * injected.
  *
  * Config surface: the client settings card reads/writes the shell config
- * through this plugin's own HTTP routes (`/api/marec-dsh-desktop/config`).
+ * through this plugin's own HTTP routes (`/api/mg-dsh-desktop/config`).
  * This is deliberate — dsh's RPC `settings.describe` exposes only a
  * hard-coded allowlist in the api-proxy (third-party plugin namespaces are
  * "deferred work" per its source comment), so the supported pattern for
@@ -19,12 +19,12 @@
  * via the official `installSettingsSection` for in-process consumers and for
  * the day the allowlist opens up.
  *
- * @module marec-dsh-desktop
+ * @module mg-dsh-desktop
  */
 import type { Context } from '@deepseek-ai/cordis';
 import z from '@deepseek-ai/schemastery';
 /** Stable Cordis plugin name (referenced by cordis.patch.yml's insert row). */
-export declare const name = "marec-dsh-desktop";
+export declare const name = "mg-dsh-desktop";
 /**
  * Optional services are read via `ctx.get`, never injected: declaring
  * `webServer` here would leave the plugin pending forever on the headless

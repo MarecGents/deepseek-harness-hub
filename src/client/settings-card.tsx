@@ -1,5 +1,5 @@
 /**
- * marec-dsh-desktop settings card — one card in the dsh settings → plugins
+ * mg-dsh-desktop settings card — one card in the dsh settings → plugins
  * page, styled after the official PluginCard (collapsible header, themed
  * controls, save/discard footer). It edits the shell config (window size,
  * theme, tray behavior) through this plugin's own HTTP routes, and shows the
@@ -57,7 +57,7 @@ const COPY = {
 /** Read one shell config document (GET), or null on failure. */
 async function fetchConfig(): Promise<ShellConfig | null> {
   try {
-    const res = await fetch('/api/marec-dsh-desktop/config')
+    const res = await fetch('/api/mg-dsh-desktop/config')
     if (!res.ok) return null
     const body = (await res.json()) as { ok?: boolean; value?: ShellConfig }
     return body.ok === true && body.value !== undefined ? body.value : null
@@ -69,7 +69,7 @@ async function fetchConfig(): Promise<ShellConfig | null> {
 /** Write the shell config document (POST); true when persisted. */
 async function saveConfig(patch: Partial<ShellConfig>): Promise<boolean> {
   try {
-    const res = await fetch('/api/marec-dsh-desktop/config', {
+    const res = await fetch('/api/mg-dsh-desktop/config', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(patch),

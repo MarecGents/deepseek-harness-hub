@@ -37,7 +37,7 @@ export function dshHome(): string {
 
 /** JSON-file implementation of {@link WindowStateStore}. */
 export class JsonWindowStateStore implements WindowStateStore {
-  constructor(private readonly file = join(dshHome(), 'marec-dsh-desktop-window-state.json')) {}
+  constructor(private readonly file = join(dshHome(), 'mg-dsh-desktop-window-state.json')) {}
 
   load(): WindowState {
     try {

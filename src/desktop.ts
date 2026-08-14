@@ -21,7 +21,7 @@
  * Tray → page bridge: tray commands that need the web UI ("New task") are
  * dispatched into the page as custom window events. The browser half listens
  * and runs the official client flow, so the UI updates itself. The dispatch
- * retries until the page's listener signals ready (`__marecShellReady`),
+ * retries until the page's listener signals ready (`__mgShellReady`),
  * covering the SPA still booting when the user clicks the tray.
  */
 
@@ -109,7 +109,7 @@ function applyWindowIcon(w: BrowserWindow, dark: boolean): void {
 /** Apply the title-bar theme; koffi fast path, PowerShell fallback. */
 function applyNativeTitleBarTheme(hwnd: bigint, dark: boolean): void {
   if (setTitleBarDark(hwnd, dark)) {
-    console.log(`[marec-dsh-desktop] dwm(${hwnd}, ${dark ? 'dark' : 'light'}) -> 0`)
+    console.log(`[mg-dsh-desktop] dwm(${hwnd}, ${dark ? 'dark' : 'light'}) -> 0`)
   } else {
     setTitleBarDarkPowerShell(hwnd, dark)
   }
@@ -181,9 +181,9 @@ export function openDesktopShell(
     let hwnd: bigint | undefined
     try {
       hwnd = w.getNativeHandle()
-      console.log(`[marec-dsh-desktop] window hwnd: ${hwnd}`)
+      console.log(`[mg-dsh-desktop] window hwnd: ${hwnd}`)
     } catch (error) {
-      console.warn(`[marec-dsh-desktop] getNativeHandle failed: ${String(error)}`)
+      console.warn(`[mg-dsh-desktop] getNativeHandle failed: ${String(error)}`)
     }
     if (theme === 'system') {
       // dsh defaults dark; corrected by the first probe as soon as the SPA paints.
@@ -193,7 +193,7 @@ export function openDesktopShell(
       if (hwnd !== undefined) applyNativeTitleBarTheme(hwnd, true)
       detector = new WebViewThemeDetector(wv)
       detector.start((dark) => {
-        console.log(`[marec-dsh-desktop] page theme ${dark ? 'dark' : 'light'}`)
+        console.log(`[mg-dsh-desktop] page theme ${dark ? 'dark' : 'light'}`)
         w.setTheme(dark ? Theme.Dark : Theme.Light)
         wv.setBackgroundColor(...(dark ? DARK_BG : LIGHT_BG), 255)
         applyWindowIcon(w, dark)
@@ -331,7 +331,7 @@ export function openDesktopShell(
    * are one expression, so there is no window between "ready" and "dispatch".
    */
   const dispatchScript = (name: string, detail: Record<string, unknown>): string =>
-    `window.__marecShellReady === true`
+    `window.__mgShellReady === true`
     + ` ? (window.dispatchEvent(new CustomEvent(${JSON.stringify(name)}, { detail: ${JSON.stringify(detail)} })), 'ok')`
     + ` : 'pending'`
 
@@ -344,21 +344,21 @@ export function openDesktopShell(
       if (wv === undefined || wv.isDisposed()) return
       wv.evaluateScriptWithCallback(js, (error, result) => {
         if (error) {
-          console.warn(`[marec-dsh-desktop] dispatch ${name} failed:`, error)
+          console.warn(`[mg-dsh-desktop] dispatch ${name} failed:`, error)
           return
         }
         const status = result?.trim()
         if (status === 'ok') {
-          console.log(`[marec-dsh-desktop] dispatched ${name}`)
+          console.log(`[mg-dsh-desktop] dispatched ${name}`)
           return
         }
         // 20 × 300ms covers a cold SPA boot; by then the page's client
-        // plugin has mounted and set __marecShellReady.
+        // plugin has mounted and set __mgShellReady.
         if (tries < 20) {
           tries += 1
           setTimeout(attempt, 300)
         } else {
-          console.warn(`[marec-dsh-desktop] dispatch ${name} never reached a ready page`)
+          console.warn(`[mg-dsh-desktop] dispatch ${name} never reached a ready page`)
         }
       })
     }

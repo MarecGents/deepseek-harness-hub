@@ -1,5 +1,5 @@
 /**
- * marec-dsh-desktop host half — the desktop shell over the web-app layer.
+ * mg-dsh-desktop host half — the desktop shell over the web-app layer.
  *
  * Launch gating: the desktop window, the config API, and the settings
  * namespace are active ONLY when the process was started by this project —
@@ -10,7 +10,7 @@
  * injected.
  *
  * Config surface: the client settings card reads/writes the shell config
- * through this plugin's own HTTP routes (`/api/marec-dsh-desktop/config`).
+ * through this plugin's own HTTP routes (`/api/mg-dsh-desktop/config`).
  * This is deliberate — dsh's RPC `settings.describe` exposes only a
  * hard-coded allowlist in the api-proxy (third-party plugin namespaces are
  * "deferred work" per its source comment), so the supported pattern for
@@ -19,7 +19,7 @@
  * via the official `installSettingsSection` for in-process consumers and for
  * the day the allowlist opens up.
  *
- * @module marec-dsh-desktop
+ * @module mg-dsh-desktop
  */
 
 import type { Context } from '@deepseek-ai/cordis'
@@ -34,10 +34,10 @@ import type {} from '@deepseek-ai/dsh-agent'
 import { installSettingsSection, settingsNamespace } from '@deepseek-ai/dsh-settings'
 import z from '@deepseek-ai/schemastery'
 import { openDesktopShell, type DesktopShellHandle } from './desktop.ts'
-import { makeConfigRoutes, readShellConfig, type ShellConfig } from './services/config-api.js'
+import { makeConfigRoutes, migrateLegacyPaths, readShellConfig, type ShellConfig } from './services/config-api.js'
 
 /** Stable Cordis plugin name (referenced by cordis.patch.yml's insert row). */
-export const name = 'marec-dsh-desktop'
+export const name = 'mg-dsh-desktop'
 
 /**
  * Optional services are read via `ctx.get`, never injected: declaring
@@ -72,7 +72,7 @@ export const Config: z<Config> = z.object({
 })
 
 /** Settings namespace owned by this plugin (spelled like the package). */
-export const SETTINGS_NS = settingsNamespace('marec-dsh-desktop')
+export const SETTINGS_NS = settingsNamespace('mg-dsh-desktop')
 
 /** Env marker the desktop shortcut / `mg-dsh` command sets before spawning dsh web. */
 export const LAUNCHED_BY_SHORTCUT_ENV = 'MG_DSH_DESKTOP_LAUNCHED'
@@ -160,7 +160,7 @@ async function openWorkspaceDir(ctx: Context): Promise<void> {
 function newTaskInWeb(ctx: Context, dispatch: (name: string, detail?: Record<string, unknown>) => void): void {
   try {
     const workspaceId = currentWorkspaceId(ctx)
-    dispatch('marec:shell-command', {
+    dispatch('mg:shell-command', {
       command: 'new-task',
       // The workspace the user is currently in; omitted when none exists and
       // the client falls back to the current session / recency projection.
@@ -185,12 +185,15 @@ function effectiveConfig(config: Config): Config {
 }
 
 export function apply(ctx: Context, config: Config): void {
+  // Rename migration before any config read (pre-release `marec-` names).
+  migrateLegacyPaths()
+
   const launched = launchedByShortcut()
   if (!launched) {
-    console.log('[marec-dsh-desktop] not launched by the desktop shortcut; shell + plugin page disabled (CLI mode)')
+    console.log('[mg-dsh-desktop] not launched by the desktop shortcut; shell + plugin page disabled (CLI mode)')
     return
   }
-  console.log('[marec-dsh-desktop] launched by shortcut; desktop shell + plugin page active')
+  console.log('[mg-dsh-desktop] launched by shortcut; desktop shell + plugin page active')
 
   let shell: DesktopShellHandle | undefined
   let opened = false
@@ -239,7 +242,7 @@ export function apply(ctx: Context, config: Config): void {
     if (opened) return
     const server = ctx.get('webServer')
     if (server === undefined) {
-      console.log('[marec-dsh-desktop] no web server in this profile; desktop shell skipped')
+      console.log('[mg-dsh-desktop] no web server in this profile; desktop shell skipped')
       return
     }
     registerRoutes()
@@ -260,9 +263,9 @@ export function apply(ctx: Context, config: Config): void {
           return { minimizeToTray: stored.minimizeToTray, closeToTray: stored.closeToTray }
         },
       }, () => exitProcess(ctx))
-      console.log(`[marec-dsh-desktop] desktop shell opened on http://127.0.0.1:${server.port}`)
+      console.log(`[mg-dsh-desktop] desktop shell opened on http://127.0.0.1:${server.port}`)
     } catch (error) {
-      console.error('[marec-dsh-desktop] failed to open desktop shell:', error)
+      console.error('[mg-dsh-desktop] failed to open desktop shell:', error)
     }
   }
 

@@ -32,16 +32,16 @@ export interface ThemeDetector {
 const POLL_INTERVAL_MS = 100
 
 /** IPC marker the injected observer prefixes every theme message with. */
-const IPC_PREFIX = 'marec-theme:'
+const IPC_PREFIX = 'mg-theme:'
 
 /** One-shot script that installs the theme MutationObserver (idempotent per document). */
 const OBSERVER_SCRIPT = `
-if (!window.__marecThemeObserver) {
-  window.__marecThemeObserver = new MutationObserver(function () {
+if (!window.__mgThemeObserver) {
+  window.__mgThemeObserver = new MutationObserver(function () {
     var dark = document.body !== null && document.body.hasAttribute('data-ds-dark-theme') ? 1 : 0
     window.ipc.postMessage('${IPC_PREFIX}' + dark)
   })
-  window.__marecThemeObserver.observe(document.body, { attributes: true, attributeFilter: ['data-ds-dark-theme'] })
+  window.__mgThemeObserver.observe(document.body, { attributes: true, attributeFilter: ['data-ds-dark-theme'] })
   window.ipc.postMessage('${IPC_PREFIX}' + (document.body !== null && document.body.hasAttribute('data-ds-dark-theme') ? 1 : 0))
 }
 `
@@ -111,7 +111,7 @@ export class WebViewThemeDetector implements ThemeDetector {
       + ` : -1`,
       (error, result) => {
         if (error) {
-          console.warn('[marec-dsh-desktop] theme probe failed:', error)
+          console.warn('[mg-dsh-desktop] theme probe failed:', error)
           return
         }
         const raw = (result ?? '').trim()

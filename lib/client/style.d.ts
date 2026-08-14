@@ -3,7 +3,7 @@
  * {@link injectCardStyle}. Styling is deliberately NOT a CSS module: tsdown
  * extracts `.css` into a separate file the dsh client loader never fetches,
  * so the styles live as a string here, use the official `--dsw-alias-*`
- * design tokens, and carry a stable `marec-*` class prefix.
+ * design tokens, and carry a stable `mg-*` class prefix.
  *
  * The card mirrors the official PluginCard look (ui-settings-plugins): a
  * collapsible header (name + description + chevron), then the controls body
@@ -14,33 +14,33 @@
  */
 /** Card class names — the single source the components and the stylesheet share. */
 export declare const CARD_CSS_CLASSES: {
-    readonly card: "marec-card";
-    readonly cardOpen: "marec-card-open";
-    readonly header: "marec-card-header";
-    readonly headText: "marec-card-head-text";
-    readonly name: "marec-card-name";
-    readonly description: "marec-card-description";
-    readonly pending: "marec-card-pending";
-    readonly chevron: "marec-card-chevron";
-    readonly chevronOpen: "marec-card-chevron-open";
-    readonly body: "marec-card-body";
-    readonly readOnly: "marec-card-readonly";
-    readonly section: "marec-card-section";
-    readonly sectionTitle: "marec-card-section-title";
-    readonly field: "marec-card-field";
-    readonly fieldLabel: "marec-card-field-label";
-    readonly control: "marec-card-control";
-    readonly input: "marec-card-input";
-    readonly select: "marec-card-select";
-    readonly checkboxRow: "marec-card-checkbox-row";
-    readonly hint: "marec-card-hint";
-    readonly footer: "marec-card-footer";
-    readonly discard: "marec-card-discard";
-    readonly save: "marec-card-save";
-    readonly saving: "marec-card-saving";
-    readonly failed: "marec-card-failed";
-    readonly saved: "marec-card-saved";
-    readonly loading: "marec-card-loading";
+    readonly card: "mg-card";
+    readonly cardOpen: "mg-card-open";
+    readonly header: "mg-card-header";
+    readonly headText: "mg-card-head-text";
+    readonly name: "mg-card-name";
+    readonly description: "mg-card-description";
+    readonly pending: "mg-card-pending";
+    readonly chevron: "mg-card-chevron";
+    readonly chevronOpen: "mg-card-chevron-open";
+    readonly body: "mg-card-body";
+    readonly readOnly: "mg-card-readonly";
+    readonly section: "mg-card-section";
+    readonly sectionTitle: "mg-card-section-title";
+    readonly field: "mg-card-field";
+    readonly fieldLabel: "mg-card-field-label";
+    readonly control: "mg-card-control";
+    readonly input: "mg-card-input";
+    readonly select: "mg-card-select";
+    readonly checkboxRow: "mg-card-checkbox-row";
+    readonly hint: "mg-card-hint";
+    readonly footer: "mg-card-footer";
+    readonly discard: "mg-card-discard";
+    readonly save: "mg-card-save";
+    readonly saving: "mg-card-saving";
+    readonly failed: "mg-card-failed";
+    readonly saved: "mg-card-saved";
+    readonly loading: "mg-card-loading";
 };
 /** Inject the card stylesheet once (idempotent; no-op when already present). */
 export declare function injectCardStyle(): void;

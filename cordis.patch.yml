@@ -1,4 +1,4 @@
-# marec-dsh-desktop bundle patch: desktop shell over the web-app layer.
+# mg-dsh-desktop bundle patch: desktop shell over the web-app layer.
 #
 # A single row mounts BOTH halves, mirroring the official plugin shape
 # (dsh-pet / dsh-better-sidebar):
@@ -13,8 +13,8 @@
 # so a plain command-line `dsh web` is completely clean. Under this project's
 # launch the row activates and everything is served.
 - insert:
-    - id: marec-dsh-desktop
-      name: 'marec-dsh-desktop'
+    - id: mg-dsh-desktop
+      name: 'mg-dsh-desktop'
       disabled: !!js process.env.MG_DSH_DESKTOP_LAUNCHED !== '1'
       config:
         title: 'DeepSeek Harness Desktop'

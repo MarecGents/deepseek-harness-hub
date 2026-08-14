@@ -1,5 +1,5 @@
 /**
- * marec-dsh-desktop config API — same-origin JSON endpoints the client
+ * mg-dsh-desktop config API — same-origin JSON endpoints the client
  * settings card uses to read and write the shell configuration (window size
  * policy, theme, tray). Deliberately NOT a settings namespace: dsh's RPC
  * settings.describe exposes only a hard-coded allowlist (third-party plugin
@@ -10,12 +10,30 @@
 
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { WebRoute } from '@deepseek-ai/dsh-host-webserver'
-import { mkdirSync, readFileSync, writeFileSync, rmSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { dshHome } from './state-store.js'
 
+/**
+ * One-time migration from the pre-release `marec-dsh-desktop` names (the
+ * package was renamed before its first npm publish). Best-effort; called at
+ * plugin apply so existing installs keep their window settings.
+ */
+export function migrateLegacyPaths(): void {
+  try {
+    const oldDir = join(dshHome(), 'marec-dsh-desktop')
+    const newDir = join(dshHome(), 'mg-dsh-desktop')
+    if (existsSync(oldDir) && !existsSync(newDir)) renameSync(oldDir, newDir)
+    const oldState = join(dshHome(), 'marec-dsh-desktop-window-state.json')
+    const newState = join(dshHome(), 'mg-dsh-desktop-window-state.json')
+    if (existsSync(oldState) && !existsSync(newState)) renameSync(oldState, newState)
+  } catch {
+    // Best-effort; a failed migration must not break startup.
+  }
+}
+
 /** Browser-facing base path of the shell config API. */
-export const CONFIG_API_PREFIX = '/api/marec-dsh-desktop'
+export const CONFIG_API_PREFIX = '/api/mg-dsh-desktop'
 
 /** Runtime shell config persisted under the harness home. */
 export interface ShellConfig {
@@ -45,7 +63,7 @@ export const DEFAULT_SHELL_CONFIG: ShellConfig = {
 
 /** Config document path under the harness home. */
 export function configFile(): string {
-  return join(dshHome(), 'marec-dsh-desktop', 'config.json')
+  return join(dshHome(), 'mg-dsh-desktop', 'config.json')
 }
 
 /** Read the persisted config; returns defaults when absent or malformed. */
@@ -62,7 +80,7 @@ export function readShellConfig(): ShellConfig {
 export function writeShellConfig(patch: Partial<ShellConfig>): ShellConfig {
   const next = { ...readShellConfig(), ...patch }
   try {
-    const dir = join(dshHome(), 'marec-dsh-desktop')
+    const dir = join(dshHome(), 'mg-dsh-desktop')
     mkdirSync(dir, { recursive: true })
     const file = configFile()
     const tmp = `${file}.tmp`

@@ -3,7 +3,7 @@
  * {@link injectCardStyle}. Styling is deliberately NOT a CSS module: tsdown
  * extracts `.css` into a separate file the dsh client loader never fetches,
  * so the styles live as a string here, use the official `--dsw-alias-*`
- * design tokens, and carry a stable `marec-*` class prefix.
+ * design tokens, and carry a stable `mg-*` class prefix.
  *
  * The card mirrors the official PluginCard look (ui-settings-plugins): a
  * collapsible header (name + description + chevron), then the controls body
@@ -15,33 +15,33 @@
 
 /** Card class names — the single source the components and the stylesheet share. */
 export const CARD_CSS_CLASSES = {
-  card: 'marec-card',
-  cardOpen: 'marec-card-open',
-  header: 'marec-card-header',
-  headText: 'marec-card-head-text',
-  name: 'marec-card-name',
-  description: 'marec-card-description',
-  pending: 'marec-card-pending',
-  chevron: 'marec-card-chevron',
-  chevronOpen: 'marec-card-chevron-open',
-  body: 'marec-card-body',
-  readOnly: 'marec-card-readonly',
-  section: 'marec-card-section',
-  sectionTitle: 'marec-card-section-title',
-  field: 'marec-card-field',
-  fieldLabel: 'marec-card-field-label',
-  control: 'marec-card-control',
-  input: 'marec-card-input',
-  select: 'marec-card-select',
-  checkboxRow: 'marec-card-checkbox-row',
-  hint: 'marec-card-hint',
-  footer: 'marec-card-footer',
-  discard: 'marec-card-discard',
-  save: 'marec-card-save',
-  saving: 'marec-card-saving',
-  failed: 'marec-card-failed',
-  saved: 'marec-card-saved',
-  loading: 'marec-card-loading',
+  card: 'mg-card',
+  cardOpen: 'mg-card-open',
+  header: 'mg-card-header',
+  headText: 'mg-card-head-text',
+  name: 'mg-card-name',
+  description: 'mg-card-description',
+  pending: 'mg-card-pending',
+  chevron: 'mg-card-chevron',
+  chevronOpen: 'mg-card-chevron-open',
+  body: 'mg-card-body',
+  readOnly: 'mg-card-readonly',
+  section: 'mg-card-section',
+  sectionTitle: 'mg-card-section-title',
+  field: 'mg-card-field',
+  fieldLabel: 'mg-card-field-label',
+  control: 'mg-card-control',
+  input: 'mg-card-input',
+  select: 'mg-card-select',
+  checkboxRow: 'mg-card-checkbox-row',
+  hint: 'mg-card-hint',
+  footer: 'mg-card-footer',
+  discard: 'mg-card-discard',
+  save: 'mg-card-save',
+  saving: 'mg-card-saving',
+  failed: 'mg-card-failed',
+  saved: 'mg-card-saved',
+  loading: 'mg-card-loading',
 } as const
 
 const css = CARD_CSS_CLASSES
@@ -184,21 +184,21 @@ const STYLE_TEXT = `
 .${css.failed} { font-size: 12px; line-height: 18px; color: #dc2626; }
 .${css.saved} {
   font-size: 12px; line-height: 18px; color: #16a34a;
-  animation: marec-fade-out 2.2s ease forwards;
+  animation: mg-fade-out 2.2s ease forwards;
 }
-@keyframes marec-fade-out { from { opacity: 1; } to { opacity: 0; } }
+@keyframes mg-fade-out { from { opacity: 1; } to { opacity: 0; } }
 .${css.loading} {
   height: 72px; border-radius: 6px;
   background: linear-gradient(90deg, transparent, var(--dsw-alias-interactive-bg-hover, rgb(0 0 0 / 4%)), transparent);
   background-size: 200% 100%;
-  animation: marec-pulse 1.2s ease-in-out infinite;
+  animation: mg-pulse 1.2s ease-in-out infinite;
 }
-@keyframes marec-pulse { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+@keyframes mg-pulse { from { background-position: 200% 0; } to { background-position: -200% 0; } }
 `
 
 /** Inject the card stylesheet once (idempotent; no-op when already present). */
 export function injectCardStyle(): void {
-  const id = 'marec-dsh-desktop-style'
+  const id = 'mg-dsh-desktop-style'
   if (document.getElementById(id) !== null) return
   const style = document.createElement('style')
   style.id = id
