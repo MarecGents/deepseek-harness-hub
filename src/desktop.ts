@@ -29,6 +29,7 @@ import { Application, Theme } from '@webviewjs/webview'
 import type { BrowserWindow, JsWebview } from '@webviewjs/webview'
 import { JsonWindowStateStore, MIN_HEIGHT, MIN_WIDTH } from './services/state-store.js'
 import { setTitleBarDark, setTitleBarDarkPowerShell } from './services/dwm-theme.js'
+import { resolveLaunchScreen } from './services/screen.js'
 import { WebViewThemeDetector } from './services/theme-sync.js'
 import { WebViewTray, type TrayCommand } from './services/tray.js'
 import { dshFaviconBlack, dshFaviconDark, dshFaviconDataUrl, dshFaviconTray } from './services/icons.js'
@@ -37,10 +38,13 @@ import { dshFaviconBlack, dshFaviconDark, dshFaviconDataUrl, dshFaviconTray } fr
 export interface DesktopOptions {
   /** Window title bar text. */
   title: string
-  /** Default window width in logical pixels. */
-  width: number
-  /** Default window height in logical pixels. */
-  height: number
+  /**
+   * Default window width in logical pixels; `undefined` sizes the default
+   * window to 3/4 of the launch screen (multi-monitor aware).
+   */
+  width: number | undefined
+  /** Default window height in logical pixels; see `width`. */
+  height: number | undefined
   /** Title-bar theme: 'system' (default) | 'light' | 'dark'. */
   theme: 'system' | 'light' | 'dark'
   /** Open the current workspace directory (tray "Open workspace"). */
@@ -218,10 +222,20 @@ export function openDesktopShell(
     detector?.stop()
     detector = undefined
 
+    // Default window size: a saved size wins; otherwise size to 3/4 of the
+    // launch screen (multi-monitor aware via the cursor's monitor), with
+    // 1280×720 as the last-resort floor when the screen cannot be resolved.
+    const screen = resolveLaunchScreen()
+    const width = options.width ?? (screen === undefined ? 1280 : Math.round((screen.width * 3) / 4))
+    const height = options.height ?? (screen === undefined ? 720 : Math.round((screen.height * 3) / 4))
+    if (options.width === undefined) {
+      console.log(`[mg-dsh-desktop] default window ${width}x${height} (screen ${screen?.width ?? '?'}x${screen?.height ?? '?'})`)
+    }
+
     const w = app.createBrowserWindow({
       title: options.title,
-      width: options.width,
-      height: options.height,
+      width,
+      height,
       // A hidden window (close-to-tray keepalive) starts invisible so the
       // app survives the previous window's close without flashing.
       ...(opts?.hidden === true ? { visible: false } : {}),

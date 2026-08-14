@@ -37,6 +37,12 @@ export declare const DEFAULT_SHELL_CONFIG: ShellConfig;
 export declare function configFile(): string;
 /** Read the persisted config; returns defaults when absent or malformed. */
 export declare function readShellConfig(): ShellConfig;
+/**
+ * True when the persisted config explicitly stores a window size. A user who
+ * saved the settings card's width/height gets that exact size on launch;
+ * otherwise the shell sizes the default window to the launch screen.
+ */
+export declare function hasStoredWindowSize(): boolean;
 /** Persist the config (best-effort, atomic write). */
 export declare function writeShellConfig(patch: Partial<ShellConfig>): ShellConfig;
 /**

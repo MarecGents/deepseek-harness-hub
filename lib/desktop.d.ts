@@ -30,10 +30,13 @@ import type { BrowserWindow } from '@webviewjs/webview';
 export interface DesktopOptions {
     /** Window title bar text. */
     title: string;
-    /** Default window width in logical pixels. */
-    width: number;
-    /** Default window height in logical pixels. */
-    height: number;
+    /**
+     * Default window width in logical pixels; `undefined` sizes the default
+     * window to 3/4 of the launch screen (multi-monitor aware).
+     */
+    width: number | undefined;
+    /** Default window height in logical pixels; see `width`. */
+    height: number | undefined;
     /** Title-bar theme: 'system' (default) | 'light' | 'dark'. */
     theme: 'system' | 'light' | 'dark';
     /** Open the current workspace directory (tray "Open workspace"). */

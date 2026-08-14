@@ -76,6 +76,20 @@ export function readShellConfig(): ShellConfig {
   }
 }
 
+/**
+ * True when the persisted config explicitly stores a window size. A user who
+ * saved the settings card's width/height gets that exact size on launch;
+ * otherwise the shell sizes the default window to the launch screen.
+ */
+export function hasStoredWindowSize(): boolean {
+  try {
+    const raw = JSON.parse(readFileSync(configFile(), 'utf8')) as Partial<ShellConfig>
+    return typeof raw.width === 'number' && typeof raw.height === 'number'
+  } catch {
+    return false
+  }
+}
+
 /** Persist the config (best-effort, atomic write). */
 export function writeShellConfig(patch: Partial<ShellConfig>): ShellConfig {
   const next = { ...readShellConfig(), ...patch }

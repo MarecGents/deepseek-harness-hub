@@ -34,7 +34,7 @@ import type {} from '@deepseek-ai/dsh-agent'
 import { installSettingsSection, settingsNamespace } from '@deepseek-ai/dsh-settings'
 import z from '@deepseek-ai/schemastery'
 import { openDesktopShell, type DesktopShellHandle } from './desktop.ts'
-import { makeConfigRoutes, migrateLegacyPaths, readShellConfig, type ShellConfig } from './services/config-api.js'
+import { hasStoredWindowSize, makeConfigRoutes, migrateLegacyPaths, readShellConfig, type ShellConfig } from './services/config-api.js'
 
 /** Stable Cordis plugin name (referenced by cordis.patch.yml's insert row). */
 export const name = 'mg-dsh-desktop'
@@ -171,13 +171,19 @@ function newTaskInWeb(ctx: Context, dispatch: (name: string, detail?: Record<str
   }
 }
 
-/** Merge the persisted shell config over the composition entry (persisted wins). */
+/**
+ * Merge the persisted shell config over the composition entry (persisted
+ * wins). When the user never saved a window size, width/height resolve to
+ * `undefined` so the desktop shell sizes the default window to the launch
+ * screen (see desktop.ts); 1280×720 stays as the shell's last-resort floor.
+ */
 function effectiveConfig(config: Config): Config {
   const stored = readShellConfig()
+  const sized = hasStoredWindowSize()
   return {
     ...config,
-    width: stored.width ?? config.width,
-    height: stored.height ?? config.height,
+    width: sized ? stored.width : (undefined as unknown as number),
+    height: sized ? stored.height : (undefined as unknown as number),
     theme: stored.theme ?? config.theme,
     minimizeToTray: stored.minimizeToTray ?? config.minimizeToTray,
     closeToTray: stored.closeToTray ?? config.closeToTray,
