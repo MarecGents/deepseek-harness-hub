@@ -1,0 +1,24 @@
+# marec-dsh-desktop bundle patch: desktop shell over the web-app layer.
+#
+# A single row mounts BOTH halves, mirroring the official plugin shape
+# (dsh-pet / dsh-better-sidebar):
+#   - host half: `lib/index.js` — window/theme/state/services.
+#   - browser half: `lib/client.js` — the client-modules node half scans the
+#     package's `dsh.client` declaration into the web plugin roster.
+#
+# Launch gating: the whole row is `disabled` unless the process was started
+# by this project (the desktop shortcut or the `mg-dsh` command set
+# `MG_DSH_DESKTOP_LAUNCHED=1`). When disabled the plugin is not mounted at
+# all — no loader entry, no client row in __DSH_BOOT__, nothing injected —
+# so a plain command-line `dsh web` is completely clean. Under this project's
+# launch the row activates and everything is served.
+- insert:
+    - id: marec-dsh-desktop
+      name: 'marec-dsh-desktop'
+      disabled: !!js process.env.MG_DSH_DESKTOP_LAUNCHED !== '1'
+      config:
+        title: 'DeepSeek Harness'
+        width: 1280
+        height: 720
+        tray: true
+        theme: system
