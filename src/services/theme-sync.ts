@@ -26,7 +26,7 @@ export interface ThemeDetector {
 }
 
 /** How often the page is asked for its theme after the first load finished. */
-const POLL_INTERVAL_MS = 150
+const POLL_INTERVAL_MS = 100
 
 /** WebView2-backed {@link ThemeDetector} that reads dsh's theme marker. */
 export class WebViewThemeDetector implements ThemeDetector {

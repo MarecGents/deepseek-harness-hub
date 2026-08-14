@@ -27,8 +27,8 @@
 
 import { Application, Theme } from '@webviewjs/webview'
 import type { BrowserWindow, JsWebview } from '@webviewjs/webview'
-import { spawn } from 'node:child_process'
 import { JsonWindowStateStore, MIN_HEIGHT, MIN_WIDTH } from './services/state-store.js'
+import { setTitleBarDark, setTitleBarDarkPowerShell } from './services/dwm-theme.js'
 import { WebViewThemeDetector } from './services/theme-sync.js'
 import { WebViewTray, type TrayCommand } from './services/tray.js'
 import { dshFaviconDark, dshFaviconDataUrl, dshFaviconTray } from './services/icons.js'
@@ -87,40 +87,12 @@ const LIGHT_BG: [number, number, number] = [246, 248, 250] // #f6f8fa
 /** dsh's brand accent (matches the SPA boot spinner token). */
 const BRAND = '#3964fe'
 
-/**
- * Force the native title bar light/dark. webviewjs' `win.setTheme` is a
- * no-op for the window chrome on Windows (the docs' "unsupported platforms
- * do nothing" clause), so the real switch is `DwmSetWindowAttribute` with
- * DWMWA_USE_IMMERSIVE_DARK_MODE (20) on the window's HWND — the same call
- * Electron's nativeTheme makes. Results are logged so a silent failure is
- * visible in dsh.log instead of looking like a dead feature.
- */
-function setNativeTitleBarTheme(hwnd: bigint, dark: boolean): void {
-  try {
-    const script = [
-      `Add-Type -TypeDefinition 'using System;using System.Runtime.InteropServices;`,
-      `public static class M{[DllImport("dwmapi.dll")]public static extern int DwmSetWindowAttribute(IntPtr h,int a,ref int v,int s);}';`,
-      `$v=${dark ? 1 : 0};$r=[M]::DwmSetWindowAttribute([IntPtr]${hwnd},20,[ref]$v,4);`,
-      `[Console]::WriteLine("result=" + $r)`,
-    ].join(' ')
-    // NOT -WindowStyle Hidden and NOT detached: on Windows both swallow the
-    // child's stdout pipe (the call still runs, but the result can never be
-    // logged). A short -Command invocation does not flash a visible console.
-    const child = spawn('powershell.exe', ['-NoProfile', '-Command', script], {
-      stdio: ['ignore', 'pipe', 'pipe'],
-      windowsHide: true,
-    })
-    child.stdout.on('data', (chunk: Buffer) => {
-      console.log(`[marec-dsh-desktop] dwm(${hwnd}, ${dark ? 'dark' : 'light'}) -> ${chunk.toString().trim()}`)
-    })
-    child.stderr.on('data', (chunk: Buffer) => {
-      console.warn(`[marec-dsh-desktop] dwm script error: ${chunk.toString().trim()}`)
-    })
-    child.on('error', (error) => {
-      console.warn(`[marec-dsh-desktop] dwm spawn failed: ${error.message}`)
-    })
-  } catch {
-    // Best-effort; win.setTheme still runs alongside.
+/** Apply the title-bar theme; koffi fast path, PowerShell fallback. */
+function applyNativeTitleBarTheme(hwnd: bigint, dark: boolean): void {
+  if (setTitleBarDark(hwnd, dark)) {
+    console.log(`[marec-dsh-desktop] dwm(${hwnd}, ${dark ? 'dark' : 'light'}) -> 0`)
+  } else {
+    setTitleBarDarkPowerShell(hwnd, dark)
   }
 }
 
@@ -198,19 +170,19 @@ export function openDesktopShell(
       // dsh defaults dark; corrected by the first probe as soon as the SPA paints.
       w.setTheme(Theme.Dark)
       wv.setBackgroundColor(...DARK_BG, 255)
-      if (hwnd !== undefined) setNativeTitleBarTheme(hwnd, true)
+      if (hwnd !== undefined) applyNativeTitleBarTheme(hwnd, true)
       detector = new WebViewThemeDetector(wv)
       detector.start((dark) => {
         console.log(`[marec-dsh-desktop] page theme ${dark ? 'dark' : 'light'}`)
         w.setTheme(dark ? Theme.Dark : Theme.Light)
         wv.setBackgroundColor(...(dark ? DARK_BG : LIGHT_BG), 255)
-        if (hwnd !== undefined) setNativeTitleBarTheme(hwnd, dark)
+        if (hwnd !== undefined) applyNativeTitleBarTheme(hwnd, dark)
       })
     } else {
       const dark = theme === 'dark'
       w.setTheme(dark ? Theme.Dark : Theme.Light)
       wv.setBackgroundColor(...(dark ? DARK_BG : LIGHT_BG), 255)
-      if (hwnd !== undefined) setNativeTitleBarTheme(hwnd, dark)
+      if (hwnd !== undefined) applyNativeTitleBarTheme(hwnd, dark)
     }
   }
 
@@ -308,6 +280,8 @@ export function openDesktopShell(
     if (exited) return
     exited = true
     if (splashTimer !== undefined) clearTimeout(splashTimer)
+    detector?.stop()
+    tray?.detach(app)
     tray?.dispose()
     app.exit()
     onExit()
