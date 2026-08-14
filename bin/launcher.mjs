@@ -96,6 +96,27 @@ function alert(message) {
   }
 }
 
+/** Decode a child-process error buffer: Windows CLIs write the console code
+ * page (GBK on zh-CN), which UTF-8 decoding garbles into unreadable mojibake. */
+function decodeConsoleOutput(buffer) {
+  try {
+    return new TextDecoder('gbk').decode(buffer)
+  } catch {
+    return buffer.toString('utf8')
+  }
+}
+
+/** Make sure `pnpm` exists: `dsh plugin` forwards to pnpm in the profile. */
+function ensurePnpm() {
+  const probe = spawnSync('pnpm', ['--version'], { encoding: 'utf8', windowsHide: true })
+  if (probe.status === 0) return true
+  log('pnpm not found; installing pnpm globally…')
+  const install = spawnSync(process.env.ComSpec, ['/d', '/s', '/c', 'npm install -g pnpm'], {
+    encoding: 'utf8', timeout: 180000, windowsHide: true, stdio: 'inherit',
+  })
+  return install.status === 0
+}
+
 /**
  * Make sure `mg-dsh-desktop` is part of the web profile's bundle list using
  * the official `dsh plugin` flow (first double-click self-installs, later
@@ -111,11 +132,16 @@ function ensureBundleInstalled(dshCmd) {
     // Profile not initialised yet — `dsh plugin` creates it.
   }
   log(`installing ${BUNDLE_NAME} into the web profile…`)
+  if (!ensurePnpm()) {
+    log('bundle install failed: could not install pnpm (required by `dsh plugin`)')
+    return false
+  }
   const result = spawnSync(process.env.ComSpec, ['/d', '/s', '/c', `"${dshCmd}" plugin --profile web add "${PACKAGE_ROOT}"`], {
-    encoding: 'utf8', timeout: 180000, windowsHide: true, windowsVerbatimArguments: true,
+    encoding: 'buffer', timeout: 180000, windowsHide: true, windowsVerbatimArguments: true,
   })
   if (result.status !== 0) {
-    log(`bundle install failed: ${result.stderr}`)
+    const stderr = result.stderr ? decodeConsoleOutput(result.stderr) : '(no stderr)'
+    log(`bundle install failed: ${stderr}`)
     return false
   }
   return true
