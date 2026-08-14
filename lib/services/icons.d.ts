@@ -14,6 +14,8 @@ export declare function loadPngRgba(posixPath: string): Icon | undefined;
 export declare function accentTile(): Icon;
 /** Convenience: the dark (white-glyph) favicon for title bars and tray. */
 export declare function dshFaviconDark(): Icon | undefined;
+/** Convenience: the black-glyph favicon for light surfaces (window title bar). */
+export declare function dshFaviconBlack(): Icon | undefined;
 /** The favicon as a `data:` URL — inlined into the splash page's <img>. */
 export declare function dshFaviconDataUrl(): string | undefined;
 /**

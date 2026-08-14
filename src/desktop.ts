@@ -31,7 +31,7 @@ import { JsonWindowStateStore, MIN_HEIGHT, MIN_WIDTH } from './services/state-st
 import { setTitleBarDark, setTitleBarDarkPowerShell } from './services/dwm-theme.js'
 import { WebViewThemeDetector } from './services/theme-sync.js'
 import { WebViewTray, type TrayCommand } from './services/tray.js'
-import { dshFaviconDark, dshFaviconDataUrl, dshFaviconTray } from './services/icons.js'
+import { dshFaviconBlack, dshFaviconDark, dshFaviconDataUrl, dshFaviconTray } from './services/icons.js'
 
 /** Shell options resolved from the dsh plugin Config schema. */
 export interface DesktopOptions {
@@ -86,6 +86,25 @@ const DARK_BG: [number, number, number] = [24, 24, 27] // #18181b
 const LIGHT_BG: [number, number, number] = [246, 248, 250] // #f6f8fa
 /** dsh's brand accent (matches the SPA boot spinner token). */
 const BRAND = '#3964fe'
+
+/** Decoded once; the theme flips reuse the same buffers. */
+let iconForDark: ReturnType<typeof dshFaviconDark> | undefined
+let iconForLight: ReturnType<typeof dshFaviconDark> | undefined
+
+/**
+ * Window title-bar icon follows the theme: white whale on dark chrome,
+ * black whale on light chrome (the taskbar/tray icons stay white — the
+ * taskbar surface does not follow the page theme).
+ */
+function applyWindowIcon(w: BrowserWindow, dark: boolean): void {
+  const icon = dark ? (iconForDark ??= dshFaviconDark()) : (iconForLight ??= dshFaviconBlack())
+  if (icon === undefined) return
+  try {
+    w.setWindowIcon(Array.from(icon.data), icon.width, icon.height)
+  } catch {
+    // Best-effort; icon swaps must never break theme following.
+  }
+}
 
 /** Apply the title-bar theme; koffi fast path, PowerShell fallback. */
 function applyNativeTitleBarTheme(hwnd: bigint, dark: boolean): void {
@@ -170,18 +189,21 @@ export function openDesktopShell(
       // dsh defaults dark; corrected by the first probe as soon as the SPA paints.
       w.setTheme(Theme.Dark)
       wv.setBackgroundColor(...DARK_BG, 255)
+      applyWindowIcon(w, true)
       if (hwnd !== undefined) applyNativeTitleBarTheme(hwnd, true)
       detector = new WebViewThemeDetector(wv)
       detector.start((dark) => {
         console.log(`[marec-dsh-desktop] page theme ${dark ? 'dark' : 'light'}`)
         w.setTheme(dark ? Theme.Dark : Theme.Light)
         wv.setBackgroundColor(...(dark ? DARK_BG : LIGHT_BG), 255)
+        applyWindowIcon(w, dark)
         if (hwnd !== undefined) applyNativeTitleBarTheme(hwnd, dark)
       })
     } else {
       const dark = theme === 'dark'
       w.setTheme(dark ? Theme.Dark : Theme.Light)
       wv.setBackgroundColor(...(dark ? DARK_BG : LIGHT_BG), 255)
+      applyWindowIcon(w, dark)
       if (hwnd !== undefined) applyNativeTitleBarTheme(hwnd, dark)
     }
   }
@@ -220,10 +242,11 @@ export function openDesktopShell(
       wv.loadUrl(targetUrl)
     }, SPLASH_MS)
 
-    // Real dsh glyph on the window and taskbar.
+    // Taskbar glyph stays white (the taskbar surface does not follow the
+    // page theme); the title-bar icon is set by applyWindowTheme below and
+    // flips with the theme.
     const icon = dshFaviconDark()
     if (icon !== undefined) {
-      w.setWindowIcon(Array.from(icon.data), icon.width, icon.height)
       w.setTaskbarIcon(Array.from(icon.data), icon.width, icon.height)
     }
 

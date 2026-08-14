@@ -54,6 +54,11 @@ export function dshFaviconDark(): Icon | undefined {
   return loadPngRgba('../../assets/dsh-favicon-dark.png')
 }
 
+/** Convenience: the black-glyph favicon for light surfaces (window title bar). */
+export function dshFaviconBlack(): Icon | undefined {
+  return loadPngRgba('../../assets/dsh-favicon.png')
+}
+
 /** The favicon as a `data:` URL — inlined into the splash page's <img>. */
 export function dshFaviconDataUrl(): string | undefined {
   try {

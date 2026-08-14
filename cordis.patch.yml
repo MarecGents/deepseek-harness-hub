@@ -17,7 +17,7 @@
       name: 'marec-dsh-desktop'
       disabled: !!js process.env.MG_DSH_DESKTOP_LAUNCHED !== '1'
       config:
-        title: 'DeepSeek Harness'
+        title: 'DeepSeek Harness Desktop'
         width: 1280
         height: 720
         tray: true
