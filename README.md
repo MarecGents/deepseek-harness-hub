@@ -1,6 +1,6 @@
 # mg-dsh-desktop
 
-DeepSeek Harness（`dsh`）的**桌面化 + 插件集成**项目（从零重写，替代早期 mg-dsh-desktop）。以原生 Windows 窗口（系统 WebView2）运行 dsh 的 Web UI，提供主题同步、窗口状态记忆、系统托盘与托盘命令；设置 → 插件页提供桌面壳配置卡片。
+DeepSeek Harness（`dsh`）的**桌面化**项目。以原生 Windows 窗口（系统 WebView2）运行 dsh 的 Web UI，提供主题同步、窗口状态记忆、系统托盘与托盘命令；设置 → 插件页提供桌面壳配置卡片。
 
 ## 定位
 
@@ -10,27 +10,130 @@ DeepSeek Harness（`dsh`）的**桌面化 + 插件集成**项目（从零重写�
 - **托盘**：常驻系统托盘；右键菜单「显示主界面 / 打开工作区 / 新建任务 / 退出」；最小化/关闭到托盘可配置。
 - **状态记忆**：窗口分辨率可配置、上次最大化状态恢复；配置持久化到 `$DSH_HOME/mg-dsh-desktop/config.json`。
 
+## 安装与使用
+
+```sh
+# 全局安装（自动检测 dsh/pnpm，未装则一并安装；Windows 自动创建桌面快捷方式）
+npm i -g mg-dsh-desktop
+
+# 方式一：桌面快捷方式（无控制台）
+# 双击「DeepSeek Harness」
+
+# 方式二：mg-dsh 命令（终端，继承输出）
+mg-dsh
+
+# 验证门控（CLI 启动不注入桌面壳）
+dsh web            # 无窗口、无托盘、无注入
+```
+
 ## 核心设计（严格遵循官方开发者文档 + 官方接口）
 
 | 原则 | 实现 |
 |---|---|
 | 零改动 dsh | dsh 源码 `git status` 始终干净 |
 | 官方插件形态 | bundle（`dsh.bundle.patch`）+ client 双 half（`dsh.client` + `exports["./client"]`），参照 dsh-web-ui / DSH-better-sidebar |
-| 启动门控 | `cordis.patch.yml` 的行 `disabled: !!js process.env.MG_DSH_DESKTOP_LAUNCHED !== '1'` —— **非本项目启动的 `dsh web` 完全不加载插件**（无窗口、无 client row、无任何注入）；`mg-dsh` 命令或桌面快捷方式启动时开启桌面壳 |
-| 配置面 | 插件自己的 HTTP 路由 `/api/mg-dsh-desktop/config`（GET/POST）读写 `$DSH_HOME/mg-dsh-desktop/config.json`。**刻意不用 settings 命名空间**：dsh 的 RPC `settings.describe` 只暴露硬编码白名单（源码注释明确第三方插件命名空间是 "deferred work"），第三方配置 UI 的受支持模式是插件自有路由（dsh-web-ui 的 `/api/pet/*` 同款） |
+| 启动门控 | `cordis.patch.yml` 的行 `disabled: !!js process.env.MG_DSH_DESKTOP_LAUNCHED !== '1'` —— **非本项目启动的 `dsh web` 完全不加载插件**（无窗口、无 client row、无任何注入） |
+| 配置面 | 插件自有 HTTP 路由 `/api/mg-dsh-desktop/config`（GET/POST）读写 `$DSH_HOME/mg-dsh-desktop/config.json`。**刻意不用 settings 命名空间**：dsh 的 RPC `settings.describe` 只暴露硬编码白名单（第三方插件命名空间是 "deferred work"），第三方配置 UI 的受支持模式是插件自有路由（dsh-web-ui 同款） |
+| 随机端口 | 启动器固定传 `dsh web --port 0`（OS 随机分配），CLI `dsh web` 不受影响（默认 3080） |
 
-## 已完成功能
+## 代码架构
 
-1. ✅ 桌面化：WebView2 窗口（`@webviewjs/webview`，N-API → wry/tao）
-2. ✅ 无黑框启动：wscript.exe + VBS（SW_HIDE）隐藏控制台；`mg-dsh` 命令终端启动
-3. ✅ 启动 splash：`createWebview({ html })` 主题色品牌页（logo 呼吸 + spinner），300ms 后 `loadUrl` 切 SPA；WebView2 在 SPA 解析期间保持 splash 画面 → 无白/黑块
-4. ✅ 主题切换同步：150ms 轮询页面 `data-ds-dark-theme`（三态探测：splash/非 dsh 页返回 `na` 不发事件；轮询从首个 page-load-finished 才开始）；标题栏 + webview 背景一起跟随（兼容任何主题插件）
-5. ✅ 窗口状态记忆：默认 1280×720 居中；**上次关闭为最大化则本次最大化恢复**（状态文件只记 `maximized`，避免几何漂移）；分辨率/主题/托盘经配置 API 持久化
-6. ✅ 图标：桌面快捷方式图标、窗口栏/任务栏图标、托盘图标（dsh favicon）
-7. ✅ 托盘常驻 + 行为：右键菜单「显示主界面 / 打开工作区 / 新建任务 / 退出」，双击恢复（单击不动作）；**最小化到托盘**（最小化 → 任务栏消失）、**关闭到托盘**（点 X → 进程+托盘存活，托盘重建窗口）均可配置、动态生效
-8. ✅ 打开工作区 = 资源管理器打开当前工作区目录（`workspaceRegistry.list()[0]` > 当前会话 cwd > 启动目录）
-9. ✅ 新建任务 = 托盘 → 页面桥：`webview.evaluateScriptWithCallback` 派发 `mg:shell-command` 事件，client 半部执行官方 `ctx.workspaces.startSession(workspaceId)`（侧栏"+"同款：当前工作区下创建并打开新会话，UI 即时刷新）；就绪探测 + 300ms×20 重试覆盖 SPA 冷启动
-10. ✅ 插件配置卡片：Marec-DSH-Plugin（官方 PluginCard 风格折叠卡片）——窗口设置（分辨率/主题/最小化到托盘/关闭到托盘）；宽/高初始值显示**当前窗口实际分辨率**（SPA 视口尺寸），保存后固化为配置；走自有 HTTP 路由（`/api/mg-dsh-desktop/config`）
+### 总览
+
+```
+┌──────────────────┐   spawn --port 0   ┌────────────────────────────────────┐
+│ bin/launcher.mjs │ ─────────────────▶ │ dsh web（Cordis 插件树）            │
+│ 桌面快捷方式 →     │  findDsh + junction│  ┌──────────────────────────────┐  │
+│ wscript+VBS 隐藏  │  注册 bundle       │  │ mg-dsh-desktop（host half）    │  │
+│ 控制台            │                   │  │ src/index.ts ── src/desktop.ts │  │
+└──────────────────┘                   │  │      │  services/*             │  │
+┌──────────────────┐                   │  └──────┼───────────────────────┘  │
+│ bin/mg-dsh.mjs   │ ── spawn ────────▶│         │ WebView2 窗口            │
+│ 终端命令           │                   │  ┌──────▼───────────────────────┐  │
+└──────────────────┘                   │  │ dsh Web UI（SPA）              │  │
+                                       │  │  + mg-dsh-desktop（client half）│  │
+                                       │  │  src/client/*                  │  │
+                                       │  └────────────────────────────────┘  │
+                                       └────────────────────────────────────┘
+```
+
+### 双 half 模型
+
+- **host half**（dsh 进程内，Node）：`lib/index.js` —— `src/index.ts`（插件入口/门控/路由/编排）+ `src/desktop.ts`（WebView2 壳）+ `src/services/*`（单职责服务）。由 `cordis.patch.yml` 插入的插件行挂载。
+- **client half**（浏览器内）：`lib/client.js` —— `src/client/*`。由 dsh 的 client-modules 扫描 `dsh.client` 声明编入 `__DSH_BOOT__`，运行在 Web UI 页面里。
+
+两者通过两条通道通信：**HTTP 路由**（配置读写）与 **evaluateScript 桥**（托盘命令派发，`mg:shell-command` 事件）。
+
+### 模块划分（单职责，可独立删换）
+
+```
+src/
+├── index.ts              # host 插件入口：门控、配置路由、窗口编排、托盘命令接线
+├── desktop.ts            # WebView2 壳：splash/窗口生命周期/主题应用/托盘/页面桥
+├── client/
+│   ├── index.ts          # client 插件：卡片注入 + 托盘→页面桥监听
+│   ├── settings-card.tsx # Marec-DSH-Plugin 卡片（窗口设置）
+│   └── style.ts          # CSS 字符串 + injectCardStyle（官方 token）
+└── services/
+    ├── config-api.ts     # 配置路由 + $DSH_HOME 持久化 + 旧名迁移
+    ├── dwm-theme.ts      # 标题栏深浅：koffi FFI 直调 dwmapi（+ PowerShell 兜底）
+    ├── theme-sync.ts     # 主题检测：MutationObserver 事件驱动 + 轮询兜底
+    ├── tray.ts           # 托盘菜单（显示/打开工作区/新建任务/退出）
+    ├── state-store.ts    # 窗口几何记忆（校验防退化）
+    └── icons.ts          # 图标加载/降采样/data URL
+bin/
+├── launcher.mjs          # 快捷方式启动器：findDsh → junction 注册 bundle → spawn
+├── launcher.vbs          # 隐藏控制台包装（postinstall 生成）
+└── mg-dsh.mjs            # mg-dsh 命令（终端启动，继承输出）
+scripts/
+├── postinstall.mjs       # 检测 dsh/pnpm（未装则装）+ 创建桌面快捷方式
+└── postuninstall.mjs     # 删除快捷方式
+```
+
+### 启动链路
+
+1. **双击快捷方式** → wscript.exe 跑 `launcher.vbs`（`SW_HIDE` 隐藏控制台）→ `node bin/launcher.mjs`
+2. **launcher**：`findDsh()`（`DSH_CMD` → PATH → npm 全局目录）找到已装 dsh → 首次启动时**junction 注册** bundle（`profile/node_modules/mg-dsh-desktop` → 包目录，dsh 用 `createRequire` 解析，无需 pnpm）→ `spawn dsh web --port 0`
+3. **dsh 启动**：加载 bundles（base / web-app / mg-dsh-desktop）→ 插件 `apply()`（先做 `MG_DSH_DESKTOP_LAUNCHED` 门控检查 + 旧配置迁移）
+4. **webserver ACTIVE** → `openDesktopShell()`：窗口 + splash 页 → 300ms 后 `loadUrl` 切 SPA（WebView2 在 SPA 解析期间保持 splash 画面，无白/黑闪块）
+
+### 关键机制
+
+#### 主题跟随链路（事件驱动，~0ms 延迟）
+
+```
+dsh 页面 ui-theme presenter 写 body[data-ds-dark-theme]
+  → 注入的 MutationObserver 检测到变化
+  → window.ipc.postMessage('mg-theme:1|0')
+  → host webview.onIpcMessage 解析
+  → applyWindowTheme：win.setTheme + webview 背景 + 标题栏图标（白/黑鲸鱼）
+  → koffi FFI 直调 DwmSetWindowAttribute（~1ms，PowerShell 兜底）
+```
+
+轮询（100ms）仅作兜底（observer 注入失败时）。**实测延迟链路**：事件级 ~1ms（此前是 150ms 轮询 + 1.3s PowerShell 冷启动）。
+
+#### 托盘命令链路
+
+```
+托盘菜单/双击 → tray.ts 的 TrayActions
+  ├─ 显示主界面   → showWindow（重建窗口或显示隐藏保活窗口）
+  ├─ 打开工作区   → explorer 打开当前工作区目录
+  ├─ 新建任务     → evaluateScriptWithCallback 派发 mg:shell-command 事件
+  │                 → client 半部 ctx.workspaces.startSession（官方流程，UI 即时刷新）
+  └─ 退出         → exit（tray detach + app.exit + 进程退出）
+```
+
+#### 配置链路
+
+```
+client 卡片（settings-card.tsx）→ fetch GET/POST /api/mg-dsh-desktop/config
+  → host config-api 路由 → 读写 $DSH_HOME/mg-dsh-desktop/config.json
+  → POST 后 onChange 回调 → shell.applyTheme（主题即时生效）
+```
+
+#### 关闭到托盘（webviewjs 无关闭拦截）
+
+`win.on('close')`（closeToTray 开启时）→ **同步创建隐藏保活窗口**（visible:false 顶替）→ 旧窗口关、app 因仍有窗口而不退出、托盘存活；托盘"显示主界面"显示/重建窗口。最小化到托盘：轮询 `isMinimized()` → 先 `setMinimized(false)` 再 hide（防任务栏闪烁）。
 
 ## 目录结构
 
@@ -39,49 +142,29 @@ mg-dsh-desktop/
 ├── package.json            # dsh.bundle.patch + dsh.client + bin(mg-dsh) + scripts
 ├── cordis.patch.yml        # 插件行（disabled 门控按启动来源）
 ├── tsconfig.json / tsdown.config.ts
-├── bin/
-│   ├── mg-dsh.mjs          # mg-dsh 命令（启动 dsh web + 注入标记）
-│   ├── launcher.mjs        # 桌面快捷方式启动器（端口检测/惰性注册/启动）
-│   └── launcher.vbs        # 隐藏控制台 VBS（postinstall 生成）
-├── scripts/                # build-client / generate-icon / postinstall / postuninstall
+├── bin/                    # launcher.mjs / launcher.vbs / mg-dsh.mjs
+├── scripts/                # postinstall / postuninstall / build-client / generate-icon
 ├── assets/                 # dsh 官方 favicon（PNG/ICO）
-└── src/
-    ├── index.ts            # host 插件（门控 + 配置路由 + 窗口编排 + 托盘命令）
-    ├── desktop.ts          # WebView2 壳（splash/窗口/主题同步/托盘/页面桥）
-    ├── client/index.ts     # client 插件（卡片注册 + tray→页面桥）
-    ├── client/settings-card.tsx  # Marec-DSH-Plugin 卡片（窗口设置）
-    ├── client/style.ts     # CSS 字符串 + injectCardStyle（官方 token，注入 <style>）
-    └── services/
-        ├── config-api.ts   # 配置路由 + $DSH_HOME 持久化
-        ├── state-store.ts  # 窗口几何记忆（校验防退化）
-        ├── theme-sync.ts   # 主题检测（三态探测，150ms，首屏后启动）
-        ├── tray.ts         # 托盘菜单（显示/打开工作区/新建任务/退出）
-        └── icons.ts        # 图标加载/降采样/data URL
-```
-
-## 使用
-
-```sh
-# 安装进 web profile（首次）
-dsh plugin --profile web add <本目录绝对路径>
-
-# 方式一：mg-dsh 命令（终端，继承输出）
-mg-dsh
-
-# 方式二：桌面快捷方式（安装后 postinstall 自动创建，隐藏控制台）
-# 双击「DeepSeek Harness」
-
-# 验证门控
-dsh web            # 命令行启动：不注入插件，无窗口
-mg-dsh             # 本项目启动：窗口 + 托盘
+├── src/                    # 见上文模块划分
+└── lib/                    # 构建产物（tsc + tsdown）
 ```
 
 ## 开发
 
 ```sh
-npm run build          # tsc 编译 host
+npm run build          # tsc 编译 host（src → lib/）
 npm run build:client   # tsdown 构建 client bundle（自动建 SDK junction）
-# 改动 src/ 后重编译，重启 dsh 生效；cordis.patch.yml 改动热重载
+# 改动 src/ 后重编译，重启窗口生效；cordis.patch.yml 改动热重载
+```
+
+**注意**：`npm i` 新依赖会清掉 build-client 建的 SDK junction（`@deepseek-ai/dsh-*`），装完必须重跑 `npm run build:client` 重建。
+
+## 发布
+
+```sh
+# 本机默认 registry 是华为云镜像，发布必须显式官方 registry
+npm version patch
+npm publish --registry=https://registry.npmjs.org/
 ```
 
 ## 关键踩坑记录（勿重蹈）
@@ -90,8 +173,11 @@ npm run build:client   # tsdown 构建 client bundle（自动建 SDK junction）
 2. **route 唯一性**：`ctx.webServer.register` 的 exact route 同 path 不能注册两次（GET/POST 需合并进一个 handler 按 method 分发）。
 3. **窗口退化 bug**：状态记忆必须校验最小尺寸/坐标（防 boot 期 0 尺寸持久化，`??` 不跳过 0）。
 4. **client 插件机制**：patch 行 name 用包名；client row 由 modules node half 扫描 `dsh.client` 自动编入 `__DSH_BOOT__`，无需特殊 client 行。
-5. **host 侧创建会话 UI 不显示**：`apiProxy.sessions.create`（或 `sessions.create`）在 host 侧创建会话后**前端侧栏永不刷新** —— 客户端列表 store 只通过客户端自身 create/merge、断线重连、或 mux 帧（无"新会话入列"信号）学习新会话。托盘命令需要 UI 联动时必须走 **client 半部官方流程**（`ctx.workspaces.startSession`），host → 页面用 `webview.evaluateScriptWithCallback` 桥接。
-6. **webviewjs 无关闭拦截**：`window-close-requested` 只是通知（无 preventDefault）；关闭到托盘用"不 exit + 隐藏保活窗口重建"方案。
-7. **最小化到托盘恢复闪烁**：hide 前先 `setMinimized(false)` 清标志，showWindow 前同样清理。
-8. **splash 期间主题探测**：splash 页无主题标记，探测必须三态（`na`），否则标题栏在启动时闪浅色。
-9. **事件类型合并**：`session/event` / `agent/created` 等 Events 由 `@deepseek-ai/dsh-session` / `@deepseek-ai/dsh-agent` 声明合并 —— 使用方需显式 `import type {} from` 这两个包（删除其他依赖时注意别连这些传递导入一起丢掉）。
+5. **host 侧创建会话 UI 不显示**：`apiProxy.sessions.create` 在 host 侧创建会话后**前端侧栏永不刷新**（客户端 store 只通过自身 create/merge、断线重连、mux 帧学习新会话）。托盘命令需要 UI 联动必须走 **client 半部官方流程**（`ctx.workspaces.startSession`），host → 页面用 `evaluateScriptWithCallback` 桥接。
+6. **evaluateScriptWithCallback 返回值带引号**：字符串结果被带引号序列化（`'dark'` → `"dark"`），`.trim()` 无法匹配 —— 探测一律用数字（1/0/-1）避免歧义（主题"永远读成 light"的根因）。
+7. **webviewjs 无关闭拦截**：`window-close-requested` 只是通知（无 preventDefault）；关闭到托盘用"不 exit + 隐藏保活窗口重建"方案。
+8. **最小化到托盘恢复闪烁**：hide 前先 `setMinimized(false)` 清标志，showWindow 前同样清理。
+9. **splash 期间主题探测**：splash 页无主题标记，探测必须三态（`na`/`-1`），否则标题栏在启动时闪浅色。
+10. **事件类型合并**：`session/event` / `agent/created` 等 Events 由 `@deepseek-ai/dsh-session` / `@deepseek-ai/dsh-agent` 声明合并 —— 使用方需显式 `import type {} from` 这两个包。
+11. **PowerShell 慢**：冷启动 ~1.3s/次，常驻 stdin pipeline 每行 ~1s —— 标题栏 Dwm 调用必须用 FFI（koffi，~1ms），PowerShell 仅兜底。
+12. **dsh plugin 转发 pnpm**：`dsh plugin --profile web add` 在 Windows 用 `shell:true` 转发 pnpm（全新环境易 EINVAL）；bundle 注册改手动 junction（dsh 用 `createRequire` 从 `profile/node_modules` 解析）。
