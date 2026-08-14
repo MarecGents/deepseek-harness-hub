@@ -1,16 +1,19 @@
 /**
- * Theme detection — the one place that knows how dsh signals light/dark. It
- * polls the page's `data-ds-dark-theme` attribute (set by dsh's ui-theme
- * boot script and by any theme plugin that follows it) and calls back with
- * the current dark flag. (Verified implementation carried over from
- * mg-dsh-desktop; dsh-web-ui compatibility confirmed by source inspection.)
+ * Theme detection — the one place that knows how dsh signals light/dark.
  *
- * The page probe is tri-state: the shell now shows its own splash page while
- * the SPA loads, and that page carries no theme marker — reporting it as
- * "light" would flash the title bar. The probe answers `na` for any page
- * that is not the dsh origin, and the detector stays silent until a real
- * theme answer arrives. Polling starts only after the first page load so the
- * boot phase (where the SPA parses its bundle) is not churned by probes.
+ * Two feeds feed one listener:
+ *  1. Event-driven (primary): an injected MutationObserver watches
+ *     `body[data-ds-dark-theme]` (written by dsh's ui-theme presenter) and
+ *     reports every change through `window.ipc.postMessage` — zero polling
+ *     latency, the same immediacy WPF UI's SystemThemeWatcher gives native
+ *     apps.
+ *  2. Polling (fallback): a steady probe keeps theme-following alive even if
+ *     the observer injection failed or the page is not the dsh origin.
+ *
+ * The probe is numeric (1/0/-1), never string literals:
+ * evaluateScriptWithCallback serializes a string result WITH its quotes
+ * ('dark' -> "\"dark\""), which a trim() can never match — the detector read
+ * every theme as light until this was changed.
  */
 import type { JsWebview } from '@webviewjs/webview';
 /** A consumer of theme changes (the window chrome, …). */
@@ -32,5 +35,9 @@ export declare class WebViewThemeDetector implements ThemeDetector {
     constructor(webview: JsWebview);
     start(listener: ThemeChangeListener): void;
     stop(): void;
+    /** Emit only on a value change (observer messages and polls share one feed). */
+    private emit;
+    /** Install the MutationObserver in the current document (idempotent). */
+    private injectObserver;
     private poll;
 }

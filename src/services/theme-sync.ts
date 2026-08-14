@@ -1,16 +1,19 @@
 /**
- * Theme detection — the one place that knows how dsh signals light/dark. It
- * polls the page's `data-ds-dark-theme` attribute (set by dsh's ui-theme
- * boot script and by any theme plugin that follows it) and calls back with
- * the current dark flag. (Verified implementation carried over from
- * mg-dsh-desktop; dsh-web-ui compatibility confirmed by source inspection.)
+ * Theme detection — the one place that knows how dsh signals light/dark.
  *
- * The page probe is tri-state: the shell now shows its own splash page while
- * the SPA loads, and that page carries no theme marker — reporting it as
- * "light" would flash the title bar. The probe answers `na` for any page
- * that is not the dsh origin, and the detector stays silent until a real
- * theme answer arrives. Polling starts only after the first page load so the
- * boot phase (where the SPA parses its bundle) is not churned by probes.
+ * Two feeds feed one listener:
+ *  1. Event-driven (primary): an injected MutationObserver watches
+ *     `body[data-ds-dark-theme]` (written by dsh's ui-theme presenter) and
+ *     reports every change through `window.ipc.postMessage` — zero polling
+ *     latency, the same immediacy WPF UI's SystemThemeWatcher gives native
+ *     apps.
+ *  2. Polling (fallback): a steady probe keeps theme-following alive even if
+ *     the observer injection failed or the page is not the dsh origin.
+ *
+ * The probe is numeric (1/0/-1), never string literals:
+ * evaluateScriptWithCallback serializes a string result WITH its quotes
+ * ('dark' -> "\"dark\""), which a trim() can never match — the detector read
+ * every theme as light until this was changed.
  */
 import type { JsWebview } from '@webviewjs/webview'
 
@@ -25,8 +28,23 @@ export interface ThemeDetector {
   stop(): void
 }
 
-/** How often the page is asked for its theme after the first load finished. */
+/** How often the page is probed as a fallback after the first load finished. */
 const POLL_INTERVAL_MS = 100
+
+/** IPC marker the injected observer prefixes every theme message with. */
+const IPC_PREFIX = 'marec-theme:'
+
+/** One-shot script that installs the theme MutationObserver (idempotent per document). */
+const OBSERVER_SCRIPT = `
+if (!window.__marecThemeObserver) {
+  window.__marecThemeObserver = new MutationObserver(function () {
+    var dark = document.body !== null && document.body.hasAttribute('data-ds-dark-theme') ? 1 : 0
+    window.ipc.postMessage('${IPC_PREFIX}' + dark)
+  })
+  window.__marecThemeObserver.observe(document.body, { attributes: true, attributeFilter: ['data-ds-dark-theme'] })
+  window.ipc.postMessage('${IPC_PREFIX}' + (document.body !== null && document.body.hasAttribute('data-ds-dark-theme') ? 1 : 0))
+}
+`
 
 /** WebView2-backed {@link ThemeDetector} that reads dsh's theme marker. */
 export class WebViewThemeDetector implements ThemeDetector {
@@ -37,6 +55,7 @@ export class WebViewThemeDetector implements ThemeDetector {
 
   constructor(private readonly webview: JsWebview) {
     this.onLoad = (): void => {
+      this.injectObserver()
       this.poll()
       if (this.timer === undefined) this.timer = setInterval(() => this.poll(), POLL_INTERVAL_MS)
     }
@@ -44,12 +63,21 @@ export class WebViewThemeDetector implements ThemeDetector {
 
   start(listener: ThemeChangeListener): void {
     this.listener = listener
+    // Event feed: the injected observer reports every body-marker change.
+    this.webview.onIpcMessage((message) => {
+      try {
+        const text = message.body.toString()
+        if (!text.startsWith(IPC_PREFIX)) return
+        this.emit(text === `${IPC_PREFIX}1`)
+      } catch {
+        // Foreign message shape; ignore.
+      }
+    })
     // Poll immediately and on every page load, then keep a steady interval.
     // (The first poll also covers a webview that finished loading before
     // start() — e.g. a recreated window whose SPA is already up.)
-    this.poll()
+    this.onLoad()
     this.webview.on('page-load-finished', this.onLoad)
-    this.timer = setInterval(() => this.poll(), POLL_INTERVAL_MS)
   }
 
   stop(): void {
@@ -59,11 +87,24 @@ export class WebViewThemeDetector implements ThemeDetector {
     this.listener = undefined
   }
 
+  /** Emit only on a value change (observer messages and polls share one feed). */
+  private emit(dark: boolean): void {
+    if (dark !== this.lastDark) {
+      this.lastDark = dark
+      this.listener?.(dark)
+    }
+  }
+
+  /** Install the MutationObserver in the current document (idempotent). */
+  private injectObserver(): void {
+    try {
+      this.webview.evaluateScript(OBSERVER_SCRIPT)
+    } catch {
+      // Non-fatal: the polling fallback still covers theme changes.
+    }
+  }
+
   private poll(): void {
-    // Numeric result, not string literals: evaluateScriptWithCallback
-    // serializes a string result WITH its quotes ('dark' -> "\"dark\""),
-    // which a trim() can never match — the detector would read every theme
-    // as light. 1=dark, 0=light, -1=not the dsh page yet.
     this.webview.evaluateScriptWithCallback(
       `location.protocol === 'http:' || location.protocol === 'https:'`
       + ` ? (document.body !== null && document.body.hasAttribute('data-ds-dark-theme') ? 1 : 0)`
@@ -75,11 +116,7 @@ export class WebViewThemeDetector implements ThemeDetector {
         }
         const raw = (result ?? '').trim()
         if (raw === '-1') return
-        const dark = raw === '1'
-        if (dark !== this.lastDark) {
-          this.lastDark = dark
-          this.listener?.(dark)
-        }
+        this.emit(raw === '1')
       },
     )
   }
