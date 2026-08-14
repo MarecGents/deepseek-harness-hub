@@ -9,7 +9,7 @@
  */
 
 import { spawn, spawnSync } from 'node:child_process'
-import { existsSync, readFileSync, appendFileSync, writeFileSync } from 'node:fs'
+import { existsSync, lstatSync, readFileSync, appendFileSync, rmSync, symlinkSync, writeFileSync, mkdirSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { homedir } from 'node:os'
 import { fileURLToPath } from 'node:url'
@@ -106,43 +106,76 @@ function decodeConsoleOutput(buffer) {
   }
 }
 
-/** Make sure `pnpm` exists: `dsh plugin` forwards to pnpm in the profile. */
-function ensurePnpm() {
-  const probe = spawnSync('pnpm', ['--version'], { encoding: 'utf8', windowsHide: true })
-  if (probe.status === 0) return true
-  log('pnpm not found; installing pnpm globally…')
-  const install = spawnSync(process.env.ComSpec, ['/d', '/s', '/c', 'npm install -g pnpm'], {
-    encoding: 'utf8', timeout: 180000, windowsHide: true, stdio: 'inherit',
-  })
-  return install.status === 0
-}
+/** The web profile's shipped bundle layer (mirrors dsh's PROFILE_TEMPLATES.web). */
+const WEB_PROFILE_BUNDLES = ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app']
 
 /**
- * Make sure `mg-dsh-desktop` is part of the web profile's bundle list using
- * the official `dsh plugin` flow (first double-click self-installs, later
- * ones skip straight to boot).
+ * Make sure `mg-dsh-desktop` is part of the web profile WITHOUT depending on
+ * pnpm or `dsh plugin`: dsh resolves profile bundles from
+ * `profile/node_modules/<name>` (createRequire-based), so a junction into the
+ * package directory plus the `dsh.profile.bundles` list entry is enough.
+ * First run on a machine without pnpm previously failed here — `dsh plugin`
+ * forwards to pnpm, which a fresh machine does not have.
  */
-function ensureBundleInstalled(dshCmd) {
-  const profilePackage = join(dshHome(), 'profiles', 'web', 'package.json')
+function ensureBundleInstalled() {
+  const profileDir = join(dshHome(), 'profiles', 'web')
+  const manifestPath = join(profileDir, 'package.json')
+
+  // 1. Profile manifest exists (initProfile shape); create it when missing.
+  let manifest = null
   try {
-    const manifest = JSON.parse(readFileSync(profilePackage, 'utf8'))
-    const bundles = manifest.dsh?.profile?.bundles ?? []
-    if (bundles.includes(BUNDLE_NAME)) return true
+    manifest = JSON.parse(readFileSync(manifestPath, 'utf8'))
   } catch {
-    // Profile not initialised yet — `dsh plugin` creates it.
+    // Profile not initialised — create it with the web template.
+    mkdirSync(profileDir, { recursive: true })
+    manifest = {
+      name: 'dsh-profile-web',
+      private: true,
+      dependencies: {},
+      dsh: { profile: { bundles: [...WEB_PROFILE_BUNDLES] } },
+    }
   }
-  log(`installing ${BUNDLE_NAME} into the web profile…`)
-  if (!ensurePnpm()) {
-    log('bundle install failed: could not install pnpm (required by `dsh plugin`)')
+  const bundles = manifest.dsh?.profile?.bundles ?? []
+
+  // 2. Junction the package into the profile's node_modules (idempotent).
+  const nmDir = join(profileDir, 'node_modules')
+  const linkPath = join(nmDir, BUNDLE_NAME)
+  try {
+    mkdirSync(nmDir, { recursive: true })
+    let stat = null
+    try {
+      stat = lstatSync(linkPath)
+    } catch {
+      // No link yet.
+    }
+    if (stat !== null && stat.isDirectory() && !stat.isSymbolicLink()) {
+      // A real directory (pnpm's isolated layout or a manual copy): use it.
+      log(`found ${BUNDLE_NAME} already in the web profile (real directory)`)
+    } else if (stat !== null && !existsSync(linkPath)) {
+      // Dangling link (target removed): replace it.
+      rmSync(linkPath, { recursive: true, force: true })
+      symlinkSync(PACKAGE_ROOT, linkPath, 'junction')
+      log(`relinked ${BUNDLE_NAME} into the web profile`)
+    } else if (stat === null) {
+      symlinkSync(PACKAGE_ROOT, linkPath, 'junction')
+      log(`linked ${BUNDLE_NAME} into the web profile`)
+    }
+  } catch (error) {
+    log(`bundle link failed: ${error.message}`)
     return false
   }
-  const result = spawnSync(process.env.ComSpec, ['/d', '/s', '/c', `"${dshCmd}" plugin --profile web add "${PACKAGE_ROOT}"`], {
-    encoding: 'buffer', timeout: 180000, windowsHide: true, windowsVerbatimArguments: true,
-  })
-  if (result.status !== 0) {
-    const stderr = result.stderr ? decodeConsoleOutput(result.stderr) : '(no stderr)'
-    log(`bundle install failed: ${stderr}`)
-    return false
+
+  // 3. Register the bundle layer (append when absent).
+  if (!bundles.includes(BUNDLE_NAME)) {
+    bundles.push(BUNDLE_NAME)
+    manifest.dsh = { ...manifest.dsh, profile: { ...manifest.dsh?.profile, bundles } }
+    try {
+      writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + '\n', 'utf8')
+      log(`registered ${BUNDLE_NAME} in the web profile`)
+    } catch (error) {
+      log(`bundle manifest update failed: ${error.message}`)
+      return false
+    }
   }
   return true
 }
