@@ -186,3 +186,5 @@ npm publish --registry=https://registry.npmjs.org/
 10. **事件类型合并**：`session/event` / `agent/created` 等 Events 由 `@deepseek-ai/dsh-session` / `@deepseek-ai/dsh-agent` 声明合并 —— 使用方需显式 `import type {} from` 这两个包。
 11. **PowerShell 慢**：冷启动 ~1.3s/次，常驻 stdin pipeline 每行 ~1s —— 标题栏 Dwm 调用必须用 FFI（koffi，~1ms），PowerShell 仅兜底。
 12. **dsh plugin 转发 pnpm**：`dsh plugin --profile web add` 在 Windows 用 `shell:true` 转发 pnpm（全新环境易 EINVAL）；bundle 注册改手动 junction（dsh 用 `createRequire` 从 `profile/node_modules` 解析）。
+13. **client 使用 `ctx.workspaces` 必须注入 `workspaces`**：`inject` 只写 `slots` 时 `ctx.workspaces` 为 undefined，托盘“新建任务”会静默失败（`new-task ignored`）；官方 sidebar 同款用法是 `inject: ['slots', ..., 'workspaces']`。
+14. **托盘桥返回值用数字**：`evaluateScriptWithCallback` 对字符串结果带引号序列化（`'ok'` → `"ok"`），host 判断永远失败并重复派发；`dispatchScript` 成功/未就绪返回 `1/0`。

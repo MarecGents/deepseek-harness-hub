@@ -345,9 +345,12 @@ export function openDesktopShell(
    * are one expression, so there is no window between "ready" and "dispatch".
    */
   const dispatchScript = (name: string, detail: Record<string, unknown>): string =>
+    // Numeric result on purpose: evaluateScriptWithCallback serializes string
+    // results WITH their quotes ('ok' -> "\"ok\""), which trim() cannot fix;
+    // the theme probe hit this exact bug. Numbers serialize cleanly.
     `window.__mgShellReady === true`
-    + ` ? (window.dispatchEvent(new CustomEvent(${JSON.stringify(name)}, { detail: ${JSON.stringify(detail)} })), 'ok')`
-    + ` : 'pending'`
+    + ` ? (window.dispatchEvent(new CustomEvent(${JSON.stringify(name)}, { detail: ${JSON.stringify(detail)} })), 1)`
+    + ` : 0`
 
   const dispatchEvent = (name: string, detail: Record<string, unknown> = {}): void => {
     if (webview === undefined || webview.isDisposed()) return
@@ -362,7 +365,7 @@ export function openDesktopShell(
           return
         }
         const status = result?.trim()
-        if (status === 'ok') {
+        if (status === '1') {
           console.log(`[mg-dsh-desktop] dispatched ${name}`)
           return
         }

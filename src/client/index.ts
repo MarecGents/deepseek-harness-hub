@@ -50,8 +50,8 @@ export interface SettingsPluginItemOwnerProps {
   children?: never
 }
 
-/** Required services: slots (card registration). */
-export const inject = ['slots']
+/** Required services: slots (card registration) + workspaces (tray new-task). */
+export const inject = ['slots', 'workspaces']
 
 /** Handle one tray command dispatched by the desktop shell. */
 function handleShellCommand(ctx: ClientContext, event: Event): void {
