@@ -65,6 +65,12 @@ export interface Config {
   closeToTray: boolean
   /** Title-bar theme: 'system' (default, matches the OS) | 'light' | 'dark'. */
   theme: 'system' | 'light' | 'dark'
+  /**
+   * Show a native Windows notification when a top-level user task finishes
+   * (a turn of a depth-0 session ends with reason `completed`). Clicking the
+   * toast restores the main window. Defaults to on.
+   */
+  notifyOnTaskComplete: boolean
 }
 
 export const Config: z<Config> = z.object({
@@ -74,6 +80,7 @@ export const Config: z<Config> = z.object({
   minimizeToTray: z.boolean().default(true),
   closeToTray: z.boolean().default(false),
   theme: z.union([z.const('system'), z.const('light'), z.const('dark')]).default('system'),
+  notifyOnTaskComplete: z.boolean().default(true),
 })
 
 /** Settings namespace owned by this plugin (spelled like the package). */
@@ -204,9 +211,21 @@ export function apply(ctx: Context, config: Config): void {
   // session/event fires for every session activity and carries the Session as
   // its first argument, so it reliably reflects the session the user is
   // looking at — unlike agent/created, which only fires when a session runs.
-  ctx.on('session/event', (session: { header?: { cwd?: string } }) => {
+  ctx.on('session/event', (session: { header?: { cwd?: string; delegationDepth?: number } }, event: unknown) => {
     const cwd = session.header?.cwd
     if (cwd !== undefined) activeCwd = cwd
+    // Task-complete notification: fire for top-level user sessions only
+    // (depth 0 — subagent turns are invisible busy work), and only when a
+    // turn actually finished with reason `completed`.
+    if (!config.notifyOnTaskComplete) return
+    if (session.header?.delegationDepth !== 0) return
+    const e = event as { type?: string; data?: { reason?: { kind?: string } } } | undefined
+    if (e?.type !== 'turn/end' || e.data?.reason?.kind !== 'completed') return
+    try {
+      shell?.notifyTaskComplete('任务完成，点击回到窗口')
+    } catch {
+      // Best-effort; a failed toast must never break the session loop.
+    }
   })
   ctx.on('agent/created', (payload: { agent: unknown }) => {
     const agent = payload.agent as { sessionId?: string } | undefined

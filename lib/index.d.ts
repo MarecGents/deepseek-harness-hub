@@ -45,6 +45,12 @@ export interface Config {
     closeToTray: boolean;
     /** Title-bar theme: 'system' (default, matches the OS) | 'light' | 'dark'. */
     theme: 'system' | 'light' | 'dark';
+    /**
+     * Show a native Windows notification when a top-level user task finishes
+     * (a turn of a depth-0 session ends with reason `completed`). Clicking the
+     * toast restores the main window. Defaults to on.
+     */
+    notifyOnTaskComplete: boolean;
 }
 export declare const Config: z<Config>;
 /** Settings namespace owned by this plugin (spelled like the package). */

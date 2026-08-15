@@ -25,7 +25,7 @@
  * covering the SPA still booting when the user clicks the tray.
  */
 
-import { Application, Theme } from '@webviewjs/webview'
+import { Application, Notification, Theme } from '@webviewjs/webview'
 import type { BrowserWindow, JsWebview } from '@webviewjs/webview'
 import { JsonWindowStateStore, MIN_HEIGHT, MIN_WIDTH } from './services/state-store.js'
 import { setTitleBarDark, setTitleBarDarkPowerShell } from './services/dwm-theme.js'
@@ -87,6 +87,12 @@ export interface DesktopShellHandle {
    * SPA boot is not lost.
    */
   dispatchEvent(name: string, detail?: Record<string, unknown>): void
+  /**
+   * Show a native Windows notification (task-complete toast). Clicking it
+   * restores the main window, so the user can jump straight back to the
+   * finished conversation even when the window is hidden to the tray.
+   */
+  notifyTaskComplete(body: string): void
   /** Dispose the shell (tray, theme polling, event pump). */
   dispose(): void
 }
@@ -502,6 +508,10 @@ export function openDesktopShell(
   // Node event loop. `ref: true` keeps the process alive while the window is up.
   void app.whenReady({ interval: 33, ref: true })
 
+  // Keep one live reference per toast so the native binding is not collected
+  // before the toast is shown; replaced by each new notification.
+  let activeNotification: Notification | undefined
+
   const shell: DesktopShellHandle = {
     app,
     window: () => win,
@@ -551,6 +561,26 @@ export function openDesktopShell(
       }, 2000)
     },
     dispatchEvent,
+    notifyTaskComplete: (body: string) => {
+      try {
+        activeNotification?.close()
+        const notification = new Notification(options.title, { body, silent: false })
+        activeNotification = notification
+        // The native callback dispatches asynchronously through a Node
+        // EventEmitter: an 'error' event with no listener crashes the process
+        // (ERR_UNHANDLED_ERROR), so subscribe before anything can fire. A
+        // disabled-notifications OS setting arrives here as a benign error.
+        notification.on('error', (event) => {
+          console.warn(`[mg-dsh-desktop] task notification error:`, event.error?.message ?? event.error)
+        })
+        notification.onclick = () => showWindow()
+        notification.onclose = () => {
+          if (activeNotification === notification) activeNotification = undefined
+        }
+      } catch (error) {
+        console.warn(`[mg-dsh-desktop] task notification failed:`, error)
+      }
+    },
     dispose: () => {
       if (!exited) exit()
     },
