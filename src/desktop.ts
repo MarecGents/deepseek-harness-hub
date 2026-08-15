@@ -107,6 +107,8 @@ const DARK_BG: [number, number, number] = [24, 24, 27] // #18181b
 const LIGHT_BG: [number, number, number] = [246, 248, 250] // #f6f8fa
 /** dsh's brand accent (matches the SPA boot spinner token). */
 const BRAND = '#3964fe'
+/** Spam guard: never show more than one task toast per cooldown window. */
+const NOTIFY_COOLDOWN_MS = 30_000
 
 /** Decoded once; the theme flips reuse the same buffers. */
 let iconForDark: ReturnType<typeof dshFaviconDark> | undefined
@@ -511,6 +513,8 @@ export function openDesktopShell(
   // Keep one live reference per toast so the native binding is not collected
   // before the toast is shown; replaced by each new notification.
   let activeNotification: Notification | undefined
+  /** Timestamp of the last shown task toast (cooldown bookkeeping). */
+  let lastNotifiedAt = 0
 
   const shell: DesktopShellHandle = {
     app,
@@ -563,6 +567,25 @@ export function openDesktopShell(
     dispatchEvent,
     notifyTaskComplete: (body: string) => {
       try {
+        // Only remind when the user is NOT looking at the window: a toast
+        // while the shell is visible in the foreground is noise, not a
+        // reminder. Hidden-to-tray and minimized windows still notify.
+        const watching = win !== undefined
+          && !win.isDisposed()
+          && win.isVisible()
+          && !win.isMinimized()
+        if (watching) {
+          console.log('[mg-dsh-desktop] task complete while window visible; skipping toast')
+          return
+        }
+        // Spam guard: at most one toast per cooldown window, so a burst of
+        // completed turns does not stack toasts.
+        const now = Date.now()
+        if (now - lastNotifiedAt < NOTIFY_COOLDOWN_MS) {
+          console.log('[mg-dsh-desktop] task toast throttled by cooldown')
+          return
+        }
+        lastNotifiedAt = now
         activeNotification?.close()
         const notification = new Notification(options.title, { body, silent: false })
         activeNotification = notification
