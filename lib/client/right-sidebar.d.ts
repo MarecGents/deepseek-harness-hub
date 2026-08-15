@@ -10,5 +10,5 @@
 import { type ReactNode } from 'react';
 /** The details slot composes many framework props; this component only needs the injected callbacks. */
 type RightSidebarProps = any;
-export declare function RightSidebar({ openDetails, closeDetails, useProjection, useSessions, useWorkspaces }: RightSidebarProps): ReactNode;
+export declare function RightSidebar({ openDetails, closeDetails, useProjection, useSessions, useWorkspaces, sessionId }: RightSidebarProps): ReactNode;
 export {};

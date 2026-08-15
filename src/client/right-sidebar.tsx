@@ -127,15 +127,19 @@ function TreeNode({ entry, depth }: { entry: DirectoryRow; depth: number }): Rea
   )
 }
 
-export function RightSidebar({ openDetails, closeDetails, useProjection, useSessions, useWorkspaces }: RightSidebarProps): ReactNode {
+export function RightSidebar({ openDetails, closeDetails, useProjection, useSessions, useWorkspaces, sessionId }: RightSidebarProps): ReactNode {
   const rootRef = useRef<HTMLDivElement | null>(null)
   const [collapsed, setCollapsed] = useState(false)
   const [tab, setTab] = useState<Tab>('overview')
 
-  // Current session workspace path from the client runtime.
-  const sessions = useSessions((s: { current?: string }) => s)
+  // Current session workspace path from the client runtime. The session
+  // summary's cwd is the most direct source (same one dsh-better-sidebar
+  // uses); the workspaces registry is a secondary source when the summary is
+  // still hydrating.
+  const sessions = useSessions((s: { current?: string; byId?: Record<string, { cwd?: string }> }) => s)
   const workspaces = useWorkspaces((s: { items?: Array<{ workspaceId?: string; path?: string; sessionIds?: string[] }>; recentWorkspaceId?: string }) => s)
-  const currentSessionId = sessions?.current
+  const currentSessionId = sessionId ?? sessions?.current
+  const sessionCwd = currentSessionId === undefined ? undefined : sessions?.byId?.[currentSessionId]?.cwd
   const items = workspaces?.items ?? []
   const currentWorkspace = currentSessionId === undefined
     ? undefined
@@ -152,7 +156,7 @@ export function RightSidebar({ openDetails, closeDetails, useProjection, useSess
     const path = get?.()
     if (path !== null && path !== undefined && path !== '') setFallbackPath(path)
   }, [])
-  const effectivePath = workspacePath || fallbackPath
+  const effectivePath = workspacePath || sessionCwd || fallbackPath
 
   // Workspace data.
   const [rootEntries, setRootEntries] = useState<DirectoryRow[]>([])
@@ -232,18 +236,22 @@ export function RightSidebar({ openDetails, closeDetails, useProjection, useSess
     return () => observer.disconnect()
   }, [])
 
+  // While collapsed, the only visible affordance is a small top-right expand
+  // button (mirrors dsh-better-sidebar). Tell the session header to yield its
+  // right padding so the button never covers the header's own controls.
+  useEffect(() => {
+    if (collapsed) document.body.setAttribute('data-mg-details-collapsed', '')
+    else document.body.removeAttribute('data-mg-details-collapsed')
+    return () => { document.body.removeAttribute('data-mg-details-collapsed') }
+  }, [collapsed])
+
   if (collapsed) {
     return (
       <div ref={rootRef} className={clsx(c.root, c.collapsed)}>
-        <div className={c.rail}>
+        <div className={c.toggleCluster}>
           <button type="button" className={c.toggle} aria-label="展开右侧栏" onClick={() => { openDetails() }}>
             <IconPanelLeftOutline16 className={c.toggleIcon} size={18} />
           </button>
-          <div className={c.railItems}>
-            <span className={c.railPlaceholder} aria-hidden />
-            <span className={c.railPlaceholder} aria-hidden />
-            <span className={c.railPlaceholder} aria-hidden />
-          </div>
         </div>
       </div>
     )

@@ -13,9 +13,7 @@ export declare const RIGHT_SIDEBAR_CSS_CLASSES: {
     readonly toggle: "mg-rs-toggle";
     readonly toggleIcon: "mg-rs-toggle-icon";
     readonly body: "mg-rs-body";
-    readonly rail: "mg-rs-rail";
-    readonly railItems: "mg-rs-rail-items";
-    readonly railPlaceholder: "mg-rs-rail-placeholder";
+    readonly toggleCluster: "mg-rs-toggle-cluster";
     readonly tabs: "mg-rs-tabs";
     readonly tab: "mg-rs-tab";
     readonly tabActive: "mg-rs-tab-active";

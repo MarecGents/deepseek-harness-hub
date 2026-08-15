@@ -59,7 +59,14 @@ export const inject = ['slots', 'workspaces', 'sessions', 'layout']
 /** Resolve the current session's workspace from the client runtime. */
 function currentWorkspace(ctx: ClientContext): { path?: string; id?: string } | null {
   const client = ctx as unknown as {
-    sessions?: { list?: { getSnapshot?: () => { current?: string } } }
+    sessions?: {
+      list?: {
+        getSnapshot?: () => {
+          current?: string
+          byId?: Record<string, { cwd?: string }>
+        }
+      }
+    }
     workspaces?: {
       list?: {
         getSnapshot?: () => {
@@ -72,9 +79,15 @@ function currentWorkspace(ctx: ClientContext): { path?: string; id?: string } | 
   const sessions = client.sessions
   const workspaces = client.workspaces
   if (sessions === undefined || workspaces === undefined) return null
+  const sessionSnapshot = sessions.list?.getSnapshot?.()
+  const current = sessionSnapshot?.current
+  // The session summary's cwd is the most direct current-working-directory
+  // source (same one dsh-better-sidebar uses for its explorer root).
+  const sessionCwd = current === undefined ? undefined : sessionSnapshot?.byId?.[current]?.cwd
+  if (sessionCwd !== undefined && sessionCwd !== '') return { path: sessionCwd, id: current }
+
   const snapshot = workspaces.list?.getSnapshot?.()
   const items = snapshot?.items ?? []
-  const current = sessions.list?.getSnapshot?.()?.current
   if (current !== undefined) {
     const ws = items.find((item) => item.sessionIds?.includes(current))
     if (ws !== undefined) return { path: ws.path, id: ws.workspaceId }
