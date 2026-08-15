@@ -298,6 +298,7 @@ export function openDesktopShell(
         pendingCustomSize = undefined
         try {
           w.setSize(restored.width, restored.height, true)
+          w.center()
         } catch {
           // Best-effort; the window is already restored to the OS default.
         }
@@ -496,6 +497,9 @@ export function openDesktopShell(
           win.setMaximized(false)
         }
         win.setSize(width, height, true)
+        // Center after resizing: un-maximizing can otherwise leave the window
+        // at its old normal position while the new size overflows the screen.
+        win.center()
         // If we just left the maximized state, persist that fact immediately.
         if (!win.isMaximized()) store.save({ maximized: false })
       } catch {
