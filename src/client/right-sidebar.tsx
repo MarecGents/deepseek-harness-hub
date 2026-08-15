@@ -359,7 +359,7 @@ export function RightSidebar({ ctx }: RightSidebarProps): ReactNode {
                 </button>
               ))}
             </div>
-            <button type="button" className={c.toggle} data-tip="收起" aria-label="收起右侧栏" onClick={() => { setOpen(false) }}>
+            <button type="button" className={c.toggle} data-tip="收起侧边栏" aria-label="收起右侧栏" onClick={() => { setOpen(false) }}>
               <IconPanelLeftOutline16 className={c.toggleIcon} size={16} />
             </button>
           </div>
@@ -409,7 +409,7 @@ export function RightSidebar({ ctx }: RightSidebarProps): ReactNode {
         </>
       ) : (
         <div className={c.rail}>
-          <button type="button" className={c.toggle} data-tip="展开" aria-label="展开右侧栏" onClick={() => { setOpen(true) }}>
+          <button type="button" className={c.toggle} data-tip="展开侧边栏" aria-label="展开右侧栏" onClick={() => { setOpen(true) }}>
             <IconPanelLeftOutline16 className={c.toggleIcon} size={18} />
           </button>
           <div className={c.railItems}>

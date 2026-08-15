@@ -95,6 +95,7 @@ const STYLE_TEXT = `
   color: var(--dsw-alias-label-primary, #0f1115);
 }
 .${c.toggle} {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -281,6 +282,7 @@ const STYLE_TEXT = `
 .${c.empty} { padding: 12px 0; font-size: 12px; line-height: 18px; color: var(--dsw-alias-label-secondary, #52525b); }
 .${c.collapsed} {
   width: 56px;
+  overflow: visible;
 }
 .${c.rail} {
   display: flex;
@@ -325,11 +327,11 @@ const STYLE_TEXT = `
   color: var(--dsw-alias-label-primary, #0f1115);
 }
 /* Left-side style tooltip: appears to the left of each rail button. */
-.${c.rail} .${c.toggle},
+.${c.toggle},
 .${c.railItem} {
   position: relative;
 }
-.${c.rail} .${c.toggle}::after,
+.${c.toggle}::after,
 .${c.railItem}::after {
   content: attr(data-tip);
   position: absolute;
@@ -348,7 +350,7 @@ const STYLE_TEXT = `
   transition: opacity 0.15s ease;
   z-index: 60;
 }
-.${c.rail} .${c.toggle}:hover::after,
+.${c.toggle}:hover::after,
 .${c.railItem}:hover::after {
   opacity: 1;
 }
