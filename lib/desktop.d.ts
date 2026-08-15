@@ -81,6 +81,12 @@ export interface DesktopShellHandle {
      * SPA boot is not lost.
      */
     dispatchEvent(name: string, detail?: Record<string, unknown>): void;
+    /**
+     * Show a native Windows notification (task-complete toast). Clicking it
+     * restores the main window, so the user can jump straight back to the
+     * finished conversation even when the window is hidden to the tray.
+     */
+    notifyTaskComplete(body: string): void;
     /** Dispose the shell (tray, theme polling, event pump). */
     dispose(): void;
 }

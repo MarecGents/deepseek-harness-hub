@@ -29,6 +29,7 @@ interface ShellConfig {
   theme: 'system' | 'light' | 'dark'
   minimizeToTray: boolean
   closeToTray: boolean
+  notifyOnTaskComplete: boolean
 }
 
 /** Localized copy kept inline (the card is small; no locale plugin needed). */
@@ -47,6 +48,8 @@ const COPY = {
   minimizeHint: '最小化时隐藏到系统托盘，任务栏入口消失',
   closeLabel: '关闭到托盘',
   closeHint: '点 X 关闭窗口时保持进程与托盘存活（不勾选则完全退出）',
+  notifyLabel: '会话完成通知',
+  notifyHint: '任务回合完成时弹出系统通知，点击回到窗口',
   discard: '放弃',
   save: '保存',
   saving: '保存中…',
@@ -115,7 +118,8 @@ export function DesktopSettingsCard(_props: DesktopSettingsCardProps): ReactNode
       || draft.height !== config.height
       || draft.theme !== config.theme
       || draft.minimizeToTray !== config.minimizeToTray
-      || draft.closeToTray !== config.closeToTray)
+      || draft.closeToTray !== config.closeToTray
+      || draft.notifyOnTaskComplete !== config.notifyOnTaskComplete)
   const blocked = !dirty || saving || draft === null
 
   const patchDraft = (patch: Partial<ShellConfig>): void => {
@@ -135,6 +139,7 @@ export function DesktopSettingsCard(_props: DesktopSettingsCardProps): ReactNode
     if (draft.theme !== config.theme) patch.theme = draft.theme
     if (draft.minimizeToTray !== config.minimizeToTray) patch.minimizeToTray = draft.minimizeToTray
     if (draft.closeToTray !== config.closeToTray) patch.closeToTray = draft.closeToTray
+    if (draft.notifyOnTaskComplete !== config.notifyOnTaskComplete) patch.notifyOnTaskComplete = draft.notifyOnTaskComplete
     if (Object.keys(patch).length === 0) return
     setSaving(true)
     setFailed(false)
@@ -249,6 +254,15 @@ export function DesktopSettingsCard(_props: DesktopSettingsCardProps): ReactNode
                         <span>{COPY.closeLabel}</span>
                       </label>
                       <div className={c.hint}>{COPY.closeHint}</div>
+                      <label className={c.checkboxRow}>
+                        <input
+                          type="checkbox"
+                          checked={draft.notifyOnTaskComplete}
+                          onChange={(event) => patchDraft({ notifyOnTaskComplete: event.target.checked })}
+                        />
+                        <span>{COPY.notifyLabel}</span>
+                      </label>
+                      <div className={c.hint}>{COPY.notifyHint}</div>
                     </div>
                   )}
                 </>

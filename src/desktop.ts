@@ -25,7 +25,7 @@
  * covering the SPA still booting when the user clicks the tray.
  */
 
-import { Application, Theme } from '@webviewjs/webview'
+import { Application, Notification, Theme } from '@webviewjs/webview'
 import type { BrowserWindow, JsWebview } from '@webviewjs/webview'
 import { JsonWindowStateStore, MIN_HEIGHT, MIN_WIDTH } from './services/state-store.js'
 import { setTitleBarDark, setTitleBarDarkPowerShell } from './services/dwm-theme.js'
@@ -87,6 +87,12 @@ export interface DesktopShellHandle {
    * SPA boot is not lost.
    */
   dispatchEvent(name: string, detail?: Record<string, unknown>): void
+  /**
+   * Show a native Windows notification (task-complete toast). Clicking it
+   * restores the main window, so the user can jump straight back to the
+   * finished conversation even when the window is hidden to the tray.
+   */
+  notifyTaskComplete(body: string): void
   /** Dispose the shell (tray, theme polling, event pump). */
   dispose(): void
 }
@@ -101,6 +107,8 @@ const DARK_BG: [number, number, number] = [24, 24, 27] // #18181b
 const LIGHT_BG: [number, number, number] = [246, 248, 250] // #f6f8fa
 /** dsh's brand accent (matches the SPA boot spinner token). */
 const BRAND = '#3964fe'
+/** Spam guard: never show more than one task toast per cooldown window. */
+const NOTIFY_COOLDOWN_MS = 30_000
 
 /** Decoded once; the theme flips reuse the same buffers. */
 let iconForDark: ReturnType<typeof dshFaviconDark> | undefined
@@ -502,6 +510,12 @@ export function openDesktopShell(
   // Node event loop. `ref: true` keeps the process alive while the window is up.
   void app.whenReady({ interval: 33, ref: true })
 
+  // Keep one live reference per toast so the native binding is not collected
+  // before the toast is shown; replaced by each new notification.
+  let activeNotification: Notification | undefined
+  /** Timestamp of the last shown task toast (cooldown bookkeeping). */
+  let lastNotifiedAt = 0
+
   const shell: DesktopShellHandle = {
     app,
     window: () => win,
@@ -551,6 +565,45 @@ export function openDesktopShell(
       }, 2000)
     },
     dispatchEvent,
+    notifyTaskComplete: (body: string) => {
+      try {
+        // Only remind when the user is NOT looking at the window: a toast
+        // while the shell is visible in the foreground is noise, not a
+        // reminder. Hidden-to-tray and minimized windows still notify.
+        const watching = win !== undefined
+          && !win.isDisposed()
+          && win.isVisible()
+          && !win.isMinimized()
+        if (watching) {
+          console.log('[mg-dsh-desktop] task complete while window visible; skipping toast')
+          return
+        }
+        // Spam guard: at most one toast per cooldown window, so a burst of
+        // completed turns does not stack toasts.
+        const now = Date.now()
+        if (now - lastNotifiedAt < NOTIFY_COOLDOWN_MS) {
+          console.log('[mg-dsh-desktop] task toast throttled by cooldown')
+          return
+        }
+        lastNotifiedAt = now
+        activeNotification?.close()
+        const notification = new Notification(options.title, { body, silent: false })
+        activeNotification = notification
+        // The native callback dispatches asynchronously through a Node
+        // EventEmitter: an 'error' event with no listener crashes the process
+        // (ERR_UNHANDLED_ERROR), so subscribe before anything can fire. A
+        // disabled-notifications OS setting arrives here as a benign error.
+        notification.on('error', (event) => {
+          console.warn(`[mg-dsh-desktop] task notification error:`, event.error?.message ?? event.error)
+        })
+        notification.onclick = () => showWindow()
+        notification.onclose = () => {
+          if (activeNotification === notification) activeNotification = undefined
+        }
+      } catch (error) {
+        console.warn(`[mg-dsh-desktop] task notification failed:`, error)
+      }
+    },
     dispose: () => {
       if (!exited) exit()
     },
