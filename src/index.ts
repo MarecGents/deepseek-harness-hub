@@ -22,6 +22,7 @@
  * @module mg-dsh-desktop
  */
 
+import { spawn } from 'node:child_process'
 import type { Context } from '@deepseek-ai/cordis'
 // Empty type imports carry the loader Context merge (settlement await), the
 // cmdline Context merge (the appExit host value), and the session/agent
@@ -132,16 +133,18 @@ function currentWorkspaceId(ctx: Context): string | undefined {
  * (the folder the user selected in dsh — not the plugin's own directory).
  */
 async function openWorkspaceDir(ctx: Context): Promise<void> {
+  const startedAt = Date.now()
+  console.log(`[mg-dsh-desktop] open workspace start at ${startedAt}`)
   try {
-    const { spawn } = await import('node:child_process')
     const cwd = currentWorkspacePath(ctx)
     if (process.platform === 'win32') {
-      spawn('explorer.exe', [cwd], { detached: true, stdio: 'ignore' }).unref()
+      spawn('explorer.exe', [cwd], { detached: true, stdio: 'ignore', windowsHide: true }).unref()
     } else {
       spawn(process.platform === 'darwin' ? 'open' : 'xdg-open', [cwd], { detached: true, stdio: 'ignore' }).unref()
     }
-  } catch {
-    // Best-effort.
+    console.log(`[mg-dsh-desktop] explorer spawned in ${Date.now() - startedAt}ms (${cwd})`)
+  } catch (error) {
+    console.warn(`[mg-dsh-desktop] open workspace failed in ${Date.now() - startedAt}ms:`, error)
   }
 }
 

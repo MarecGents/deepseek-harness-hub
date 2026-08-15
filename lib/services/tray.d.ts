@@ -25,6 +25,8 @@ export declare class WebViewTray {
     dispose(): void;
     /** Update the tray tooltip (used for live hints). */
     setTooltip(tooltip: string): void;
+    /** Switch the first menu item between “显示主界面” and “隐藏主界面”. */
+    setShowCommandLabel(visible: boolean): void;
     /** Release the app-level menu listener (call with the owning Application). */
     detach(app: Application): void;
 }

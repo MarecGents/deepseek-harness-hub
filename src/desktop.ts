@@ -172,6 +172,7 @@ export function openDesktopShell(
   let splashTimer: NodeJS.Timeout | undefined
   let closedToTray = false
   let themeSetting: DesktopOptions['theme'] = options.theme
+  let tray: WebViewTray | undefined
 
   /**
    * Apply the title-bar theme to one window/webview pair. 'system' follows
@@ -286,6 +287,7 @@ export function openDesktopShell(
         // the poll would hide it again (taskbar flicker, unrecoverable).
         win.setMinimized(false)
         win.hide()
+        updateTrayLabel()
       }
     }, MINIMIZE_POLL_MS)
 
@@ -303,6 +305,7 @@ export function openDesktopShell(
         } catch {
           // Worst case the app may exit; nothing else we can do here.
         }
+        updateTrayLabel()
       } else {
         exit()
       }
@@ -325,6 +328,14 @@ export function openDesktopShell(
   }
 
   // ── Tray (always present) ─────────────────────────────────────────────────
+  const updateTrayLabel = (): void => {
+    try {
+      tray?.setShowCommandLabel(win?.isVisible() === true)
+    } catch {
+      // Best-effort; a stale label must never break tray actions.
+    }
+  }
+
   const showWindow = (): void => {
     if (win === undefined || win.isDisposed()) {
       closedToTray = false
@@ -336,6 +347,7 @@ export function openDesktopShell(
     if (win.isMinimized()) win.setMinimized(false)
     win.show()
     win.focus()
+    updateTrayLabel()
   }
 
   /**
@@ -354,6 +366,8 @@ export function openDesktopShell(
 
   const dispatchEvent = (name: string, detail: Record<string, unknown> = {}): void => {
     if (webview === undefined || webview.isDisposed()) return
+    const startedAt = Date.now()
+    console.log(`[mg-dsh-desktop] dispatch start ${name} at ${startedAt}`)
     const js = dispatchScript(name, detail)
     let tries = 0
     const attempt = (): void => {
@@ -366,7 +380,7 @@ export function openDesktopShell(
         }
         const status = result?.trim()
         if (status === '1') {
-          console.log(`[mg-dsh-desktop] dispatched ${name}`)
+          console.log(`[mg-dsh-desktop] dispatched ${name} in ${Date.now() - startedAt}ms`)
           return
         }
         // 20 × 300ms covers a cold SPA boot; by then the page's client
@@ -375,14 +389,13 @@ export function openDesktopShell(
           tries += 1
           setTimeout(attempt, 300)
         } else {
-          console.warn(`[mg-dsh-desktop] dispatch ${name} never reached a ready page`)
+          console.warn(`[mg-dsh-desktop] dispatch ${name} never reached a ready page (${Date.now() - startedAt}ms)`)
         }
       })
     }
     attempt()
   }
 
-  let tray: WebViewTray | undefined
   tray = new WebViewTray(app, {
     title: options.title,
     icon: dshFaviconTray(),
@@ -390,12 +403,29 @@ export function openDesktopShell(
     onDoubleClick: showWindow,
     onCommand: (command: TrayCommand) => {
       if (command === 'show') {
-        showWindow()
+        // The first menu item is dynamic: “隐藏主界面” when visible,
+        // “显示主界面” when hidden.
+        if (win !== undefined && !win.isDisposed() && win.isVisible()) {
+          // Same minimized-flag cleanup as the minimize poll: hiding a
+          // minimized window without clearing the flag can make a later
+          // show() restore minimized and immediately re-hide.
+          if (win.isMinimized()) win.setMinimized(false)
+          win.hide()
+          updateTrayLabel()
+        } else {
+          showWindow()
+        }
       } else if (command === 'open-workspace') {
         options.openWorkspace()
       } else if (command === 'new-task') {
-        showWindow()
-        options.newTask()
+        // If the window is already visible, do not waste time on show/focus;
+        // dispatch the new-task command straight into the page.
+        if (win !== undefined && !win.isDisposed() && win.isVisible()) {
+          options.newTask()
+        } else {
+          showWindow()
+          options.newTask()
+        }
       } else if (command === 'quit') {
         exit()
       }
@@ -404,6 +434,7 @@ export function openDesktopShell(
 
   // Initial window.
   createWindow()
+  updateTrayLabel()
 
   // Non-blocking event pump: dsh's HTTP server and timers keep running on the
   // Node event loop. `ref: true` keeps the process alive while the window is up.
