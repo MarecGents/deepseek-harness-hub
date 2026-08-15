@@ -319,11 +319,9 @@ export function openDesktopShell(
   const exit = (): void => {
     if (exited) return
     exited = true
-    if (splashTimer !== undefined) clearTimeout(splashTimer)
-    detector?.stop()
-    tray?.detach(app)
-    tray?.dispose()
-    app.exit()
+    // Do NOT call app.exit() here: webviewjs's native teardown can crash with
+    // 0xC0000005 on Windows, which the launcher would auto-restart. The host's
+    // exitProcess() writes a quit marker and calls process.exit(0) directly.
     onExit()
   }
 

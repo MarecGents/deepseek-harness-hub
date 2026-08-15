@@ -23,6 +23,8 @@
  */
 
 import { spawn } from 'node:child_process'
+import { mkdirSync, writeFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 // Empty type imports carry the loader Context merge (settlement await), the
 // cmdline Context merge (the appExit host value), and the session/agent
@@ -36,6 +38,7 @@ import { installSettingsSection, settingsNamespace } from '@deepseek-ai/dsh-sett
 import z from '@deepseek-ai/schemastery'
 import { openDesktopShell, type DesktopShellHandle } from './desktop.ts'
 import { hasStoredWindowSize, makeConfigRoutes, migrateLegacyPaths, readShellConfig, type ShellConfig } from './services/config-api.js'
+import { dshHome } from './services/state-store.js'
 
 /** Stable Cordis plugin name (referenced by cordis.patch.yml's insert row). */
 export const name = 'mg-dsh-desktop'
@@ -88,11 +91,29 @@ export function launchedByShortcut(): boolean {
   return process.env[LAUNCHED_BY_SHORTCUT_ENV] === '1'
 }
 
-/** Exit the whole process (close window ⇒ quit dsh). */
-function exitProcess(ctx: Context): void {
-  const appExit = ctx.get('appExit')
-  if (appExit !== undefined) appExit(0)
-  else process.exit(0)
+/** Marker the launcher checks so an intentional tray quit is never auto-restarted. */
+function quitMarkerFile(): string {
+  return join(dshHome(), 'mg-dsh-desktop', 'quit.marker')
+}
+
+/**
+ * Exit the whole process (close window ⇒ quit dsh).
+ *
+ * Intentionally uses `process.exit(0)` instead of `ctx.appExit`/`app.exit()`:
+ * webviewjs's native teardown can crash with 0xC0000005 on Windows, which the
+ * launcher would otherwise treat as an unexpected crash and auto-restart. The
+ * marker file tells the launcher this was a deliberate quit even if the OS
+ * reports a non-zero exit code.
+ */
+function exitProcess(_ctx: Context): void {
+  try {
+    const file = quitMarkerFile()
+    mkdirSync(dirname(file), { recursive: true })
+    writeFileSync(file, String(process.pid), 'utf8')
+  } catch {
+    // Best-effort; the launcher still sees exit code 0 in the normal case.
+  }
+  process.exit(0)
 }
 
 /** Track the most recently active session's working directory. */

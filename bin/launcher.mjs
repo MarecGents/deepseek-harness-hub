@@ -180,6 +180,27 @@ function ensureBundleInstalled() {
   return true
 }
 
+/** Marker written by the plugin right before an intentional tray Quit. */
+function quitMarkerFile() {
+  return join(dshHome(), 'mg-dsh-desktop', 'quit.marker')
+}
+
+function quitRequested() {
+  try {
+    return existsSync(quitMarkerFile())
+  } catch {
+    return false
+  }
+}
+
+function clearQuitMarker() {
+  try {
+    rmSync(quitMarkerFile(), { force: true })
+  } catch {
+    // Best-effort.
+  }
+}
+
 /** True when something already listens on dsh's default web port. */
 function port3080InUse() {
   try {
@@ -211,6 +232,10 @@ function main() {
     alert(message)
     process.exit(0)
   }
+
+  // Clear any stale quit marker from a previous run; this launcher is now the
+  // single owner and must not mistake an old marker for a new intentional quit.
+  clearQuitMarker()
 
   // Belt-and-braces: a plain CLI `dsh web` (no lock file) still binds the
   // default 3080; refuse to start over it so two dsh profiles do not fight.
@@ -280,8 +305,18 @@ function main() {
       const sig = signal === null ? '' : ` signal ${signal}`
       log(`dsh exited with code ${code ?? 'null'}${sig}`)
 
-      // Exit code 0 is the normal path (tray Quit, window close with
-      // closeToTray disabled): never auto-restart a deliberate quit.
+      // The plugin writes a quit marker just before an intentional tray Quit.
+      // Even if webviewjs's native teardown later reports a crash code, this
+      // is a deliberate exit and must NEVER be auto-restarted.
+      if (quitRequested()) {
+        log('quit marker found; treating exit as user-requested quit')
+        clearQuitMarker()
+        process.exit(0)
+        return
+      }
+
+      // Exit code 0 is the normal path (window close with closeToTray
+      // disabled): never auto-restart a deliberate quit.
       if (code === 0) {
         process.exit(0)
         return

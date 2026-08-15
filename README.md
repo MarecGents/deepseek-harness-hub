@@ -188,3 +188,4 @@ npm publish --registry=https://registry.npmjs.org/
 12. **dsh plugin 转发 pnpm**：`dsh plugin --profile web add` 在 Windows 用 `shell:true` 转发 pnpm（全新环境易 EINVAL）；bundle 注册改手动 junction（dsh 用 `createRequire` 从 `profile/node_modules` 解析）。
 13. **client 使用 `ctx.workspaces` 必须注入 `workspaces`**：`inject` 只写 `slots` 时 `ctx.workspaces` 为 undefined，托盘“新建任务”会静默失败（`new-task ignored`）；官方 sidebar 同款用法是 `inject: ['slots', ..., 'workspaces']`。
 14. **托盘桥返回值用数字**：`evaluateScriptWithCallback` 对字符串结果带引号序列化（`'ok'` → `"ok"`），host 判断永远失败并重复派发；`dispatchScript` 成功/未就绪返回 `1/0`。
+15. **主动退出必须写 quit.marker + `process.exit(0)`**：webviewjs 的 `app.exit()` 在 Windows 可能以 `0xC0000005` 崩溃，launcher 会把非 0 退出误判为异常并自动重启；主动退出走 `$DSH_HOME/mg-dsh-desktop/quit.marker`，launcher 见 marker 永不重启。
