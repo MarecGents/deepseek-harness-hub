@@ -34,6 +34,9 @@ import { resolveLaunchScreen } from './services/screen.js'
 import { WebViewThemeDetector } from './services/theme-sync.js'
 import { WebViewTray, type TrayCommand } from './services/tray.js'
 import { dshFaviconBlack, dshFaviconDark, dshFaviconDataUrl, dshFaviconTray } from './services/icons.js'
+import path from 'node:path'
+import os from 'node:os'
+import fs from 'node:fs'
 
 /** Shell options resolved from the dsh plugin Config schema. */
 export interface DesktopOptions {
@@ -200,6 +203,12 @@ export function openDesktopShell(
   const store = new JsonWindowStateStore()
   const state = store.load()
   const app = new Application()
+  // WebView2's default-context data directory fails with E_ACCESSDENIED on
+  // some machines; use a dedicated per-app directory (kept app-scoped so
+  // close-to-tray window recreation reuses the same context).
+  const shellDataDir = path.join(process.env.DSH_HOME || path.join(os.homedir(), '.dsh'), 'mg-dsh-desktop', 'browser-data')
+  fs.mkdirSync(shellDataDir, { recursive: true })
+  const shellContext = app.createWebContext({ dataDirectory: shellDataDir })
   const darkByDefault = options.theme !== 'light'
   const splash = splashHtml(darkByDefault, dshFaviconDataUrl())
   const targetUrl = `${BASE_URL}:${port}`
@@ -297,7 +306,7 @@ export function openDesktopShell(
 
     // Splash first: WebView2 keeps it painted while the SPA parses, so the
     // boot shows a smooth themed surface (no white/dark flash frames).
-    const wv = w.createWebview({ html: splash })
+    const wv = w.createWebview({ html: splash, webContext: shellContext })
     webview = wv
     wv.setBackgroundColor(...DARK_BG, 255)
 
