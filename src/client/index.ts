@@ -122,10 +122,13 @@ export function apply(ctx: ClientContext): void {
   // never registers (card injection failure) would look like a dead button.
   window.addEventListener('mg:shell-command', (event) => handleShellCommand(ctx, event))
 
-  // Expose a page function the desktop host can call to request the current
-  // workspace path over IPC (used by tray "Open workspace").
+  // Expose page functions for the current workspace: one sends the path over
+  // IPC to the desktop host (tray "Open workspace"), one returns it directly
+  // for in-page consumers (right sidebar file/git tabs).
   ;(window as unknown as { __mgSendCurrentWorkspace?: () => void }).__mgSendCurrentWorkspace
     = () => sendCurrentWorkspace(ctx)
+  ;(window as unknown as { __mgGetCurrentWorkspace?: () => string | null }).__mgGetCurrentWorkspace
+    = () => currentWorkspace(ctx)?.path ?? null
 
   const slots = ctx.get('slots')
   if (slots === undefined) return

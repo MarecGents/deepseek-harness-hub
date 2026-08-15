@@ -50,6 +50,31 @@ function formatTokens(n: number): string {
   return `${Math.round(n / 1_000_000)}M`
 }
 
+/** Compact duration: 45.2s under a minute, 2m42s from there on. */
+function formatDuration(ms: number): string {
+  const s = ms / 1_000
+  if (s < 60) return `${Math.round(s * 10) / 10}s`
+  const whole = Math.round(s)
+  return `${Math.floor(whole / 60)}m${whole % 60}s`
+}
+
+/** Decode-throughput figure: whole tokens from ten up, one decimal below. */
+function formatTokensPerSecond(tps: number): string {
+  const clamped = Math.max(0, tps)
+  return clamped >= 10 ? String(Math.round(clamped)) : String(Math.round(clamped * 10) / 10)
+}
+
+/** Sum the three disjoint prompt-side billing buckets. */
+function billedInputTokens(usage: { uncachedInputTokens?: number; cacheReadTokens?: number; cacheWriteTokens?: number }): number {
+  return (usage.uncachedInputTokens ?? 0) + (usage.cacheReadTokens ?? 0) + (usage.cacheWriteTokens ?? 0)
+}
+
+/** Cache-hit share of prompt-side input over the whole durable log. */
+function cacheHitPercent(usage: { cacheReadTokens?: number; uncachedInputTokens?: number; cacheWriteTokens?: number }): number | null {
+  const denominator = billedInputTokens(usage)
+  return denominator === 0 ? null : Math.round(((usage.cacheReadTokens ?? 0) / denominator) * 100)
+}
+
 async function fetchDir(path: string): Promise<DirectoryRow[]> {
   try {
     const res = await fetch(`/api/mg-dsh-desktop/workspace/list?${new URLSearchParams({ path })}`)
@@ -119,27 +144,47 @@ export function RightSidebar({ openDetails, closeDetails, useProjection, useSess
     ?? (workspaces?.recentWorkspaceId !== undefined ? items.find((w: { workspaceId?: string; path?: string }) => w.workspaceId === workspaces.recentWorkspaceId)?.path : undefined)
     ?? ''
 
+  // Fallback to the page-global current-workspace getter (some assemblies may
+  // not expose useWorkspaces/useSessions to the details slot).
+  const [fallbackPath, setFallbackPath] = useState('')
+  useEffect(() => {
+    const get = (window as unknown as { __mgGetCurrentWorkspace?: () => string | null }).__mgGetCurrentWorkspace
+    const path = get?.()
+    if (path !== null && path !== undefined && path !== '') setFallbackPath(path)
+  }, [])
+  const effectivePath = workspacePath || fallbackPath
+
   // Workspace data.
   const [rootEntries, setRootEntries] = useState<DirectoryRow[]>([])
   const [git, setGit] = useState<GitInfo | null>(null)
   const [workspaceLoading, setWorkspaceLoading] = useState(false)
 
   useEffect(() => {
-    if (workspacePath === '') {
+    if (effectivePath === '') {
       setRootEntries([])
       setGit(null)
       return
     }
     let alive = true
     setWorkspaceLoading(true)
-    void Promise.all([fetchDir(workspacePath), fetchGit(workspacePath)]).then(([rows, info]) => {
+    void Promise.all([fetchDir(effectivePath), fetchGit(effectivePath)]).then(([rows, info]) => {
       if (!alive) return
       setRootEntries(rows)
       setGit(info)
       setWorkspaceLoading(false)
     })
     return () => { alive = false }
-  }, [workspacePath])
+  }, [effectivePath])
+
+  const refreshWorkspace = (): void => {
+    if (effectivePath === '') return
+    setWorkspaceLoading(true)
+    void Promise.all([fetchDir(effectivePath), fetchGit(effectivePath)]).then(([rows, info]) => {
+      setRootEntries(rows)
+      setGit(info)
+      setWorkspaceLoading(false)
+    })
+  }
 
   // Context token projections (same source as the composer's context meter).
   const pressure = useProjection('contextPressure') as
@@ -149,7 +194,10 @@ export function RightSidebar({ openDetails, closeDetails, useProjection, useSess
     | { systemTokens?: number; toolsTokens?: number; messageTokens?: number }
     | undefined
   const stats = useProjection('sessionStats') as
-    | { turns?: number; steps?: number; llmMs?: number; toolMs?: number; decodeTokens?: number }
+    | { turns?: number; steps?: number; llmMs?: number; toolMs?: number; ttftMs?: number; ttftSteps?: number; decodeMs?: number; decodeTokens?: number }
+    | undefined
+  const usage = useProjection('tokenUsage') as
+    | { uncachedInputTokens?: number; cacheReadTokens?: number; cacheWriteTokens?: number; outputTokens?: number }
     | undefined
 
   const usedTokens = pressure?.projectedTokens ?? pressure?.pressureTokens
@@ -238,6 +286,7 @@ export function RightSidebar({ openDetails, closeDetails, useProjection, useSess
               messageTokens={messageTokens}
               chartGradient={chartGradient}
               stats={stats}
+              usage={usage}
               fileCount={rootEntries.filter((e) => e.isFile).length}
               dirCount={rootEntries.filter((e) => e.isDirectory).length}
               git={git}
@@ -246,16 +295,23 @@ export function RightSidebar({ openDetails, closeDetails, useProjection, useSess
           )}
           {tab === 'files' && (
             <div className={c.section}>
-              <div className={c.sectionTitle}>工作区文件</div>
-              {workspacePath === ''
+              <div className={c.sectionTitle}>
+                工作区文件
+                {effectivePath !== '' && (
+                  <button type="button" className={c.refresh} onClick={() => { refreshWorkspace() }}>刷新</button>
+                )}
+              </div>
+              {effectivePath === ''
                 ? <div className={c.empty}>当前会话没有关联工作区</div>
                 : workspaceLoading && rootEntries.length === 0
                   ? <div className={c.empty}>加载中…</div>
-                  : (
-                    <ul className={c.tree}>
-                      {rootEntries.map((entry) => <TreeNode key={entry.path} entry={entry} depth={0} />)}
-                    </ul>
-                  )}
+                  : rootEntries.length === 0
+                    ? <div className={c.empty}>工作区为空</div>
+                    : (
+                      <ul className={c.tree}>
+                        {rootEntries.map((entry) => <TreeNode key={entry.path} entry={entry} depth={0} />)}
+                      </ul>
+                    )}
             </div>
           )}
           {tab === 'git' && (
@@ -276,13 +332,25 @@ function Overview(props: {
   toolsTokens: number
   messageTokens: number
   chartGradient: string
-  stats?: { turns?: number; steps?: number; llmMs?: number; toolMs?: number; decodeTokens?: number }
+  stats?: { turns?: number; steps?: number; llmMs?: number; toolMs?: number; ttftMs?: number; ttftSteps?: number; decodeMs?: number; decodeTokens?: number }
+  usage?: { uncachedInputTokens?: number; cacheReadTokens?: number; cacheWriteTokens?: number; outputTokens?: number }
   fileCount: number
   dirCount: number
   git: GitInfo | null
   loading: boolean
 }): ReactNode {
-  const { usedTokens, contextWindow, usedPct, breakdownTotal, systemTokens, toolsTokens, messageTokens, chartGradient, stats, fileCount, dirCount, git, loading } = props
+  const { usedTokens, contextWindow, usedPct, breakdownTotal, systemTokens, toolsTokens, messageTokens, chartGradient, stats, usage, fileCount, dirCount, git, loading } = props
+
+  const ttftAvg = stats?.ttftSteps !== undefined && stats.ttftSteps > 0 && stats.ttftMs !== undefined
+    ? stats.ttftMs / stats.ttftSteps
+    : undefined
+  const tps = stats?.decodeMs !== undefined && stats.decodeMs > 0 && stats.decodeTokens !== undefined
+    ? stats.decodeTokens / (stats.decodeMs / 1_000)
+    : undefined
+  const cacheHit = usage === undefined ? undefined : cacheHitPercent(usage)
+  const inputTokens = usage === undefined ? undefined : billedInputTokens(usage)
+  const outputTokens = usage?.outputTokens
+
   return (
     <div>
       <div className={c.section}>
@@ -310,11 +378,16 @@ function Overview(props: {
           )}
       </div>
       <div className={c.section}>
-        <div className={c.sectionTitle}>会话</div>
+        <div className={c.sectionTitle}>会话统计</div>
         <div className={c.statGrid}>
-          <div className={c.stat}><div className={c.statLabel}>Turns</div><div className={c.statValue}>{stats?.turns ?? '-'}</div></div>
-          <div className={c.stat}><div className={c.statLabel}>Steps</div><div className={c.statValue}>{stats?.steps ?? '-'}</div></div>
-          <div className={c.stat}><div className={c.statLabel}>输出 Tokens</div><div className={c.statValue}>{stats?.decodeTokens !== undefined ? formatTokens(stats.decodeTokens) : '-'}</div></div>
+          <div className={c.stat}><div className={c.statLabel}>轮次 / 步数</div><div className={c.statValue}>{stats?.turns ?? '-'} 轮 · {stats?.steps ?? '-'} 步</div></div>
+          <div className={c.stat}><div className={c.statLabel}>LLM 耗时</div><div className={c.statValue}>{stats?.llmMs !== undefined ? formatDuration(stats.llmMs) : '-'}</div></div>
+          <div className={c.stat}><div className={c.statLabel}>工具调用</div><div className={c.statValue}>{stats?.toolMs !== undefined ? formatDuration(stats.toolMs) : '-'}</div></div>
+          <div className={c.stat}><div className={c.statLabel}>首 token 平均</div><div className={c.statValue}>{ttftAvg !== undefined ? formatDuration(ttftAvg) : '-'}</div></div>
+          <div className={c.stat}><div className={c.statLabel}>速度</div><div className={c.statValue}>{tps !== undefined ? `${formatTokensPerSecond(tps)} tok/s` : '-'}</div></div>
+          <div className={c.stat}><div className={c.statLabel}>缓存命中</div><div className={c.statValue}>{cacheHit !== undefined ? `${cacheHit}%` : '-'}</div></div>
+          <div className={c.stat}><div className={c.statLabel}>输入 Tokens</div><div className={c.statValue}>{inputTokens !== undefined ? `${formatTokens(inputTokens)} tok` : '-'}</div></div>
+          <div className={c.stat}><div className={c.statLabel}>输出 Tokens</div><div className={c.statValue}>{outputTokens !== undefined ? `${formatTokens(outputTokens)} tok` : '-'}</div></div>
         </div>
       </div>
       <div className={c.section}>
@@ -335,20 +408,39 @@ function Overview(props: {
 function GitTab({ git, loading }: { git: GitInfo | null; loading: boolean }): ReactNode {
   if (loading && git === null) return <div className={c.empty}>检测中…</div>
   if (git === null || !git.isGit) return <div className={c.empty}>当前工作区不是 Git 仓库</div>
+
+  const staged = git.changes.filter((change) => change.status !== '??' && change.status[0] !== ' ')
+  const unstaged = git.changes.filter((change) => change.status !== '??' && change.status[1] !== ' ')
+  const untracked = git.changes.filter((change) => change.status === '??')
+
+  const renderList = (items: GitChange[], label: string): ReactNode => {
+    if (items.length === 0) return null
+    return (
+      <div className={c.section}>
+        <div className={c.sectionTitle}>{label}（{items.length}）</div>
+        <ul className={c.gitChanges}>
+          {items.map((change, index) => (
+            <li key={`${label}-${change.path}-${index}`} className={c.gitChange}>
+              <span className={c.gitStatus}>{change.status || '??'}</span>
+              <span className={c.treeName}>{change.path}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
+    )
+  }
+
   return (
     <div>
       <div className={c.gitBranch}>分支：{git.branch || git.head || '未知'}</div>
       {git.changes.length === 0
         ? <div className={c.empty}>工作区无变更</div>
         : (
-          <ul className={c.gitChanges}>
-            {git.changes.map((change, index) => (
-              <li key={`${change.path}-${index}`} className={c.gitChange}>
-                <span className={c.gitStatus}>{change.status || '??'}</span>
-                <span className={c.treeName}>{change.path}</span>
-              </li>
-            ))}
-          </ul>
+          <>
+            {renderList(staged, '已暂存')}
+            {renderList(unstaged, '未暂存')}
+            {renderList(untracked, '未跟踪')}
+          </>
         )}
     </div>
   )
