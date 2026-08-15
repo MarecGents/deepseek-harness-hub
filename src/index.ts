@@ -36,7 +36,7 @@ import type {} from '@deepseek-ai/dsh-agent'
 import { installSettingsSection, settingsNamespace } from '@deepseek-ai/dsh-settings'
 import z from '@deepseek-ai/schemastery'
 import { openDesktopShell, type DesktopShellHandle } from './desktop.ts'
-import { makeConfigRoutes, migrateLegacyPaths, readShellConfig, type ShellConfig } from './services/config-api.js'
+import { makeConfigRoutes, migrateLegacyPaths, readShellConfig, storedNotifyOnTaskComplete, type ShellConfig } from './services/config-api.js'
 import { dshHome } from './services/state-store.js'
 import { openFolderInExplorer } from './services/explorer.js'
 import { makeWorkspaceRoutes } from './services/workspace-api.js'
@@ -216,8 +216,11 @@ export function apply(ctx: Context, config: Config): void {
     if (cwd !== undefined) activeCwd = cwd
     // Task-complete notification: fire for top-level user sessions only
     // (depth 0 — subagent turns are invisible busy work), and only when a
-    // turn actually finished with reason `completed`.
-    if (!config.notifyOnTaskComplete) return
+    // turn actually finished with reason `completed`. A value saved in the
+    // settings card (persisted) wins over the composition Config and applies
+    // live without a restart.
+    const notifyEnabled = storedNotifyOnTaskComplete() ?? config.notifyOnTaskComplete
+    if (!notifyEnabled) return
     if (session.header?.delegationDepth !== 0) return
     const e = event as { type?: string; data?: { reason?: { kind?: string } } } | undefined
     if (e?.type !== 'turn/end' || e.data?.reason?.kind !== 'completed') return
