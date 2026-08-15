@@ -93,15 +93,18 @@ export function DesktopSettingsCard(_props: DesktopSettingsCardProps): ReactNode
 
   // Load the config once on mount. The width/height fields seed from the
   // window's ACTUAL current size (the SPA viewport ≈ the native client area),
-  // not the stale stored value — the user sees the real resolution.
+  // not the stale stored value — the user sees the real resolution. Both
+  // `config` and `draft` use this initial value so the card starts clean and
+  // the save button is disabled until the user actually changes something.
   useEffect(() => {
     let alive = true
     void fetchConfig().then((value) => {
       if (!alive) return
-      setConfig(value)
-      setDraft(value === null
+      const initial = value === null
         ? null
-        : { ...value, width: window.innerWidth, height: window.innerHeight })
+        : { ...value, width: window.innerWidth, height: window.innerHeight }
+      setConfig(initial)
+      setDraft(initial)
       setLoading(false)
     })
     return () => { alive = false }
