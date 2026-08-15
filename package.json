@@ -1,6 +1,6 @@
 {
   "name": "mg-dsh-desktop",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "DeepSeek Harness desktop shell + feature plugin integration. Launches dsh's Web UI in a native WebView2 window with theme sync and window-state memory; injects the plugin config page only when started by this project (desktop shortcut or `mg-dsh` command).",
   "license": "MIT",
   "type": "module",

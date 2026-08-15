@@ -35,6 +35,7 @@ dsh web            # 无窗口、无托盘、无注入
 | 启动门控 | `cordis.patch.yml` 的行 `disabled: !!js process.env.MG_DSH_DESKTOP_LAUNCHED !== '1'` —— **非本项目启动的 `dsh web` 完全不加载插件**（无窗口、无 client row、无任何注入） |
 | 配置面 | 插件自有 HTTP 路由 `/api/mg-dsh-desktop/config`（GET/POST）读写 `$DSH_HOME/mg-dsh-desktop/config.json`。**刻意不用 settings 命名空间**：dsh 的 RPC `settings.describe` 只暴露硬编码白名单（第三方插件命名空间是 "deferred work"），第三方配置 UI 的受支持模式是插件自有路由（dsh-web-ui 同款） |
 | 随机端口 | 启动器固定传 `dsh web --port 0`（OS 随机分配），CLI `dsh web` 不受影响（默认 3080） |
+| 单实例 | 桌面快捷方式与 `mg-dsh` 命令共用 `$DSH_HOME/mg-dsh-desktop/launcher.lock` PID 锁；随机端口下仍能可靠防止双开，并自动接管陈旧锁 |
 
 ## 代码架构
 
@@ -93,7 +94,7 @@ scripts/
 ### 启动链路
 
 1. **双击快捷方式** → wscript.exe 跑 `launcher.vbs`（`SW_HIDE` 隐藏控制台）→ `node bin/launcher.mjs`
-2. **launcher**：`findDsh()`（`DSH_CMD` → PATH → npm 全局目录）找到已装 dsh → 首次启动时**junction 注册** bundle（`profile/node_modules/mg-dsh-desktop` → 包目录，dsh 用 `createRequire` 解析，无需 pnpm）→ `spawn dsh web --port 0`
+2. **launcher**：获取**单实例锁**（`$DSH_HOME/mg-dsh-desktop/launcher.lock`，已运行则提示退出）→ `findDsh()`（`DSH_CMD` → PATH → npm 全局目录）找到已装 dsh → 首次启动时**junction 注册** bundle（`profile/node_modules/mg-dsh-desktop` → 包目录，dsh 用 `createRequire` 解析，无需 pnpm）→ `spawn dsh web --port 0`
 3. **dsh 启动**：加载 bundles（base / web-app / mg-dsh-desktop）→ 插件 `apply()`（先做 `MG_DSH_DESKTOP_LAUNCHED` 门控检查 + 旧配置迁移）
 4. **webserver ACTIVE** → `openDesktopShell()`：窗口 + splash 页 → 300ms 后 `loadUrl` 切 SPA（WebView2 在 SPA 解析期间保持 splash 画面，无白/黑闪块）
 
@@ -134,6 +135,10 @@ client 卡片（settings-card.tsx）→ fetch GET/POST /api/mg-dsh-desktop/confi
 #### 关闭到托盘（webviewjs 无关闭拦截）
 
 `win.on('close')`（closeToTray 开启时）→ **同步创建隐藏保活窗口**（visible:false 顶替）→ 旧窗口关、app 因仍有窗口而不退出、托盘存活；托盘"显示主界面"显示/重建窗口。最小化到托盘：轮询 `isMinimized()` → 先 `setMinimized(false)` 再 hide（防任务栏闪烁）。
+
+#### 崩溃自动重启（launcher 兜底）
+
+dsh/webviewjs 偶发的 SIGSEGV / `0xC0000005` 崩溃会使 dsh 以非 0 退出码结束。桌面快捷方式启动器会在**非正常退出**时自动重启，最多 3 次（间隔 1.2s），并在连续失败后弹窗提示查看 `dsh.log`。正常退出（退出码 0，如托盘「退出」或非关闭到托盘时关窗）不触发重启。
 
 ## 目录结构
 

@@ -11,12 +11,17 @@
 import { spawn, spawnSync } from 'node:child_process'
 import { existsSync, lstatSync, readFileSync, appendFileSync, rmSync, symlinkSync, writeFileSync, mkdirSync } from 'node:fs'
 import { join, dirname } from 'node:path'
-import { homedir } from 'node:os'
 import { fileURLToPath } from 'node:url'
+import { acquireLock, dshHome, releaseLock } from './lock.mjs'
 
 const PACKAGE_ROOT = dirname(dirname(fileURLToPath(import.meta.url)))
 const BUNDLE_NAME = 'mg-dsh-desktop'
 const LOG_FILE = join(PACKAGE_ROOT, 'dsh.log')
+
+/** Max automatic restarts after an unexpected dsh crash (webviewjs SIGSEGV etc). */
+const MAX_RESTARTS = 3
+/** Delay before each restart, giving the OS/WebView2 a moment to release handles. */
+const RESTART_DELAY_MS = 1200
 
 function log(message) {
   const line = `[${new Date().toISOString()}] ${message}\n`
@@ -34,11 +39,6 @@ function resetLog() {
   } catch {
     // Best-effort.
   }
-}
-
-function dshHome() {
-  const env = process.env.DSH_HOME
-  return env && env.trim() !== '' ? env : join(homedir(), '.dsh')
 }
 
 /** Resolve the dsh command, retrying a global install once if absent. */
@@ -198,12 +198,27 @@ function main() {
   resetLog()
   log(`launcher started (cwd=${process.cwd()})`)
 
-  // A previous instance may still be running; the desktop shell now uses a
-  // random port, so this is a single-instance guard, not a port conflict one.
-  if (port3080InUse()) {
-    const message = 'dsh 似乎已在运行。\n\n请先关闭已打开的 DeepSeek Harness 窗口，再重新启动。'
+  // Release the lock whenever this launcher process ends, no matter which
+  // exit path (normal quit, crash, user Ctrl+C) fires first.
+  process.on('exit', releaseLock)
+
+  // Single-instance guard. The desktop shell uses a random web port, so the
+  // old netstat-on-3080 check cannot detect a running desktop instance; the
+  // PID lock above is the authoritative guard.
+  if (!acquireLock(log)) {
+    const message = 'DeepSeek Harness Desktop 已在运行。\n\n请先关闭已打开的窗口，再重新启动。'
     log(message)
     alert(message)
+    process.exit(0)
+  }
+
+  // Belt-and-braces: a plain CLI `dsh web` (no lock file) still binds the
+  // default 3080; refuse to start over it so two dsh profiles do not fight.
+  if (port3080InUse()) {
+    const message = 'dsh 似乎已在运行（默认端口 3080 被占用）。\n\n请先关闭已打开的 dsh 窗口，再重新启动。'
+    log(message)
+    alert(message)
+    releaseLock()
     process.exit(0)
   }
 
@@ -231,36 +246,60 @@ function main() {
     process.exit(1)
   }
 
-  log('booting dsh web…')
-  // Random web port (`--port 0` = the OS picks a free one), so a busy 3080
-  // can never collide with the desktop shell.
-  const child = spawn(process.env.ComSpec, ['/d', '/s', '/c', `"${dshCmd}" web --port 0`], {
-    cwd: PACKAGE_ROOT,
-    windowsHide: true,
-    windowsVerbatimArguments: true,
-    stdio: ['ignore', 'pipe', 'pipe'],
-    env: {
-      ...process.env,
-      // Tells the mg-dsh-desktop bundle plugin that this process was started
-      // from the desktop shortcut: it opens the window and registers the
-      // settings card. A plain `dsh web` on a command line leaves both off.
-      MG_DSH_DESKTOP_LAUNCHED: '1',
-    },
-  })
-  const logStream = (chunk) => {
-    try { appendFileSync(LOG_FILE, chunk.toString()) } catch { /* ignore */ }
+  // Boot dsh web; restarts itself a bounded number of times after an
+  // unexpected crash (the known webviewjs SIGSEGV / 0xC0000005 failures).
+  let restarts = 0
+  const boot = () => {
+    log('booting dsh web…')
+    // Random web port (`--port 0` = the OS picks a free one), so a busy 3080
+    // can never collide with the desktop shell.
+    const child = spawn(process.env.ComSpec, ['/d', '/s', '/c', `"${dshCmd}" web --port 0`], {
+      cwd: PACKAGE_ROOT,
+      windowsHide: true,
+      windowsVerbatimArguments: true,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: {
+        ...process.env,
+        // Tells the mg-dsh-desktop bundle plugin that this process was started
+        // from the desktop shortcut: it opens the window and registers the
+        // settings card. A plain `dsh web` on a command line leaves both off.
+        MG_DSH_DESKTOP_LAUNCHED: '1',
+      },
+    })
+    const logStream = (chunk) => {
+      try { appendFileSync(LOG_FILE, chunk.toString()) } catch { /* ignore */ }
+    }
+    child.stdout.on('data', logStream)
+    child.stderr.on('data', logStream)
+    child.on('error', (error) => {
+      log(`dsh failed to start: ${error.message}`)
+      alert('mg-dsh-desktop could not start dsh. See dsh.log for details.')
+      process.exit(1)
+    })
+    child.on('exit', (code, signal) => {
+      const sig = signal === null ? '' : ` signal ${signal}`
+      log(`dsh exited with code ${code ?? 'null'}${sig}`)
+
+      // Exit code 0 is the normal path (tray Quit, window close with
+      // closeToTray disabled): never auto-restart a deliberate quit.
+      if (code === 0) {
+        process.exit(0)
+        return
+      }
+
+      if (restarts < MAX_RESTARTS) {
+        restarts += 1
+        log(`dsh exited unexpectedly; restart ${restarts}/${MAX_RESTARTS} in ${RESTART_DELAY_MS}ms`)
+        setTimeout(boot, RESTART_DELAY_MS)
+        return
+      }
+
+      log(`dsh exited unexpectedly ${MAX_RESTARTS} times; giving up`)
+      alert('mg-dsh-desktop 连续异常退出。\n\n请查看 dsh.log 获取详细信息。')
+      process.exit(code ?? 1)
+    })
   }
-  child.stdout.on('data', logStream)
-  child.stderr.on('data', logStream)
-  child.on('error', (error) => {
-    log(`dsh failed to start: ${error.message}`)
-    alert('mg-dsh-desktop could not start dsh. See dsh.log for details.')
-    process.exit(1)
-  })
-  child.on('exit', (code) => {
-    log(`dsh exited with code ${code ?? 'null'}`)
-    process.exit(code ?? 0)
-  })
+  boot()
 }
 
 main()

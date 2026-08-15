@@ -13,6 +13,7 @@ import { spawn, spawnSync } from 'node:child_process'
 import { existsSync, appendFileSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { acquireLock, releaseLock } from './lock.mjs'
 
 const PACKAGE_ROOT = dirname(dirname(fileURLToPath(import.meta.url)))
 const LOG_FILE = join(PACKAGE_ROOT, 'dsh.log')
@@ -59,6 +60,15 @@ function findDsh() {
 }
 
 function main() {
+  // Same single-instance lock as the desktop shortcut launcher: the shell now
+  // uses a random port, so only a PID lock can reliably prevent two desktop
+  // instances from fighting over the same dsh profile.
+  if (!acquireLock(log)) {
+    console.error('mg-dsh: DeepSeek Harness Desktop is already running.')
+    process.exit(0)
+  }
+  process.on('exit', releaseLock)
+
   const dshCmd = findDsh()
   if (dshCmd === null) {
     console.error('mg-dsh: dsh CLI not found. Install it with: npm install -g @deepseek-ai/dsh')
