@@ -118,7 +118,7 @@ dsh 页面 ui-theme presenter 写 body[data-ds-dark-theme]
 ```
 托盘菜单/双击 → tray.ts 的 TrayActions
   ├─ 显示主界面   → showWindow（重建窗口或显示隐藏保活窗口）
-  ├─ 打开工作区   → explorer 打开当前工作区目录
+  ├─ 打开工作区   → explorer 打开当前工作区目录 + koffi 轮询激活窗口（无 PowerShell 冷启动）
   ├─ 新建任务     → 窗口可见时先 win.focus()（触发 WebView2 实时重绘）
   │                 → evaluateScriptWithCallback 派发 mg:shell-command 事件
   │                 → client 半部 ctx.workspaces.startSession（官方流程，UI 即时刷新）
