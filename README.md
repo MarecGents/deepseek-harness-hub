@@ -7,7 +7,7 @@ DeepSeek Harness（`dsh`）的**桌面化**项目。以原生 Windows 窗口（�
 - **桌面化**：以原生 Windows 窗口（系统 WebView2）运行 dsh 的 Web UI。
 - **插件配置卡片**：dsh 设置 → 插件页的 **Marec-DSH-Plugin** 卡片（窗口尺寸/主题/托盘行为），走插件自有 HTTP 路由。
 - **启动体验**：品牌化 splash 页（主题色 + dsh logo + spinner）覆盖从窗口打开到 SPA 首绘的整个加载过程，无白/黑闪块。
-- **托盘**：常驻系统托盘；右键菜单「显示主界面/隐藏主界面（按窗口状态动态切换） / 打开工作区 / 新建任务 / 退出」；最小化/关闭到托盘可配置。
+- **托盘**：常驻系统托盘；右键菜单「显示主界面/隐藏主界面（按窗口状态动态切换） / 打开工作区 / 新建任务 / 退出」；最小化/关闭到托盘可配置；打开工作区后会自动激活并前置 Explorer 窗口。
 - **状态记忆**：窗口分辨率可配置、上次最大化状态恢复；配置持久化到 `$DSH_HOME/mg-dsh-desktop/config.json`。
 
 ## 安装与使用
@@ -189,3 +189,4 @@ npm publish --registry=https://registry.npmjs.org/
 13. **client 使用 `ctx.workspaces` 必须注入 `workspaces`**：`inject` 只写 `slots` 时 `ctx.workspaces` 为 undefined，托盘“新建任务”会静默失败（`new-task ignored`）；官方 sidebar 同款用法是 `inject: ['slots', ..., 'workspaces']`。
 14. **托盘桥返回值用数字**：`evaluateScriptWithCallback` 对字符串结果带引号序列化（`'ok'` → `"ok"`），host 判断永远失败并重复派发；`dispatchScript` 成功/未就绪返回 `1/0`。
 15. **主动退出必须写 quit.marker + `process.exit(0)`**：webviewjs 的 `app.exit()` 在 Windows 可能以 `0xC0000005` 崩溃，launcher 会把非 0 退出误判为异常并自动重启；主动退出走 `$DSH_HOME/mg-dsh-desktop/quit.marker`，launcher 见 marker 永不重启。
+16. **`explorer.exe` 不要加 `windowsHide: true`**：会导致 Explorer 文件夹窗口隐藏启动，“打开工作区”看起来无反应；打开后如需前置，用后台 PowerShell 按窗口标题查找并 `AppActivate` + 短暂 TOPMOST。

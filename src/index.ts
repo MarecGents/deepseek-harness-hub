@@ -22,7 +22,6 @@
  * @module mg-dsh-desktop
  */
 
-import { spawn } from 'node:child_process'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
@@ -39,6 +38,7 @@ import z from '@deepseek-ai/schemastery'
 import { openDesktopShell, type DesktopShellHandle } from './desktop.ts'
 import { hasStoredWindowSize, makeConfigRoutes, migrateLegacyPaths, readShellConfig, type ShellConfig } from './services/config-api.js'
 import { dshHome } from './services/state-store.js'
+import { openFolderInExplorer } from './services/explorer.js'
 
 /** Stable Cordis plugin name (referenced by cordis.patch.yml's insert row). */
 export const name = 'mg-dsh-desktop'
@@ -158,12 +158,8 @@ async function openWorkspaceDir(ctx: Context): Promise<void> {
   console.log(`[mg-dsh-desktop] open workspace start at ${startedAt}`)
   try {
     const cwd = currentWorkspacePath(ctx)
-    if (process.platform === 'win32') {
-      spawn('explorer.exe', [cwd], { detached: true, stdio: 'ignore', windowsHide: true }).unref()
-    } else {
-      spawn(process.platform === 'darwin' ? 'open' : 'xdg-open', [cwd], { detached: true, stdio: 'ignore' }).unref()
-    }
-    console.log(`[mg-dsh-desktop] explorer spawned in ${Date.now() - startedAt}ms (${cwd})`)
+    openFolderInExplorer(cwd)
+    console.log(`[mg-dsh-desktop] explorer launched in ${Date.now() - startedAt}ms (${cwd})`)
   } catch (error) {
     console.warn(`[mg-dsh-desktop] open workspace failed in ${Date.now() - startedAt}ms:`, error)
   }
