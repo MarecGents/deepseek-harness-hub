@@ -47,6 +47,41 @@ interface ExplorerFocusApi {
 }
 
 let focusApi: ExplorerFocusApi | undefined
+let shellOpenApi: ((path: string) => boolean) | undefined
+
+/**
+ * Load shell32 ShellExecuteW. This is the same fast path as PowerShell's
+ * Invoke-Item / cmd's `start`, but without a console process and without
+ * inheriting a hidden-show flag that would hide the Explorer window.
+ */
+function loadShellOpenApi(): ((path: string) => boolean) | undefined {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const koffi = require('koffi') as {
+      load(name: string): {
+        func(sig: string): (...args: unknown[]) => unknown
+      }
+    }
+    const shell32 = koffi.load('shell32.dll')
+    const shellExecuteW = shell32.func(
+      'intptr_t ShellExecuteW(void* hwnd, str16 operation, str16 file, str16 parameters, str16 directory, int show)',
+    ) as (
+      hwnd: unknown,
+      operation: string | null,
+      file: string,
+      parameters: string | null,
+      directory: string | null,
+      show: number,
+    ) => bigint
+    return (path: string) => {
+      // SW_SHOWNORMAL = 1
+      const result = shellExecuteW(null, 'open', path, null, null, 1)
+      return result > 32n
+    }
+  } catch {
+    return undefined
+  }
+}
 
 function loadFocusApi(): ExplorerFocusApi | undefined {
   try {
@@ -150,16 +185,15 @@ export function openFolderInExplorer(folderPath: string): void {
     return
   }
 
-  // Use the shell's `start` builtin (ShellExecute) instead of spawning
-  // explorer.exe directly: it is noticeably faster at opening a folder and,
-  // with windowsHide, produces no console flash.
-  const cmd = process.env.ComSpec ?? 'cmd.exe'
-  spawn(cmd, ['/d', '/s', '/c', `start "" "${folderPath}"`], {
-    windowsHide: true,
-    detached: true,
-    stdio: 'ignore',
-    windowsVerbatimArguments: true,
-  }).unref()
+  // Prefer ShellExecuteW (same fast path as Invoke-Item / cmd start) without
+  // a console process and without a hidden-show flag. Fall back to spawning
+  // explorer.exe directly (never with windowsHide, which hides the folder).
+  const open = shellOpenApi ??= loadShellOpenApi()
+  if (open !== undefined && open(folderPath)) {
+    setTimeout(() => focusExplorerWindow(folderPath), FOCUS_DELAY_MS)
+    return
+  }
+  spawn('explorer.exe', [folderPath], { detached: true, stdio: 'ignore' }).unref()
   setTimeout(() => focusExplorerWindow(folderPath), FOCUS_DELAY_MS)
 }
 
