@@ -79,12 +79,13 @@ src/
     ├── config-api.ts     # 配置路由 + $DSH_HOME 持久化 + 旧名迁移
     ├── dwm-theme.ts      # 标题栏深浅：koffi FFI 直调 dwmapi（+ PowerShell 兜底）
     ├── theme-sync.ts     # 主题检测：MutationObserver 事件驱动 + 轮询兜底
-    ├── tray.ts           # 托盘菜单（显示/打开工作区/新建任务/退出）
+    ├── tray.ts           # 托盘菜单（独立 helper 进程 + 进程内 fallback）
     ├── state-store.ts    # 窗口几何记忆（校验防退化）
     └── icons.ts          # 图标加载/降采样/data URL
 bin/
 ├── launcher.mjs          # 快捷方式启动器：findDsh → junction 注册 bundle → spawn
 ├── launcher.vbs          # 隐藏控制台包装（postinstall 生成）
+├── tray-helper.mjs       # 独立托盘进程：stdin/stdout JSON IPC，不依赖 WebView2 事件循环
 └── mg-dsh.mjs            # mg-dsh 命令（终端启动，继承输出）
 scripts/
 ├── postinstall.mjs       # 检测 dsh/pnpm（未装则装）+ 创建桌面快捷方式
@@ -116,9 +117,10 @@ dsh 页面 ui-theme presenter 写 body[data-ds-dark-theme]
 #### 托盘命令链路
 
 ```
-托盘菜单/双击 → tray.ts 的 TrayActions
+托盘菜单/双击 → bin/tray-helper.mjs（独立事件循环）
+  → stdin/stdout JSON IPC → tray.ts 的 TrayActions（主进程执行）
   ├─ 显示主界面   → showWindow（重建窗口或显示隐藏保活窗口）
-  ├─ 打开工作区   → explorer 打开当前工作区目录 + koffi 轮询激活窗口（无 PowerShell 冷启动）
+  ├─ 打开工作区   → 隐藏 cmd start "" "目录" + koffi 轮询激活窗口
   ├─ 新建任务     → 窗口可见时先 win.focus()（触发 WebView2 实时重绘）
   │                 → evaluateScriptWithCallback 派发 mg:shell-command 事件
   │                 → client 半部 ctx.workspaces.startSession（官方流程，UI 即时刷新）

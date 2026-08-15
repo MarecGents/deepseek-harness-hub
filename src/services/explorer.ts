@@ -150,9 +150,16 @@ export function openFolderInExplorer(folderPath: string): void {
     return
   }
 
-  // NOTE: do NOT pass windowsHide:true here — it can cause Explorer to start
-  // with its folder window hidden, making the tray command appear dead.
-  spawn('explorer.exe', [folderPath], { detached: true, stdio: 'ignore' }).unref()
+  // Use the shell's `start` builtin (ShellExecute) instead of spawning
+  // explorer.exe directly: it is noticeably faster at opening a folder and,
+  // with windowsHide, produces no console flash.
+  const cmd = process.env.ComSpec ?? 'cmd.exe'
+  spawn(cmd, ['/d', '/s', '/c', `start "" "${folderPath}"`], {
+    windowsHide: true,
+    detached: true,
+    stdio: 'ignore',
+    windowsVerbatimArguments: true,
+  }).unref()
   setTimeout(() => focusExplorerWindow(folderPath), FOCUS_DELAY_MS)
 }
 
