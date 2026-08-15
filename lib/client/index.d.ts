@@ -38,7 +38,7 @@ export interface SettingsPluginItemOwnerProps {
     /** Marker field: card owner props are intentionally empty. */
     children?: never;
 }
-/** Required services: slots (card), workspaces + sessions (tray workspace/new-task). */
+/** Required services: slots (card), workspaces + sessions (tray), layout (right sidebar). */
 export declare const inject: string[];
 /** Client plugin body. */
 export declare function apply(ctx: ClientContext): void;

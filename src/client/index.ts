@@ -21,10 +21,13 @@
  */
 
 import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
-// Type-only: pulls the slots Context merge.
+// Type-only: pulls the slots Context merge and the layout slot declarations.
 import type {} from '@deepseek-ai/dsh-client-ui-slots'
+import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import { DesktopSettingsCard, type DesktopSettingsCardProps } from './settings-card.tsx'
 import { injectCardStyle } from './style.ts'
+import { RightSidebar } from './right-sidebar.tsx'
+import { injectRightSidebarStyle } from './right-sidebar-style.ts'
 
 /**
  * Tray-bridge ready flag, set at module scope — the very first thing that
@@ -50,8 +53,8 @@ export interface SettingsPluginItemOwnerProps {
   children?: never
 }
 
-/** Required services: slots (card), workspaces + sessions (tray workspace/new-task). */
-export const inject = ['slots', 'workspaces', 'sessions']
+/** Required services: slots (card), workspaces + sessions (tray), layout (right sidebar). */
+export const inject = ['slots', 'workspaces', 'sessions', 'layout']
 
 /** Resolve the current session's workspace from the client runtime. */
 function currentWorkspace(ctx: ClientContext): { path?: string; id?: string } | null {
@@ -127,9 +130,9 @@ export function apply(ctx: ClientContext): void {
   const slots = ctx.get('slots')
   if (slots === undefined) return
 
-  // Inject the card stylesheet (idempotent) so the card matches the built-in
-  // plugin cards even though tsdown extracts .css files out of client.js.
+  // Inject the card + right-sidebar stylesheets (idempotent).
   injectCardStyle()
+  injectRightSidebarStyle()
 
   try {
     slots.inject('settings.plugin.item', function* () {
@@ -143,4 +146,40 @@ export function apply(ctx: ClientContext): void {
     // Card mounting must never take down the tray bridge.
     console.warn('[mg-dsh-desktop] settings card injection failed:', error)
   }
+
+  // Right sidebar: occupy the official details slot and open it by default.
+  // priority -1 beats the official ui-conversation DetailsPanel (priority 0),
+  // so our right sidebar is the live occupant.
+  try {
+    slots.register({
+      name: 'details',
+      priority: -1,
+      inject: () => {
+        const layout = (ctx as unknown as { layout?: { openDetails(): void; closeDetails(): void } }).layout
+        return {
+          openDetails: () => { layout?.openDetails() },
+          closeDetails: () => { layout?.closeDetails() },
+        }
+      },
+    }, RightSidebar)
+  } catch (error) {
+    console.warn('[mg-dsh-desktop] right sidebar registration failed:', error)
+  }
+
+  // The layout panel actions may not be wired until the root entry's first
+  // render; retry opening the details column a few times.
+  let tries = 0
+  const tryOpenDetails = (): void => {
+    const layout = (ctx as unknown as { layout?: { openDetails(): void } }).layout
+    if (layout === undefined) {
+      if (++tries < 20) setTimeout(tryOpenDetails, 100)
+      return
+    }
+    try {
+      layout.openDetails()
+    } catch {
+      if (++tries < 20) setTimeout(tryOpenDetails, 100)
+    }
+  }
+  setTimeout(tryOpenDetails, 100)
 }
