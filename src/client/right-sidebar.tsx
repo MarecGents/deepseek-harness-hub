@@ -385,7 +385,7 @@ function Overview(props: {
           <div className={c.stat}><div className={c.statLabel}>工具调用</div><div className={c.statValue}>{stats?.toolMs !== undefined ? formatDuration(stats.toolMs) : '-'}</div></div>
           <div className={c.stat}><div className={c.statLabel}>首 token 平均</div><div className={c.statValue}>{ttftAvg !== undefined ? formatDuration(ttftAvg) : '-'}</div></div>
           <div className={c.stat}><div className={c.statLabel}>速度</div><div className={c.statValue}>{tps !== undefined ? `${formatTokensPerSecond(tps)} tok/s` : '-'}</div></div>
-          <div className={c.stat}><div className={c.statLabel}>缓存命中</div><div className={c.statValue}>{cacheHit !== undefined ? `${cacheHit}%` : '-'}</div></div>
+          <div className={c.stat}><div className={c.statLabel}>缓存命中</div><div className={c.statValue}>{cacheHit !== undefined && cacheHit !== null ? `${cacheHit}%` : '-'}</div></div>
           <div className={c.stat}><div className={c.statLabel}>输入 Tokens</div><div className={c.statValue}>{inputTokens !== undefined ? `${formatTokens(inputTokens)} tok` : '-'}</div></div>
           <div className={c.stat}><div className={c.statLabel}>输出 Tokens</div><div className={c.statValue}>{outputTokens !== undefined ? `${formatTokens(outputTokens)} tok` : '-'}</div></div>
         </div>
