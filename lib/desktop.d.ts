@@ -71,6 +71,11 @@ export interface DesktopShellHandle {
      */
     applySize(width: number, height: number): void;
     /**
+     * Request the current session's workspace path from the page. The callback
+     * receives the path, or null when the page cannot resolve one.
+     */
+    getCurrentWorkspacePath(cb: (path: string | null) => void): void;
+    /**
      * Dispatch a custom event to the web page (tray → client-plugin bridge).
      * Retries until the page's listener signals ready, so a click during the
      * SPA boot is not lost.

@@ -34,6 +34,12 @@ export declare class WebViewThemeDetector implements ThemeDetector {
     private readonly onLoad;
     constructor(webview: JsWebview);
     start(listener: ThemeChangeListener): void;
+    /** Handle one IPC message from the page (theme observer payloads only). */
+    handleIpcMessage(message: {
+        body: {
+            toString(): string;
+        };
+    }): void;
     stop(): void;
     /** Emit only on a value change (observer messages and polls share one feed). */
     private emit;

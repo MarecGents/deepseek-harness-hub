@@ -50,35 +50,66 @@ export interface SettingsPluginItemOwnerProps {
   children?: never
 }
 
-/** Required services: slots (card registration) + workspaces (tray new-task). */
-export const inject = ['slots', 'workspaces']
+/** Required services: slots (card), workspaces + sessions (tray workspace/new-task). */
+export const inject = ['slots', 'workspaces', 'sessions']
+
+/** Resolve the current session's workspace from the client runtime. */
+function currentWorkspace(ctx: ClientContext): { path?: string; id?: string } | null {
+  const client = ctx as unknown as {
+    sessions?: { list?: { getSnapshot?: () => { current?: string } } }
+    workspaces?: {
+      list?: {
+        getSnapshot?: () => {
+          items?: Array<{ workspaceId?: string; path?: string; sessionIds?: string[] }>
+          recentWorkspaceId?: string
+        }
+      }
+    }
+  }
+  const sessions = client.sessions
+  const workspaces = client.workspaces
+  if (sessions === undefined || workspaces === undefined) return null
+  const snapshot = workspaces.list?.getSnapshot?.()
+  const items = snapshot?.items ?? []
+  const current = sessions.list?.getSnapshot?.()?.current
+  if (current !== undefined) {
+    const ws = items.find((item) => item.sessionIds?.includes(current))
+    if (ws !== undefined) return { path: ws.path, id: ws.workspaceId }
+  }
+  const recentId = snapshot?.recentWorkspaceId
+  const recent = items.find((item) => item.workspaceId === recentId)
+  if (recent !== undefined) return { path: recent.path, id: recent.workspaceId }
+  return null
+}
+
+/** Send the current workspace path to the desktop host over IPC. */
+function sendCurrentWorkspace(ctx: ClientContext): void {
+  const ws = currentWorkspace(ctx)
+  const path = ws?.path
+  try {
+    const ipc = (window as unknown as { ipc?: { postMessage(message: string): void } }).ipc
+    ipc?.postMessage(`mg:workspace-path:${path === undefined ? '' : encodeURIComponent(path)}`)
+  } catch {
+    // Best-effort; the host falls back to its own cwd tracking.
+  }
+}
 
 /** Handle one tray command dispatched by the desktop shell. */
 function handleShellCommand(ctx: ClientContext, event: Event): void {
-  const detail = (event as CustomEvent<{ command?: string; workspaceId?: string }>).detail
+  const detail = (event as CustomEvent<{ command?: string }>).detail
   if (detail?.command !== 'new-task') return
-  // Official New Session flow (sidebar "+" button path). Pass the tray's
-  // workspace id ONLY when the client's workspace list actually holds it:
-  // connectWorkspace throws for unknown ids, and startSession swallows that
-  // into a console warning — an id mismatch would silently do nothing.
-  // Otherwise let startSession resolve the target itself (current session's
-  // workspace → recent workspace → clear).
+  // Official New Session flow (sidebar "+" button path). Deliberately pass no
+  // explicit workspaceId: startSession resolves the current session's
+  // workspace first, then the recent workspace, then clears.
   const workspaces = (ctx as unknown as {
-    workspaces?: {
-      startSession?: (workspaceId?: string) => void
-      list?: { getSnapshot?: () => { items?: Array<{ workspaceId?: string }> } }
-    }
+    workspaces?: { startSession?: () => void }
   }).workspaces
   if (workspaces === undefined || workspaces.startSession === undefined) {
     console.warn('[mg-dsh-desktop] new-task ignored: workspaces service unavailable')
     return
   }
-  const known = detail.workspaceId !== undefined
-    && workspaces.list?.getSnapshot?.()?.items?.some(
-      (item) => item.workspaceId === detail.workspaceId,
-    ) === true
-  console.log(`[mg-dsh-desktop] new-task${known ? ` in workspace ${detail.workspaceId}` : ''}`)
-  workspaces.startSession(known ? detail.workspaceId : undefined)
+  console.log('[mg-dsh-desktop] new-task (current session workspace)')
+  workspaces.startSession()
 }
 
 /** Client plugin body. */
@@ -87,6 +118,11 @@ export function apply(ctx: ClientContext): void {
   // shell retries its dispatch until __mgShellReady, so a listener that
   // never registers (card injection failure) would look like a dead button.
   window.addEventListener('mg:shell-command', (event) => handleShellCommand(ctx, event))
+
+  // Expose a page function the desktop host can call to request the current
+  // workspace path over IPC (used by tray "Open workspace").
+  ;(window as unknown as { __mgSendCurrentWorkspace?: () => void }).__mgSendCurrentWorkspace
+    = () => sendCurrentWorkspace(ctx)
 
   const slots = ctx.get('slots')
   if (slots === undefined) return

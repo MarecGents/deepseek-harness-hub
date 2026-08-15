@@ -77,6 +77,11 @@ export interface DesktopShellHandle {
    */
   applySize(width: number, height: number): void
   /**
+   * Request the current session's workspace path from the page. The callback
+   * receives the path, or null when the page cannot resolve one.
+   */
+  getCurrentWorkspacePath(cb: (path: string | null) => void): void
+  /**
    * Dispatch a custom event to the web page (tray → client-plugin bridge).
    * Retries until the page's listener signals ready, so a click during the
    * SPA boot is not lost.
@@ -190,6 +195,8 @@ export function openDesktopShell(
   let tray: WebViewTray | undefined
   /** Custom size requested while maximized; consumed by the next un-maximize. */
   let pendingCustomSize: { width: number; height: number } | undefined
+  /** One pending "current workspace path" request callback at a time. */
+  let pendingWorkspacePathCb: ((path: string | null) => void) | undefined
 
   /**
    * Apply the title-bar theme to one window/webview pair. 'system' follows
@@ -264,6 +271,23 @@ export function openDesktopShell(
     const wv = w.createWebview({ html: splash })
     webview = wv
     wv.setBackgroundColor(...DARK_BG, 255)
+
+    // Central IPC handler: theme-sync and workspace-path requests share the
+    // single onIpcMessage slot so neither overwrites the other.
+    wv.onIpcMessage((message) => {
+      detector?.handleIpcMessage(message)
+      try {
+        const text = message.body.toString()
+        if (!text.startsWith('mg:workspace-path:')) return
+        const raw = text.slice('mg:workspace-path:'.length)
+        const path = raw === '' ? null : decodeURIComponent(raw)
+        const cb = pendingWorkspacePathCb
+        pendingWorkspacePathCb = undefined
+        cb?.(path)
+      } catch {
+        // Ignore malformed IPC payloads.
+      }
+    })
 
     splashTimer = setTimeout(() => {
       if (webview !== wv || wv.isDisposed()) return
@@ -505,6 +529,26 @@ export function openDesktopShell(
       } catch {
         // Best-effort; a failed resize must not break the settings save.
       }
+    },
+    getCurrentWorkspacePath: (cb: (path: string | null) => void) => {
+      if (webview === undefined || webview.isDisposed()) {
+        cb(null)
+        return
+      }
+      pendingWorkspacePathCb = cb
+      try {
+        webview.evaluateScript('window.__mgSendCurrentWorkspace ? window.__mgSendCurrentWorkspace() : null')
+      } catch {
+        pendingWorkspacePathCb = undefined
+        cb(null)
+        return
+      }
+      setTimeout(() => {
+        if (pendingWorkspacePathCb === cb) {
+          pendingWorkspacePathCb = undefined
+          cb(null)
+        }
+      }, 2000)
     },
     dispatchEvent,
     dispose: () => {

@@ -116,50 +116,29 @@ function exitProcess(_ctx: Context): void {
   process.exit(0)
 }
 
-/** Track the most recently active session's working directory. */
+/** Track the most recently active session's working directory (fallback). */
 let activeCwd: string | undefined
 
 /**
- * Resolve the CURRENT workspace directory the user is working in, in order of
- * authority:
- *   1. The most recently used workspace (ctx.workspaceRegistry.list()[0] —
- *      dsh prepends the workspace of a newly attached session, so this is the
- *      workspace the user just selected).
- *   2. The most recently active session's cwd (session/event tracking).
- *   3. The process launch cwd (last resort).
+ * Tray "Open workspace": ask the page for the current session's workspace
+ * path, then reveal it in Explorer. Falls back to activeCwd/process.cwd.
  */
-function currentWorkspacePath(ctx: Context): string {
-  try {
-    const registry = ctx.get('workspaceRegistry') as { list?: () => Array<{ path?: string }> } | undefined
-    const first = registry?.list?.()?.[0]
-    if (first?.path !== undefined && first.path !== '') return first.path
-  } catch {
-    // Fall through.
-  }
-  return activeCwd ?? process.cwd()
-}
-
-/** The id of the most recently used workspace, if any (tray new-task target). */
-function currentWorkspaceId(ctx: Context): string | undefined {
-  try {
-    const registry = ctx.get('workspaceRegistry') as { list?: () => Array<{ id?: string }> } | undefined
-    return registry?.list?.()?.[0]?.id
-  } catch {
-    return undefined
-  }
-}
-
-/**
- * Tray "Open workspace": reveal the CURRENT workspace's directory in Explorer
- * (the folder the user selected in dsh — not the plugin's own directory).
- */
-async function openWorkspaceDir(ctx: Context): Promise<void> {
+async function openWorkspaceDir(
+  ctx: Context,
+  getCurrentPath: (cb: (path: string | null) => void) => void,
+): Promise<void> {
   const startedAt = Date.now()
   console.log(`[mg-dsh-desktop] open workspace start at ${startedAt}`)
   try {
-    const cwd = currentWorkspacePath(ctx)
-    openFolderInExplorer(cwd)
-    console.log(`[mg-dsh-desktop] explorer launched in ${Date.now() - startedAt}ms (${cwd})`)
+    getCurrentPath((path) => {
+      const cwd = path ?? activeCwd ?? process.cwd()
+      try {
+        openFolderInExplorer(cwd)
+        console.log(`[mg-dsh-desktop] explorer launched in ${Date.now() - startedAt}ms (${cwd})`)
+      } catch (error) {
+        console.warn(`[mg-dsh-desktop] open workspace failed in ${Date.now() - startedAt}ms:`, error)
+      }
+    })
   } catch (error) {
     console.warn(`[mg-dsh-desktop] open workspace failed in ${Date.now() - startedAt}ms:`, error)
   }
@@ -168,24 +147,12 @@ async function openWorkspaceDir(ctx: Context): Promise<void> {
 /**
  * Tray "New task": dispatch the command into the web page. The browser half
  * runs the OFFICIAL client-side flow (`ctx.workspaces.startSession` — the
- * same path the sidebar "+" button uses): it creates the session bound to the
- * current workspace, merges it into the client's session list store, and
- * opens it, so the UI shows and navigates to the new task immediately.
- *
- * This must run client-side: a host-side create (apiProxy.sessions.create)
- * does publish the session, but the browser's list store only learns about
- * new sessions through its own create/merge or a reconnect re-pull — nothing
- * the host can push — so the sidebar would never show it.
+ * same path the sidebar "+" button uses): with no explicit workspaceId it
+ * resolves the CURRENT session's workspace first, then the recent workspace.
  */
-function newTaskInWeb(ctx: Context, dispatch: (name: string, detail?: Record<string, unknown>) => void): void {
+function newTaskInWeb(_ctx: Context, dispatch: (name: string, detail?: Record<string, unknown>) => void): void {
   try {
-    const workspaceId = currentWorkspaceId(ctx)
-    dispatch('mg:shell-command', {
-      command: 'new-task',
-      // The workspace the user is currently in; omitted when none exists and
-      // the client falls back to the current session / recency projection.
-      ...(workspaceId === undefined ? {} : { workspaceId }),
-    })
+    dispatch('mg:shell-command', { command: 'new-task' })
   } catch {
     // Best-effort.
   }
@@ -285,7 +252,15 @@ export function apply(ctx: Context, config: Config): void {
         width: effective.width,
         height: effective.height,
         theme: effective.theme,
-        openWorkspace: () => { void openWorkspaceDir(ctx) },
+        openWorkspace: () => {
+          void openWorkspaceDir(ctx, (cb) => {
+            if (shell === undefined) {
+              cb(null)
+              return
+            }
+            shell.getCurrentWorkspacePath(cb)
+          })
+        },
         newTask: () => { newTaskInWeb(ctx, (name, detail) => shell?.dispatchEvent(name, detail)) },
         // Live tray behavior: read the persisted config at every decision
         // point so a settings change applies without restarting.
