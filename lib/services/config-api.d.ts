@@ -32,6 +32,8 @@ export interface ShellConfig {
     closeToTray: boolean;
     /** Show a Windows toast when a top-level user task completes. */
     notifyOnTaskComplete: boolean;
+    /** Active web-UI skin id ('default' = native look). */
+    skin: string;
 }
 /** Defaults (mirror the plugin Config composition values). */
 export declare const DEFAULT_SHELL_CONFIG: ShellConfig;

@@ -14,6 +14,7 @@ import { useEffect, useState, type ReactNode } from 'react'
 import clsx from 'clsx'
 import { IconChevronDownOutline14 } from '@deepseek-ai/dsh-client-ui-primitives'
 import { CARD_CSS_CLASSES as c } from './style.ts'
+import { SKINS, DEFAULT_SKIN_ID, applySkin } from './skins.ts'
 
 /** Owner share of a plugin card (the section supplies nothing). */
 export interface DesktopSettingsCardProps {
@@ -30,6 +31,7 @@ interface ShellConfig {
   minimizeToTray: boolean
   closeToTray: boolean
   notifyOnTaskComplete: boolean
+  skin: string
 }
 
 /** Localized copy kept inline (the card is small; no locale plugin needed). */
@@ -50,6 +52,11 @@ const COPY = {
   closeHint: '点 X 关闭窗口时保持进程与托盘存活（不勾选则完全退出）',
   notifyLabel: '会话完成通知',
   notifyHint: '任务回合完成时弹出系统通知，点击回到窗口',
+  skinSection: '界面皮肤',
+  skinHint: '点击即应用并保存；「默认」恢复原生外观。深色模式下的皮肤跟随 dsh 主题设置',
+  skinDefaultName: '默认',
+  skinDefaultDesc: '官方原生外观',
+  skinApplyFailed: '皮肤切换失败，请重试',
   discard: '放弃',
   save: '保存',
   saving: '保存中…',
@@ -93,6 +100,8 @@ export function DesktopSettingsCard(_props: DesktopSettingsCardProps): ReactNode
   const [saving, setSaving] = useState(false)
   const [failed, setFailed] = useState(false)
   const [saved, setSaved] = useState(false)
+  const [skinId, setSkinId] = useState<string>(DEFAULT_SKIN_ID)
+  const [skinFailed, setSkinFailed] = useState(false)
 
   // Load the config once on mount. The width/height fields seed from the
   // window's ACTUAL current size (the SPA viewport ≈ the native client area),
@@ -108,6 +117,7 @@ export function DesktopSettingsCard(_props: DesktopSettingsCardProps): ReactNode
         : { ...value, width: window.innerWidth, height: window.innerHeight }
       setConfig(initial)
       setDraft(initial)
+      setSkinId(initial === null ? DEFAULT_SKIN_ID : initial.skin)
       setLoading(false)
     })
     return () => { alive = false }
@@ -160,6 +170,25 @@ export function DesktopSettingsCard(_props: DesktopSettingsCardProps): ReactNode
     setDraft(config)
     setFailed(false)
     setSaved(false)
+  }
+
+  /** Apply a skin immediately: persist, then restyle the page live. */
+  const onPickSkin = (id: string): void => {
+    if (id === skinId) return
+    setSkinFailed(false)
+    setSkinId(id)
+    applySkin(id)
+    void saveConfig({ skin: id }).then((value) => {
+      if (value !== null) {
+        setConfig((prev) => prev === null ? prev : { ...prev, skin: id })
+        setDraft((prev) => prev === null ? prev : { ...prev, skin: id })
+      } else {
+        // Roll back the live style if the persistence failed.
+        applySkin(DEFAULT_SKIN_ID)
+        setSkinId(DEFAULT_SKIN_ID)
+        setSkinFailed(true)
+      }
+    })
   }
 
   return (
@@ -263,6 +292,52 @@ export function DesktopSettingsCard(_props: DesktopSettingsCardProps): ReactNode
                         <span>{COPY.notifyLabel}</span>
                       </label>
                       <div className={c.hint}>{COPY.notifyHint}</div>
+                    </div>
+                  )}
+                  {/* Skin picker */}
+                  {draft !== null && (
+                    <div className={c.section}>
+                      <div className={c.sectionTitle}>{COPY.skinSection}</div>
+                      <div className={c.hint}>{COPY.skinHint}</div>
+                      <div style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))',
+                        gap: 8,
+                        marginTop: 8,
+                      }}>
+                        <button
+                          type="button"
+                          className={c.select}
+                          aria-pressed={skinId === DEFAULT_SKIN_ID}
+                          onClick={() => onPickSkin(DEFAULT_SKIN_ID)}
+                          style={{
+                            textAlign: 'left',
+                            padding: '8px 10px',
+                            border: skinId === DEFAULT_SKIN_ID ? '2px solid var(--dsw-alias-brand-primary, #4a90d9)' : undefined,
+                          }}
+                        >
+                          <strong>{COPY.skinDefaultName}</strong>
+                          <div style={{ fontSize: 11, opacity: 0.7 }}>{COPY.skinDefaultDesc}</div>
+                        </button>
+                        {SKINS.map((skin) => (
+                          <button
+                            key={skin.id}
+                            type="button"
+                            className={c.select}
+                            aria-pressed={skinId === skin.id}
+                            onClick={() => onPickSkin(skin.id)}
+                            style={{
+                              textAlign: 'left',
+                              padding: '8px 10px',
+                              border: skinId === skin.id ? '2px solid var(--dsw-alias-brand-primary, #4a90d9)' : undefined,
+                            }}
+                          >
+                            <strong>{skin.name}</strong>
+                            <div style={{ fontSize: 11, opacity: 0.7 }}>{skin.description}</div>
+                          </button>
+                        ))}
+                      </div>
+                      {skinFailed ? <p className={c.failed} role="status">{COPY.skinApplyFailed}</p> : null}
                     </div>
                   )}
                 </>

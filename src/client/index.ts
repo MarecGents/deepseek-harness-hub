@@ -30,6 +30,7 @@ import { DesktopSettingsCard, type DesktopSettingsCardProps } from './settings-c
 import { injectCardStyle } from './style.ts'
 import { RightSidebar } from './right-sidebar.tsx'
 import { injectRightSidebarStyle } from './right-sidebar-style.ts'
+import { applySkin, fetchStoredSkin } from './skins.ts'
 
 /**
  * Tray-bridge ready flag, set at module scope — the very first thing that
@@ -151,6 +152,9 @@ export function apply(ctx: ClientContext): void {
   // Inject the card + right-sidebar stylesheets (idempotent).
   injectCardStyle()
   injectRightSidebarStyle()
+
+  // Restore the persisted skin once the config API is reachable.
+  void fetchStoredSkin().then((skinId) => applySkin(skinId))
 
   try {
     slots.inject('settings.plugin.item', function* () {
