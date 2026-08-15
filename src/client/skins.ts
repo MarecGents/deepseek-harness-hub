@@ -32,7 +32,12 @@ function block(selector: string, palette: Palette): string {
 }
 
 function buildCss(skin: DshSkin): string {
-  return `${block(':root', skin.light)}${block('body[data-ds-dark-theme]', skin.dark)}`
+  // The web UI declares its alias tokens on `body` (light) and
+  // `body[data-ds-dark-theme]` (dark). Overriding on `:root` would lose the
+  // cascade (body wins for its own subtree), so both blocks must target the
+  // same selectors the app uses; the injected stylesheet is appended to head
+  // and therefore wins at equal specificity.
+  return `${block('body', skin.light)}${block('body[data-ds-dark-theme]', skin.dark)}`
 }
 
 /**
