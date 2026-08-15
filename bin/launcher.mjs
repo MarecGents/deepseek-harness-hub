@@ -9,7 +9,7 @@
  */
 
 import { spawn, spawnSync } from 'node:child_process'
-import { existsSync, lstatSync, readFileSync, appendFileSync, rmSync, symlinkSync, writeFileSync, mkdirSync } from 'node:fs'
+import { existsSync, lstatSync, readFileSync, readlinkSync, appendFileSync, rmSync, symlinkSync, writeFileSync, mkdirSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { acquireLock, dshHome, releaseLock } from './lock.mjs'
@@ -151,14 +151,28 @@ function ensureBundleInstalled() {
     if (stat !== null && stat.isDirectory() && !stat.isSymbolicLink()) {
       // A real directory (pnpm's isolated layout or a manual copy): use it.
       log(`found ${BUNDLE_NAME} already in the web profile (real directory)`)
-    } else if (stat !== null && !existsSync(linkPath)) {
-      // Dangling link (target removed): replace it.
-      rmSync(linkPath, { recursive: true, force: true })
-      symlinkSync(PACKAGE_ROOT, linkPath, 'junction')
-      log(`relinked ${BUNDLE_NAME} into the web profile`)
     } else if (stat === null) {
       symlinkSync(PACKAGE_ROOT, linkPath, 'junction')
       log(`linked ${BUNDLE_NAME} into the web profile`)
+    } else {
+      // A junction/symlink — including a VALID one pointing elsewhere (the
+      // npm-global install vs this dev clone). Leaving a stale junction in
+      // place silently loads old code, so repoint it to this package root
+      // whenever it does not already point here.
+      let current = null
+      try {
+        current = existsSync(linkPath) ? readlinkSync(linkPath) : null
+      } catch {
+        current = null
+      }
+      const normalize = (p) => (p ?? '').replace(/^\\\\\?\\/, '').replace(/\/+$/, '').toLowerCase()
+      if (normalize(current) === normalize(PACKAGE_ROOT)) {
+        log(`${BUNDLE_NAME} already linked from this package root`)
+      } else {
+        rmSync(linkPath, { recursive: true, force: true })
+        symlinkSync(PACKAGE_ROOT, linkPath, 'junction')
+        log(`relinked ${BUNDLE_NAME} into the web profile`)
+      }
     }
   } catch (error) {
     log(`bundle link failed: ${error.message}`)
