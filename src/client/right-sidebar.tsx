@@ -14,11 +14,18 @@ import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type Re
 import clsx from 'clsx'
 import {
   IconBranchOutline16,
+  IconCheckOutline16,
   IconCodeOutline16,
   IconDataOutline16,
+  IconDownloadOutline16,
+  IconEditOutline16,
   IconFolderClose16,
   IconFolderOpen16,
   IconPanelLeftOutline16,
+  IconPlayOutline16,
+  IconRightUpOutline16,
+  IconSendOutline16,
+  IconThinkOutline16,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import { RIGHT_SIDEBAR_CSS_CLASSES as c } from './right-sidebar-style.ts'
 
@@ -429,6 +436,36 @@ export function RightSidebar({ ctx }: RightSidebarProps): ReactNode {
   )
 }
 
+/** One Reasonix-style stat card: small icon + caption label above a bold value. */
+function StatCard({ icon: Icon, label, value }: { icon: (props: { size?: number; className?: string }) => ReactNode; label: string; value: string }): ReactNode {
+  return (
+    <div className={c.statCard}>
+      <div className={c.statHead}>
+        <Icon className={c.statIcon} size={14} />
+        <span className={c.statLabel}>{label}</span>
+      </div>
+      <div className={c.statValue}>{value}</div>
+    </div>
+  )
+}
+
+/** Map a git porcelain status to a semantic badge kind (Reasonix-style). */
+function gitStatusKind(status: string): 'added' | 'modified' | 'deleted' | 'renamed' | 'untracked' {
+  const s = status.trim()
+  if (s === '??') return 'untracked'
+  if (s.startsWith('A')) return 'added'
+  if (s.startsWith('D')) return 'deleted'
+  if (s.startsWith('R') || s.startsWith('C')) return 'renamed'
+  return 'modified'
+}
+
+/** Short display text for a git porcelain status: ' M' → 'M', '??' → '?'. */
+function gitStatusText(status: string): string {
+  const s = status.trim()
+  if (s === '??') return '?'
+  return s[0] ?? '?'
+}
+
 function Overview(props: {
   totalInputTokens?: number
   totalOutputTokens?: number
@@ -467,48 +504,53 @@ function Overview(props: {
     <div>
       <div className={c.section}>
         <div className={c.sectionTitle}>总上下文 TOKEN</div>
-        <div className={clsx(c.chartWrap, c.chartCard)}>
-          <div className={c.chart} style={chartGradient ? { background: chartGradient } : undefined}>
-            <div className={c.chartCenter}>
-              <div>
-                <div>{formatTokens(chartTotal)}</div>
-                <div>Tokens</div>
+        <div className={c.card}>
+          <div className={c.chartWrap}>
+            <div className={c.chart} style={chartGradient ? { background: chartGradient } : undefined}>
+              <div className={c.chartCenter}>
+                <div>
+                  <div>{formatTokens(chartTotal)}</div>
+                  <div>Tokens</div>
+                </div>
               </div>
             </div>
-          </div>
-          <div className={c.legend}>
-            <div className={c.legendRow}><i className={c.legendDot} style={{ background: 'var(--dsw-alias-state-business-primary, #3964fe)' }} />总输入 {formatTokens(chartInput)}</div>
-            <div className={c.legendRow}><i className={c.legendDot} style={{ background: 'var(--dsw-alias-state-success-primary, #16a34a)' }} />总输出 {formatTokens(chartOutput)}</div>
+            <div className={c.legend}>
+              <div className={c.legendRow}><i className={c.legendDot} style={{ background: 'var(--dsw-alias-state-business-primary)' }} />总输入 {formatTokens(chartInput)}</div>
+              <div className={c.legendRow}><i className={c.legendDot} style={{ background: 'var(--dsw-alias-state-success-primary)' }} />总输出 {formatTokens(chartOutput)}</div>
+            </div>
           </div>
         </div>
+      </div>
+      <div className={c.section}>
+        <div className={c.sectionTitle}>会话统计</div>
         <div className={c.statGrid}>
-          <div className={c.stat}><div className={c.statLabel}>轮次 / 步数</div><div className={c.statValue}>{stats?.turns ?? 0} 轮 · {stats?.steps ?? 0} 步</div></div>
-          <div className={c.stat}><div className={c.statLabel}>LLM 耗时</div><div className={c.statValue}>{formatDuration(stats?.llmMs ?? 0)}</div></div>
-          <div className={c.stat}><div className={c.statLabel}>工具调用</div><div className={c.statValue}>{formatDuration(stats?.toolMs ?? 0)}</div></div>
-          <div className={c.stat}><div className={c.statLabel}>首 token 平均</div><div className={c.statValue}>{formatDuration(ttftAvg ?? 0)}</div></div>
-          <div className={c.stat}><div className={c.statLabel}>速度</div><div className={c.statValue}>{formatTokensPerSecond(tps ?? 0)} tok/s</div></div>
-          <div className={c.stat}><div className={c.statLabel}>缓存命中</div><div className={c.statValue}>{cacheHit ?? 0}%</div></div>
-          <div className={c.stat}><div className={c.statLabel}>输入 Tokens</div><div className={c.statValue}>{formatTokens(inputTokens ?? 0)} tok</div></div>
-          <div className={c.stat}><div className={c.statLabel}>输出 Tokens</div><div className={c.statValue}>{formatTokens(outputTokens ?? 0)} tok</div></div>
+          <StatCard icon={IconDataOutline16} label="轮次 / 步数" value={`${stats?.turns ?? 0} 轮 · ${stats?.steps ?? 0} 步`} />
+          <StatCard icon={IconThinkOutline16} label="LLM 耗时" value={formatDuration(stats?.llmMs ?? 0)} />
+          <StatCard icon={IconCodeOutline16} label="工具调用" value={formatDuration(stats?.toolMs ?? 0)} />
+          <StatCard icon={IconPlayOutline16} label="首 token 平均" value={formatDuration(ttftAvg ?? 0)} />
+          <StatCard icon={IconRightUpOutline16} label="速度" value={`${formatTokensPerSecond(tps ?? 0)} tok/s`} />
+          <StatCard icon={IconCheckOutline16} label="缓存命中" value={`${cacheHit ?? 0}%`} />
+          <StatCard icon={IconDownloadOutline16} label="输入 Tokens" value={`${formatTokens(inputTokens ?? 0)} tok`} />
+          <StatCard icon={IconSendOutline16} label="输出 Tokens" value={`${formatTokens(outputTokens ?? 0)} tok`} />
         </div>
       </div>
       <div className={c.section}>
         <div className={c.sectionTitle}>本轮对话 Token</div>
         <div className={c.statGrid}>
-          <div className={c.stat}><div className={c.statLabel}>本轮输入</div><div className={c.statValue}>{formatTokens(billedInputTokens(turn))} tok</div></div>
-          <div className={c.stat}><div className={c.statLabel}>本轮输出</div><div className={c.statValue}>{formatTokens(turn.outputTokens)} tok</div></div>
-          <div className={c.stat}><div className={c.statLabel}>本轮缓存命中</div><div className={c.statValue}>{turnCache}%</div></div>
-          <div className={c.stat}><div className={c.statLabel}>本轮总计</div><div className={c.statValue}>{formatTokens(turnTotalValue)} tok</div></div>
+          <StatCard icon={IconDownloadOutline16} label="本轮输入" value={`${formatTokens(billedInputTokens(turn))} tok`} />
+          <StatCard icon={IconSendOutline16} label="本轮输出" value={`${formatTokens(turn.outputTokens)} tok`} />
+          <StatCard icon={IconCheckOutline16} label="本轮缓存命中" value={`${turnCache}%`} />
+          <StatCard icon={IconDataOutline16} label="本轮总计" value={`${formatTokens(turnTotalValue)} tok`} />
         </div>
       </div>
       <div className={c.section}>
         <div className={c.sectionTitle}>工作区</div>
         {loading ? <div className={c.empty}>加载中…</div> : (
           <div className={c.statGrid}>
-            <div className={c.stat}><div className={c.statLabel}>文件</div><div className={c.statValue}>{fileCount}</div></div>
-            <div className={c.stat}><div className={c.statLabel}>文件夹</div><div className={c.statValue}>{dirCount}</div></div>
-            <div className={c.stat}><div className={c.statLabel}>Git</div><div className={c.statValue}>{git?.isGit ? (git.branch || '仓库') : '非 Git'}</div></div>
-            <div className={c.stat}><div className={c.statLabel}>变更</div><div className={c.statValue}>{git?.changes.length ?? 0}</div></div>
+            <StatCard icon={IconFolderOpen16} label="文件" value={String(fileCount)} />
+            <StatCard icon={IconFolderClose16} label="文件夹" value={String(dirCount)} />
+            <StatCard icon={IconBranchOutline16} label="Git" value={git?.isGit ? (git.branch || '仓库') : '非 Git'} />
+            <StatCard icon={IconEditOutline16} label="变更" value={String(git?.changes.length ?? 0)} />
           </div>
         )}
       </div>
@@ -528,11 +570,11 @@ function GitTab({ git, loading }: { git: GitInfo | null; loading: boolean }): Re
     if (items.length === 0) return null
     return (
       <div className={c.section}>
-        <div className={c.sectionTitle}>{label}（{items.length}）</div>
+        <div className={c.gitGroupHead}>{label}<span className={c.gitGroupBadge}>{items.length}</span></div>
         <ul className={c.gitChanges}>
           {items.map((change, index) => (
             <li key={`${label}-${change.path}-${index}`} className={c.gitChange}>
-              <span className={c.gitStatus}>{change.status || '??'}</span>
+              <span className={`${c.gitStatus} ${c.gitStatus}-${gitStatusKind(change.status)}`}>{gitStatusText(change.status)}</span>
               <span className={c.treeName}>{change.path}</span>
             </li>
           ))}
@@ -543,7 +585,13 @@ function GitTab({ git, loading }: { git: GitInfo | null; loading: boolean }): Re
 
   return (
     <div>
-      <div className={c.gitBranch}>分支：{git.branch || git.head || '未知'}</div>
+      <div className={c.section}>
+        <div className={c.gitBranchCard}>
+          <IconBranchOutline16 className={c.gitBranchIcon} size={16} />
+          <span className={c.gitBranchName}>{git.branch || 'HEAD'}</span>
+          {git.head !== '' && <span className={c.gitBranchHead}>{git.head.slice(0, 7)}</span>}
+        </div>
+      </div>
       {git.changes.length === 0
         ? <div className={c.empty}>工作区无变更</div>
         : (

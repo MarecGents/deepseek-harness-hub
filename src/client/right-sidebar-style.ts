@@ -30,14 +30,16 @@ export const RIGHT_SIDEBAR_CSS_CLASSES = {
   refresh: 'mg-rs-refresh',
 
   chartWrap: 'mg-rs-chart-wrap',
-  chartCard: 'mg-rs-chart-card',
   chart: 'mg-rs-chart',
   chartCenter: 'mg-rs-chart-center',
   legend: 'mg-rs-legend',
   legendRow: 'mg-rs-legend-row',
   legendDot: 'mg-rs-legend-dot',
+  card: 'mg-rs-card',
   statGrid: 'mg-rs-stat-grid',
-  stat: 'mg-rs-stat',
+  statCard: 'mg-rs-stat-card',
+  statHead: 'mg-rs-stat-head',
+  statIcon: 'mg-rs-stat-icon',
   statLabel: 'mg-rs-stat-label',
   statValue: 'mg-rs-stat-value',
 
@@ -47,7 +49,12 @@ export const RIGHT_SIDEBAR_CSS_CLASSES = {
   treeName: 'mg-rs-tree-name',
   treeChildren: 'mg-rs-tree-children',
 
-  gitBranch: 'mg-rs-git-branch',
+  gitBranchCard: 'mg-rs-git-branch-card',
+  gitBranchIcon: 'mg-rs-git-branch-icon',
+  gitBranchName: 'mg-rs-git-branch-name',
+  gitBranchHead: 'mg-rs-git-branch-head',
+  gitGroupHead: 'mg-rs-git-group-head',
+  gitGroupBadge: 'mg-rs-git-group-badge',
   gitChanges: 'mg-rs-git-changes',
   gitChange: 'mg-rs-git-change',
   gitStatus: 'mg-rs-git-status',
@@ -211,11 +218,12 @@ const STYLE_TEXT = `
   align-items: center;
   gap: 10px;
 }
-.${c.chartCard} {
+/* Reasonix-style rounded card framing a group of info, using dsh tokens. */
+.${c.card} {
   padding: 12px;
   border-radius: 12px;
   border: 1px solid var(--dsw-alias-border-l2, rgb(0 0 0 / 10%));
-  background: var(--dsw-alias-bg-layer-3, #ffffff);
+  background: var(--dsw-alias-bg-layer-1, #ffffff);
 }
 .${c.chart} {
   position: relative;
@@ -247,17 +255,37 @@ const STYLE_TEXT = `
   color: var(--dsw-alias-label-primary, #0f1115);
 }
 .${c.legendDot} { width: 10px; height: 10px; border-radius: 50%; flex: none; }
-.${c.statGrid} { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px; }
-.${c.stat} { padding: 4px 0; min-width: 0; }
+.${c.statGrid} { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+/* Reasonix-style stat card: small icon + caption label above a bold value. */
+.${c.statCard} {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--dsw-alias-border-l2, rgb(0 0 0 / 10%));
+  background: var(--dsw-alias-bg-layer-1, #ffffff);
+}
+.${c.statHead} {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.${c.statIcon} { flex: none; color: var(--dsw-alias-state-business-primary, #3964fe); }
 .${c.statLabel} {
   font-size: 12px;
   line-height: 18px;
-  color: var(--dsw-alias-label-secondary, #61666b);
+  color: var(--dsw-alias-label-tertiary, #81858c);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .${c.statValue} {
-  font-size: 13px;
-  line-height: 20px;
-  font-weight: 500;
+  font-size: 15px;
+  line-height: 22px;
+  font-weight: 600;
   color: var(--dsw-alias-label-primary, #0f1115);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -279,16 +307,57 @@ const STYLE_TEXT = `
 .${c.treeIcon} { flex: none; color: var(--dsw-alias-label-secondary, #61666b); }
 .${c.treeName} { overflow: hidden; text-overflow: ellipsis; }
 .${c.treeChildren} { list-style: none; margin: 0; padding-left: 16px; }
-.${c.gitBranch} {
-  display: inline-flex;
+.${c.gitBranchCard} {
+  display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px 10px;
-  border-radius: 8px;
-  background: var(--dsw-alias-bg-layer-3, #ffffff);
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--dsw-alias-bg-layer-1, #ffffff);
   border: 1px solid var(--dsw-alias-border-l2, rgb(0 0 0 / 10%));
+}
+.${c.gitBranchIcon} { flex: none; color: var(--dsw-alias-state-business-primary, #3964fe); }
+.${c.gitBranchName} {
   font-size: 13px;
   line-height: 20px;
+  font-weight: 500;
+  color: var(--dsw-alias-label-primary, #0f1115);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.${c.gitBranchHead} {
+  margin-left: auto;
+  flex: none;
+  font-size: 12px;
+  line-height: 18px;
+  font-variant-numeric: tabular-nums;
+  color: var(--dsw-alias-label-tertiary, #81858c);
+}
+.${c.gitGroupHead} {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 600;
+  color: var(--dsw-alias-label-primary, #0f1115);
+}
+.${c.gitGroupBadge} {
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9px;
+  background: var(--dsw-alias-bg-module-platform, #f5f6f7);
+  color: var(--dsw-alias-label-secondary, #61666b);
+  font-size: 11px;
+  line-height: 16px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
 }
 .${c.gitChanges} { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
 .${c.gitChange} {
@@ -303,13 +372,36 @@ const STYLE_TEXT = `
 .${c.gitChange}:hover { background: var(--dsw-alias-interactive-bg-hover, rgb(0 0 0 / 6%)); }
 .${c.gitStatus} {
   flex: none;
-  min-width: 24px;
+  min-width: 22px;
   text-align: center;
-  padding: 1px 4px;
+  padding: 1px 5px;
   border-radius: 6px;
-  font-weight: 500;
+  font-size: 11px;
+  line-height: 16px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+/* Semantic git-status badges, mirroring Reasonix's per-status coloring but
+   driven by dsh state tokens. */
+.${c.gitStatus}-added {
+  background: color-mix(in srgb, var(--dsw-alias-state-success-primary, #22c55e) 14%, transparent);
+  color: var(--dsw-alias-state-success-primary, #22c55e);
+}
+.${c.gitStatus}-modified {
+  background: color-mix(in srgb, var(--dsw-alias-state-warn-primary, #f59e0b) 14%, transparent);
+  color: var(--dsw-alias-state-warn-primary, #f59e0b);
+}
+.${c.gitStatus}-deleted {
+  background: color-mix(in srgb, var(--dsw-alias-state-error-primary, #ec1919) 12%, transparent);
+  color: var(--dsw-alias-state-error-primary, #ec1919);
+}
+.${c.gitStatus}-renamed {
+  background: color-mix(in srgb, var(--dsw-alias-state-business-primary, #3964fe) 14%, transparent);
+  color: var(--dsw-alias-state-business-primary, #3964fe);
+}
+.${c.gitStatus}-untracked {
   background: var(--dsw-alias-bg-module-platform, #f5f6f7);
-  color: var(--dsw-alias-label-secondary, #61666b);
+  color: var(--dsw-alias-label-tertiary, #81858c);
 }
 .${c.empty} { padding: 12px 0; font-size: 13px; line-height: 20px; color: var(--dsw-alias-label-tertiary, #81858c); }
 .${c.collapsed} {
