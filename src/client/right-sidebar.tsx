@@ -1,9 +1,9 @@
 /**
- * RightSidebar — the mg-dsh-desktop right sidebar rendered through the
- * official `shell.overlay` slot (additive and always mounted, so it also
- * works in blank/new conversations where the details column is forced to 0).
- * It mirrors the left sidebar's collapse/rail behavior and provides three
- * tabs:
+ * RightSidebar — the mg-dsh-desktop right sidebar mounted as a body portal
+ * (like dsh-better-sidebar), independent of the official details column so it
+ * also works in blank/new conversations where the details column is forced
+ * to 0. It mirrors the left sidebar's collapse/rail behavior and provides
+ * three tabs:
  *  - Overview: context-token usage rendered as a fan/donut chart.
  *  - Files: current workspace file/folder tree, strictly synced to the
  *    current session's workspace.
@@ -20,13 +20,13 @@ import {
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import { RIGHT_SIDEBAR_CSS_CLASSES as c } from './right-sidebar-style.ts'
 
-/** The overlay slot composes many framework props; this component only needs the injected subset. */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any -- slot props are framework-composed; we only consume a subset.
+/** The body portal passes the client context directly; keep props loose for future additions. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- body-portal props are intentionally minimal.
 type RightSidebarProps = any
 
 type Tab = 'overview' | 'files' | 'git'
 
-/** Subscribe to the current session's ConversationSnapshot from a root-scope slot. */
+/** Subscribe to the current session's ConversationSnapshot from a body-portal context. */
 function useSessionSnapshot(ctx: unknown, sessionId: string | undefined): unknown {
   const sessions = (ctx as { sessions?: { binding?: (id: string) => { session?: { subscribe?: (cb: () => void) => () => void; getSnapshot?: () => unknown } } | undefined } }).sessions
   return useSyncExternalStore(
@@ -41,7 +41,7 @@ function useSessionSnapshot(ctx: unknown, sessionId: string | undefined): unknow
   )
 }
 
-/** Subscribe to one session projection value from a root-scope slot. */
+/** Subscribe to one session projection value from a body-portal context. */
 function useProjectionValue(ctx: unknown, sessionId: string | undefined, key: string): unknown {
   const sessions = (ctx as { sessions?: { binding?: (id: string) => { session?: { projections?: { faceOf?: (key: string) => { subscribe?: (cb: () => void) => () => void; getSnapshot?: () => unknown } } } } | undefined } }).sessions
   return useSyncExternalStore(
@@ -53,6 +53,24 @@ function useProjectionValue(ctx: unknown, sessionId: string | undefined, key: st
       if (sessionId === undefined) return undefined
       return sessions?.binding?.(sessionId)?.session?.projections?.faceOf?.(key)?.getSnapshot?.()
     }, [sessions, sessionId, key]),
+  )
+}
+
+/** Subscribe to the sessions list from a body-portal (non-slot) context. */
+function useSessionsValue(ctx: unknown): unknown {
+  const sessions = (ctx as { sessions?: { list?: { subscribe?: (cb: () => void) => () => void; getSnapshot?: () => unknown } } }).sessions
+  return useSyncExternalStore(
+    useCallback((onStoreChange: () => void) => sessions?.list?.subscribe?.(onStoreChange) ?? (() => {}), [sessions]),
+    useCallback(() => sessions?.list?.getSnapshot?.(), [sessions]),
+  )
+}
+
+/** Subscribe to the workspaces list from a body-portal (non-slot) context. */
+function useWorkspacesValue(ctx: unknown): unknown {
+  const workspaces = (ctx as { workspaces?: { list?: { subscribe?: (cb: () => void) => () => void; getSnapshot?: () => unknown } } }).workspaces
+  return useSyncExternalStore(
+    useCallback((onStoreChange: () => void) => workspaces?.list?.subscribe?.(onStoreChange) ?? (() => {}), [workspaces]),
+    useCallback(() => workspaces?.list?.getSnapshot?.(), [workspaces]),
   )
 }
 
@@ -172,7 +190,7 @@ function TreeNode({ entry, depth }: { entry: DirectoryRow; depth: number }): Rea
   )
 }
 
-export function RightSidebar({ ctx, useSessions, useWorkspaces }: RightSidebarProps): ReactNode {
+export function RightSidebar({ ctx }: RightSidebarProps): ReactNode {
   const [open, setOpen] = useState(true)
   const [tab, setTab] = useState<Tab>('overview')
 
@@ -188,8 +206,12 @@ export function RightSidebar({ ctx, useSessions, useWorkspaces }: RightSidebarPr
   // summary's cwd is the most direct source (same one dsh-better-sidebar
   // uses); the workspaces registry is a secondary source when the summary is
   // still hydrating.
-  const sessions = useSessions((s: { current?: string; byId?: Record<string, { cwd?: string }> }) => s)
-  const workspaces = useWorkspaces((s: { items?: Array<{ workspaceId?: string; path?: string; sessionIds?: string[] }>; recentWorkspaceId?: string }) => s)
+  const sessions = useSessionsValue(ctx) as
+    | { current?: string; byId?: Record<string, { cwd?: string }> }
+    | undefined
+  const workspaces = useWorkspacesValue(ctx) as
+    | { items?: Array<{ workspaceId?: string; path?: string; sessionIds?: string[] }>; recentWorkspaceId?: string }
+    | undefined
   const currentSessionId = sessions?.current
   const sessionCwd = currentSessionId === undefined ? undefined : sessions?.byId?.[currentSessionId]?.cwd
   const items = workspaces?.items ?? []
@@ -242,8 +264,8 @@ export function RightSidebar({ ctx, useSessions, useWorkspaces }: RightSidebarPr
     })
   }
 
-  // Session projections from ctx.sessions.binding (shell.overlay is a
-  // root-scope slot, so the session-scoped useProjection/useSession props are
+  // Session projections from ctx.sessions.binding (the body portal is outside
+  // slot rendering, so the session-scoped useProjection/useSession props are
   // not provided here — we subscribe through the runtime service directly).
   const sessionSnapshot = useSessionSnapshot(ctx, currentSessionId) as
     | { chat?: { timeline?: { turnOrder?: number[] } } }

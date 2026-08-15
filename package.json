@@ -66,7 +66,9 @@
     "@deepseek-ai/dsh-cmdline": "^0.0.1-rc.1",
     "@deepseek-ai/dsh-host-webserver": "^0.0.1-rc.1",
     "@deepseek-ai/dsh-mcp-client": "^0.0.1-rc.1",
-    "@deepseek-ai/dsh-settings": "^0.0.1-rc.1"
+    "@deepseek-ai/dsh-settings": "^0.0.1-rc.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "^4.0.1",
@@ -80,7 +82,9 @@
     "@resvg/resvg-js": "^2.6.2",
     "@types/node": "^24.0.0",
     "@types/react": "^18.3.31",
+    "@types/react-dom": "^18.3.1",
     "react": "^18.3.1",
+    "react-dom": "^18.3.1",
     "tsdown": "^0.22.14",
     "typescript": "^6.0.3"
   }

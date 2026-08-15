@@ -20,6 +20,8 @@
  * @module mg-dsh-desktop/client
  */
 
+import { createElement } from 'react'
+import { createRoot, type Root } from 'react-dom/client'
 import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
 // Type-only: pulls the slots Context merge and the layout slot declarations.
 import type {} from '@deepseek-ai/dsh-client-ui-slots'
@@ -53,7 +55,7 @@ export interface SettingsPluginItemOwnerProps {
   children?: never
 }
 
-/** Required services: slots (card + overlay), workspaces + sessions (tray + sidebar data). */
+/** Required services: slots (card), workspaces + sessions (tray + sidebar data). */
 export const inject = ['slots', 'workspaces', 'sessions']
 
 /** Resolve the current session's workspace from the client runtime. */
@@ -163,21 +165,24 @@ export function apply(ctx: ClientContext): void {
     console.warn('[mg-dsh-desktop] settings card injection failed:', error)
   }
 
-  // Right sidebar: render through the frame-wide shell.overlay slot instead
-  // of the details column. The official details column is forced to width 0
-  // for blank/new sessions (AppFrame gates detailsSession on blank===false),
-  // which would make the sidebar impossible to expand in a fresh conversation.
-  // shell.overlay is additive and always mounted, so the sidebar works for
-  // both new and existing sessions. The sidebar reserves its own width through
-  // #root margin-right (--mg-sidebar-width).
+  // Right sidebar: mount a body portal like dsh-better-sidebar. This keeps
+  // the sidebar independent of the official details column (so blank/new
+  // conversations can still expand it) and lets the official details panel
+  // coexist immediately to its left when dsh opens tool details.
   try {
-    slots.register({
-      name: 'shell.overlay',
-      id: 'mg-dsh-desktop-right-sidebar',
-      order: 10,
-      inject: () => ({ ctx }),
-    }, RightSidebar)
+    ctx.effect(() => {
+      const host = document.createElement('div')
+      host.id = 'mg-dsh-desktop-right-sidebar-root'
+      host.setAttribute('data-mg-dsh-desktop-right-sidebar', '')
+      document.body.appendChild(host)
+      const root: Root = createRoot(host)
+      root.render(createElement(RightSidebar, { ctx }))
+      return () => {
+        root.unmount()
+        host.remove()
+      }
+    }, 'mg-dsh-desktop: right sidebar mount')
   } catch (error) {
-    console.warn('[mg-dsh-desktop] right sidebar registration failed:', error)
+    console.warn('[mg-dsh-desktop] right sidebar mount failed:', error)
   }
 }
