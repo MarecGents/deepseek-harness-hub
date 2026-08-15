@@ -62,6 +62,7 @@ const SDK_PACKAGES = [
   'dsh-client-web', 'dsh-client-ui-attachment', 'dsh-api-remotes',
   'dsh-client-ui-commands', 'dsh-client-ui-input-trigger',
   'dsh-client-ui-layout',
+  'dsh-token-meter', 'dsh-session-stats',
   'dsh-brand', 'dsh-settings', 'dsh-agent', 'dsh-session', 'dsh-llm',
   'dsh-tools', 'dsh-compact', 'dsh-commands', 'dsh-attachment',
   'dsh-session-title', 'dsh-session-projection', 'dsh-host-apiproxy',

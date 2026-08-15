@@ -39,6 +39,7 @@ import { openDesktopShell, type DesktopShellHandle } from './desktop.ts'
 import { makeConfigRoutes, migrateLegacyPaths, readShellConfig, type ShellConfig } from './services/config-api.js'
 import { dshHome } from './services/state-store.js'
 import { openFolderInExplorer } from './services/explorer.js'
+import { makeWorkspaceRoutes } from './services/workspace-api.js'
 
 /** Stable Cordis plugin name (referenced by cordis.patch.yml's insert row). */
 export const name = 'mg-dsh-desktop'
@@ -229,6 +230,7 @@ export function apply(ctx: Context, config: Config): void {
         shell?.applyTheme(saved.theme)
         if (changed?.size === true) shell?.applySize(saved.width, saved.height)
       }),
+      ...makeWorkspaceRoutes(),
     ].map((route) => server.register(route))
     routesDisposed = () => {
       for (const dispose of disposers) void dispose()
