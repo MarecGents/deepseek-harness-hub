@@ -43,6 +43,13 @@ interface GitInfo {
   changes: GitChange[]
 }
 
+interface TokenBuckets {
+  uncachedInputTokens: number
+  cacheReadTokens: number
+  cacheWriteTokens: number
+  outputTokens: number
+}
+
 /** Compact token formatting: 517 / 12.2K / 517K / 1.2M. */
 function formatTokens(n: number): string {
   if (n < 1_000) return String(n)
@@ -127,7 +134,7 @@ function TreeNode({ entry, depth }: { entry: DirectoryRow; depth: number }): Rea
   )
 }
 
-export function RightSidebar({ openDetails, closeDetails, useProjection, useSessions, useWorkspaces, sessionId }: RightSidebarProps): ReactNode {
+export function RightSidebar({ openDetails, closeDetails, useProjection, useSessions, useWorkspaces, useSession, sessionId }: RightSidebarProps): ReactNode {
   const rootRef = useRef<HTMLDivElement | null>(null)
   const [collapsed, setCollapsed] = useState(false)
   const [tab, setTab] = useState<Tab>('overview')
@@ -191,12 +198,6 @@ export function RightSidebar({ openDetails, closeDetails, useProjection, useSess
   }
 
   // Context token projections (same source as the composer's context meter).
-  const pressure = useProjection('contextPressure') as
-    | { projectedTokens?: number; pressureTokens?: number; contextWindow?: number }
-    | undefined
-  const breakdown = useProjection('contextBreakdown') as
-    | { systemTokens?: number; toolsTokens?: number; messageTokens?: number }
-    | undefined
   const stats = useProjection('sessionStats') as
     | { turns?: number; steps?: number; llmMs?: number; toolMs?: number; ttftMs?: number; ttftSteps?: number; decodeMs?: number; decodeTokens?: number }
     | undefined
@@ -204,23 +205,65 @@ export function RightSidebar({ openDetails, closeDetails, useProjection, useSess
     | { uncachedInputTokens?: number; cacheReadTokens?: number; cacheWriteTokens?: number; outputTokens?: number }
     | undefined
 
-  const usedTokens = pressure?.projectedTokens ?? pressure?.pressureTokens
-  const contextWindow = pressure?.contextWindow
-  const usedPct = usedTokens !== undefined && contextWindow !== undefined && contextWindow > 0
-    ? Math.min(100, Math.round((usedTokens / contextWindow) * 100))
-    : 0
+  // Current turn detection from the conversation timeline: the last turn in
+  // turnOrder is the newest turn. When it changes, the previous round is over
+  // and the next round's token counter restarts.
+  const turnOrder = useSession((s: { chat?: { timeline?: { turnOrder?: number[] } } }) => s?.chat?.timeline?.turnOrder ?? [])
+  const currentTurn = Array.isArray(turnOrder) && turnOrder.length > 0 ? turnOrder[turnOrder.length - 1] : undefined
+  const [turnBaseline, setTurnBaseline] = useState<TokenBuckets | null>(null)
+  const turnKeyRef = useRef<string | null>(null)
+  const turnSessionRef = useRef<string | null>(null)
+  const prevUsageRef = useRef<TokenBuckets | null>(null)
+  useEffect(() => {
+    const sessionChanged = turnSessionRef.current !== currentSessionId
+    turnSessionRef.current = currentSessionId ?? null
+    const key = `${currentSessionId ?? ''}:${currentTurn ?? ''}`
+    if (!sessionChanged && turnKeyRef.current === key) return
+    turnKeyRef.current = key
+    // On a session switch use the new session's own totals as the baseline.
+    // On a turn change use the previous render's totals (before the new turn
+    // reported any usage), so batching cannot accidentally zero the new turn.
+    const baseline = sessionChanged || prevUsageRef.current === null
+      ? (usage === undefined
+        ? { uncachedInputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, outputTokens: 0 }
+        : {
+          uncachedInputTokens: usage.uncachedInputTokens ?? 0,
+          cacheReadTokens: usage.cacheReadTokens ?? 0,
+          cacheWriteTokens: usage.cacheWriteTokens ?? 0,
+          outputTokens: usage.outputTokens ?? 0,
+        })
+      : prevUsageRef.current
+    setTurnBaseline(baseline)
+  }, [currentSessionId, currentTurn, usage])
+  // Keep the previous usage totals for the next turn-change calculation.
+  useEffect(() => {
+    prevUsageRef.current = usage === undefined
+      ? null
+      : {
+        uncachedInputTokens: usage.uncachedInputTokens ?? 0,
+        cacheReadTokens: usage.cacheReadTokens ?? 0,
+        cacheWriteTokens: usage.cacheWriteTokens ?? 0,
+        outputTokens: usage.outputTokens ?? 0,
+      }
+  }, [usage])
 
-  const systemTokens = breakdown?.systemTokens ?? 0
-  const toolsTokens = breakdown?.toolsTokens ?? 0
-  const messageTokens = breakdown?.messageTokens ?? 0
-  const breakdownTotal = systemTokens + toolsTokens + messageTokens
-  const chartGradient = breakdownTotal > 0
-    ? (() => {
-      const s = (systemTokens / breakdownTotal) * 360
-      const t = (toolsTokens / breakdownTotal) * 360
-      const m = (messageTokens / breakdownTotal) * 360
-      return `conic-gradient(#3964fe 0deg ${s}deg, #16a34a ${s}deg ${s + t}deg, #f59e0b ${s + t}deg ${s + t + m}deg)`
-    })()
+  const turnTokens: TokenBuckets | undefined = usage !== undefined && turnBaseline !== null
+    ? {
+      uncachedInputTokens: Math.max(0, (usage.uncachedInputTokens ?? 0) - turnBaseline.uncachedInputTokens),
+      cacheReadTokens: Math.max(0, (usage.cacheReadTokens ?? 0) - turnBaseline.cacheReadTokens),
+      cacheWriteTokens: Math.max(0, (usage.cacheWriteTokens ?? 0) - turnBaseline.cacheWriteTokens),
+      outputTokens: Math.max(0, (usage.outputTokens ?? 0) - turnBaseline.outputTokens),
+    }
+    : undefined
+
+  // Total-context chart: group provider usage into total input and total output.
+  const totalInputTokens = usage === undefined ? undefined : billedInputTokens(usage)
+  const totalOutputTokens = usage?.outputTokens
+  const totalTokens = totalInputTokens !== undefined && totalOutputTokens !== undefined
+    ? totalInputTokens + totalOutputTokens
+    : undefined
+  const chartGradient = totalTokens !== undefined && totalTokens > 0
+    ? `conic-gradient(#3964fe 0deg ${(totalInputTokens! / totalTokens) * 360}deg, #16a34a ${(totalInputTokens! / totalTokens) * 360}deg 360deg)`
     : ''
 
   // Collapse detection.
@@ -248,10 +291,15 @@ export function RightSidebar({ openDetails, closeDetails, useProjection, useSess
   if (collapsed) {
     return (
       <div ref={rootRef} className={clsx(c.root, c.collapsed)}>
-        <div className={c.toggleCluster}>
+        <div className={c.rail}>
           <button type="button" className={c.toggle} aria-label="展开右侧栏" onClick={() => { openDetails() }}>
             <IconPanelLeftOutline16 className={c.toggleIcon} size={18} />
           </button>
+          <div className={c.railItems}>
+            <span className={c.railPlaceholder} aria-hidden />
+            <span className={c.railPlaceholder} aria-hidden />
+            <span className={c.railPlaceholder} aria-hidden />
+          </div>
         </div>
       </div>
     )
@@ -285,16 +333,13 @@ export function RightSidebar({ openDetails, closeDetails, useProjection, useSess
         <div className={c.content}>
           {tab === 'overview' && (
             <Overview
-              usedTokens={usedTokens}
-              contextWindow={contextWindow}
-              usedPct={usedPct}
-              breakdownTotal={breakdownTotal}
-              systemTokens={systemTokens}
-              toolsTokens={toolsTokens}
-              messageTokens={messageTokens}
+              totalInputTokens={totalInputTokens}
+              totalOutputTokens={totalOutputTokens}
+              totalTokens={totalTokens}
               chartGradient={chartGradient}
               stats={stats}
               usage={usage}
+              turnTokens={turnTokens}
               fileCount={rootEntries.filter((e) => e.isFile).length}
               dirCount={rootEntries.filter((e) => e.isDirectory).length}
               git={git}
@@ -332,22 +377,19 @@ export function RightSidebar({ openDetails, closeDetails, useProjection, useSess
 }
 
 function Overview(props: {
-  usedTokens?: number
-  contextWindow?: number
-  usedPct: number
-  breakdownTotal: number
-  systemTokens: number
-  toolsTokens: number
-  messageTokens: number
+  totalInputTokens?: number
+  totalOutputTokens?: number
+  totalTokens?: number
   chartGradient: string
   stats?: { turns?: number; steps?: number; llmMs?: number; toolMs?: number; ttftMs?: number; ttftSteps?: number; decodeMs?: number; decodeTokens?: number }
   usage?: { uncachedInputTokens?: number; cacheReadTokens?: number; cacheWriteTokens?: number; outputTokens?: number }
+  turnTokens?: TokenBuckets
   fileCount: number
   dirCount: number
   git: GitInfo | null
   loading: boolean
 }): ReactNode {
-  const { usedTokens, contextWindow, usedPct, breakdownTotal, systemTokens, toolsTokens, messageTokens, chartGradient, stats, usage, fileCount, dirCount, git, loading } = props
+  const { totalInputTokens, totalOutputTokens, totalTokens, chartGradient, stats, usage, turnTokens, fileCount, dirCount, git, loading } = props
 
   const ttftAvg = stats?.ttftSteps !== undefined && stats.ttftSteps > 0 && stats.ttftMs !== undefined
     ? stats.ttftMs / stats.ttftSteps
@@ -358,35 +400,31 @@ function Overview(props: {
   const cacheHit = usage === undefined ? undefined : cacheHitPercent(usage)
   const inputTokens = usage === undefined ? undefined : billedInputTokens(usage)
   const outputTokens = usage?.outputTokens
+  const turnCacheHit = turnTokens === undefined ? undefined : cacheHitPercent(turnTokens)
+  const turnTotal = turnTokens === undefined ? undefined : billedInputTokens(turnTokens) + turnTokens.outputTokens
 
   return (
     <div>
       <div className={c.section}>
-        <div className={c.sectionTitle}>上下文 Token</div>
-        {usedTokens === undefined || contextWindow === undefined
-          ? <div className={c.empty}>暂无上下文数据</div>
+        <div className={c.sectionTitle}>总上下文 TOKEN</div>
+        {totalTokens === undefined
+          ? <div className={c.empty}>暂无 Token 数据</div>
           : (
             <div className={c.chartWrap}>
               <div className={c.chart} style={chartGradient ? { background: chartGradient } : undefined}>
                 <div className={c.chartCenter}>
                   <div>
-                    <div>{usedPct}%</div>
-                    <div>{formatTokens(usedTokens)}/{formatTokens(contextWindow)}</div>
+                    <div>{formatTokens(totalTokens)}</div>
+                    <div>Tokens</div>
                   </div>
                 </div>
               </div>
-              {breakdownTotal > 0 && (
-                <div className={c.legend}>
-                  <div className={c.legendRow}><i className={c.legendDot} style={{ background: '#3964fe' }} />系统 {formatTokens(systemTokens)}</div>
-                  <div className={c.legendRow}><i className={c.legendDot} style={{ background: '#16a34a' }} />工具 {formatTokens(toolsTokens)}</div>
-                  <div className={c.legendRow}><i className={c.legendDot} style={{ background: '#f59e0b' }} />消息 {formatTokens(messageTokens)}</div>
-                </div>
-              )}
+              <div className={c.legend}>
+                <div className={c.legendRow}><i className={c.legendDot} style={{ background: '#3964fe' }} />总输入 {formatTokens(totalInputTokens ?? 0)}</div>
+                <div className={c.legendRow}><i className={c.legendDot} style={{ background: '#16a34a' }} />总输出 {formatTokens(totalOutputTokens ?? 0)}</div>
+              </div>
             </div>
           )}
-      </div>
-      <div className={c.section}>
-        <div className={c.sectionTitle}>会话统计</div>
         <div className={c.statGrid}>
           <div className={c.stat}><div className={c.statLabel}>轮次 / 步数</div><div className={c.statValue}>{stats?.turns ?? '-'} 轮 · {stats?.steps ?? '-'} 步</div></div>
           <div className={c.stat}><div className={c.statLabel}>LLM 耗时</div><div className={c.statValue}>{stats?.llmMs !== undefined ? formatDuration(stats.llmMs) : '-'}</div></div>
@@ -397,6 +435,19 @@ function Overview(props: {
           <div className={c.stat}><div className={c.statLabel}>输入 Tokens</div><div className={c.statValue}>{inputTokens !== undefined ? `${formatTokens(inputTokens)} tok` : '-'}</div></div>
           <div className={c.stat}><div className={c.statLabel}>输出 Tokens</div><div className={c.statValue}>{outputTokens !== undefined ? `${formatTokens(outputTokens)} tok` : '-'}</div></div>
         </div>
+      </div>
+      <div className={c.section}>
+        <div className={c.sectionTitle}>本轮对话 Token</div>
+        {turnTokens === undefined
+          ? <div className={c.empty}>暂无本轮数据</div>
+          : (
+            <div className={c.statGrid}>
+              <div className={c.stat}><div className={c.statLabel}>本轮输入</div><div className={c.statValue}>{formatTokens(billedInputTokens(turnTokens))} tok</div></div>
+              <div className={c.stat}><div className={c.statLabel}>本轮输出</div><div className={c.statValue}>{formatTokens(turnTokens.outputTokens)} tok</div></div>
+              <div className={c.stat}><div className={c.statLabel}>本轮缓存命中</div><div className={c.statValue}>{turnCacheHit !== undefined && turnCacheHit !== null ? `${turnCacheHit}%` : '-'}</div></div>
+              <div className={c.stat}><div className={c.statLabel}>本轮总计</div><div className={c.statValue}>{turnTotal !== undefined ? `${formatTokens(turnTotal)} tok` : '-'}</div></div>
+            </div>
+          )}
       </div>
       <div className={c.section}>
         <div className={c.sectionTitle}>工作区</div>

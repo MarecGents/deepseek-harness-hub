@@ -14,7 +14,9 @@ export const RIGHT_SIDEBAR_CSS_CLASSES = {
   toggle: 'mg-rs-toggle',
   toggleIcon: 'mg-rs-toggle-icon',
   body: 'mg-rs-body',
-  toggleCluster: 'mg-rs-toggle-cluster',
+  rail: 'mg-rs-rail',
+  railItems: 'mg-rs-rail-items',
+  railPlaceholder: 'mg-rs-rail-placeholder',
 
   tabs: 'mg-rs-tabs',
   tab: 'mg-rs-tab',
@@ -136,9 +138,16 @@ const STYLE_TEXT = `
 .${c.content} {
   flex: 1;
   min-height: 0;
-  overflow: auto;
+  overflow-y: auto;
+  overflow-x: hidden;
   padding: 10px 12px;
 }
+.${c.content}::-webkit-scrollbar { width: 8px; }
+.${c.content}::-webkit-scrollbar-thumb {
+  background: var(--dsw-alias-border-l2, rgb(0 0 0 / 12%));
+  border-radius: 4px;
+}
+.${c.content}::-webkit-scrollbar-track { background: transparent; }
 .${c.section} { margin-bottom: 14px; }
 .${c.sectionTitle} {
   display: flex;
@@ -256,20 +265,51 @@ const STYLE_TEXT = `
   overflow: visible;
   pointer-events: none;
 }
-.${c.toggleCluster} {
+.${c.rail} {
   position: fixed;
-  top: 3px;
-  right: 10px;
-  z-index: 55;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 56px;
+  z-index: 30;
   display: flex;
-  gap: 4px;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding-top: 8px;
   pointer-events: auto;
+  background: var(--dsw-specific-sidebar-fill, var(--dsw-alias-bg-layer-2, #ffffff));
+  border-left: 1px solid var(--dsw-alias-border-l1, rgb(0 0 0 / 8%));
 }
-/* While the right details column is collapsed, the top-right expand button
-   sits in the session header's corner; yield the header's right padding so
-   its own right-aligned controls are not covered. */
-body[data-mg-details-collapsed] [data-slot="conversation.session.header"] > header {
-  padding-right: 48px;
+.${c.railItems} {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  margin-top: 4px;
+}
+.${c.railPlaceholder} {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: 1px dashed var(--dsw-alias-border-l2, rgb(0 0 0 / 12%));
+  background: var(--dsw-alias-bg-layer-3, rgb(0 0 0 / 2%));
+}
+/* Collapsed rail reservation: shrink #root (the official AppFrame shell) by
+   the rail width so the center column yields the same way it does when the
+   details column is open. Combined with better-sidebar's own var so both
+   plugins can coexist. */
+body[data-mg-details-collapsed] #root {
+  margin-right: calc(var(--dsh-sidebar-width, 0px) + 56px);
+  transition: margin-right var(--ds-transition-duration-slow) var(--ds-ease-in-out);
+}
+body:not([data-mg-details-collapsed]) #root {
+  margin-right: var(--dsh-sidebar-width, 0px);
+  transition: margin-right var(--ds-transition-duration-slow) var(--ds-ease-in-out);
+}
+@media (prefers-reduced-motion: reduce) {
+  #root { transition: none; }
 }
 `
 
