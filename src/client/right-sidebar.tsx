@@ -13,7 +13,9 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
 import clsx from 'clsx'
 import {
+  IconBranchOutline16,
   IconCodeOutline16,
+  IconDataOutline16,
   IconFolderClose16,
   IconFolderOpen16,
   IconPanelLeftOutline16,
@@ -176,8 +178,8 @@ function TreeNode({ entry, depth }: { entry: DirectoryRow; depth: number }): Rea
       >
         <span className={c.treeIcon}>
           {expandable
-            ? (open ? <IconFolderOpen16 size={14} /> : <IconFolderClose16 size={14} />)
-            : <IconCodeOutline16 size={14} />}
+            ? (open ? <IconFolderOpen16 size={20} /> : <IconFolderClose16 size={20} />)
+            : <IconCodeOutline16 size={20} />}
         </span>
         <span className={c.treeName}>{entry.name}</span>
       </div>
@@ -343,12 +345,6 @@ export function RightSidebar({ ctx }: RightSidebarProps): ReactNode {
       {open ? (
         <>
           <div className={c.header}>
-            <div className={c.headerTop}>
-              <span className={c.title}>右侧栏</span>
-              <button type="button" className={c.toggle} aria-label="收起右侧栏" onClick={() => { setOpen(false) }}>
-                <IconPanelLeftOutline16 className={c.toggleIcon} size={16} />
-              </button>
-            </div>
             <div className={c.tabs} role="tablist" aria-label="右侧栏视图">
               {(['overview', 'files', 'git'] as Tab[]).map((key) => (
                 <button
@@ -363,6 +359,9 @@ export function RightSidebar({ ctx }: RightSidebarProps): ReactNode {
                 </button>
               ))}
             </div>
+            <button type="button" className={c.toggle} aria-label="收起右侧栏" onClick={() => { setOpen(false) }}>
+              <IconPanelLeftOutline16 className={c.toggleIcon} size={16} />
+            </button>
           </div>
           <div className={c.body}>
             <div className={c.content}>
@@ -414,9 +413,15 @@ export function RightSidebar({ ctx }: RightSidebarProps): ReactNode {
             <IconPanelLeftOutline16 className={c.toggleIcon} size={18} />
           </button>
           <div className={c.railItems}>
-            <span className={c.railPlaceholder} aria-hidden />
-            <span className={c.railPlaceholder} aria-hidden />
-            <span className={c.railPlaceholder} aria-hidden />
+            <button type="button" className={c.railItem} title="概览" aria-label="概览" onClick={() => { setTab('overview'); setOpen(true) }}>
+              <IconDataOutline16 size={20} />
+            </button>
+            <button type="button" className={c.railItem} title="文件" aria-label="文件" onClick={() => { setTab('files'); setOpen(true) }}>
+              <IconFolderOpen16 size={20} />
+            </button>
+            <button type="button" className={c.railItem} title="Git" aria-label="Git" onClick={() => { setTab('git'); setOpen(true) }}>
+              <IconBranchOutline16 size={20} />
+            </button>
           </div>
         </div>
       )}
