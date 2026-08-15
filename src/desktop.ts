@@ -416,9 +416,12 @@ export function openDesktopShell(
       } else if (command === 'open-workspace') {
         options.openWorkspace()
       } else if (command === 'new-task') {
-        // If the window is already visible, do not waste time on show/focus;
-        // dispatch the new-task command straight into the page.
+        // If the window is already visible, avoid a full showWindow() but still
+        // focus it: WebView2 can defer repainting while the window is inactive,
+        // so the new session would otherwise only appear after the user clicks
+        // inside the window. Focusing forces an immediate refresh.
         if (win !== undefined && !win.isDisposed() && win.isVisible()) {
+          win.focus()
           options.newTask()
         } else {
           showWindow()

@@ -119,9 +119,10 @@ dsh 页面 ui-theme presenter 写 body[data-ds-dark-theme]
 托盘菜单/双击 → tray.ts 的 TrayActions
   ├─ 显示主界面   → showWindow（重建窗口或显示隐藏保活窗口）
   ├─ 打开工作区   → explorer 打开当前工作区目录
-  ├─ 新建任务     → evaluateScriptWithCallback 派发 mg:shell-command 事件
+  ├─ 新建任务     → 窗口可见时先 win.focus()（触发 WebView2 实时重绘）
+  │                 → evaluateScriptWithCallback 派发 mg:shell-command 事件
   │                 → client 半部 ctx.workspaces.startSession（官方流程，UI 即时刷新）
-  └─ 退出         → exit（tray detach + app.exit + 进程退出）
+  └─ 退出         → 写 quit.marker + process.exit(0)（不再走 app.exit，避免崩溃重启）
 ```
 
 #### 配置链路
