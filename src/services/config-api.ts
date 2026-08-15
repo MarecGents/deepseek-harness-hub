@@ -144,8 +144,9 @@ function readJsonBody(req: IncomingMessage): Promise<unknown> {
  * Build the shell config route (one exact route; GET reads, POST updates).
  * @param onChange - invoked with the persisted config after each successful
  *   POST, so the caller can apply changes live (e.g. the window theme).
+ *   `changed.size` is true only when the request actually included width/height.
  */
-export function makeConfigRoutes(onChange?: (value: ShellConfig) => void): WebRoute[] {
+export function makeConfigRoutes(onChange?: (value: ShellConfig, changed?: { size?: boolean }) => void): WebRoute[] {
   return [
     {
       kind: 'exact',
@@ -163,6 +164,7 @@ export function makeConfigRoutes(onChange?: (value: ShellConfig) => void): WebRo
                 : {}
               // Narrow to known fields only; width/height are clamped to the
               // current screen's maximum so the window can never exceed it.
+              const sizeChanged = 'width' in record || 'height' in record
               const patch: Partial<ShellConfig> = {}
               const screen = resolveLaunchScreen()
               if (record.windowOpen === 'auto' || record.windowOpen === 'manual') patch.windowOpen = record.windowOpen
@@ -179,7 +181,7 @@ export function makeConfigRoutes(onChange?: (value: ShellConfig) => void): WebRo
               if (typeof record.closeToTray === 'boolean') patch.closeToTray = record.closeToTray
 
               const value = writeShellConfig(patch)
-              onChange?.(value)
+              onChange?.(value, { size: sizeChanged })
               json(res, 200, { ok: true, value })
             },
             (error) => json(res, 400, { ok: false, error: error instanceof Error ? error.message : String(error) }),

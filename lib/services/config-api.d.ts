@@ -49,5 +49,8 @@ export declare function writeShellConfig(patch: Partial<ShellConfig>): ShellConf
  * Build the shell config route (one exact route; GET reads, POST updates).
  * @param onChange - invoked with the persisted config after each successful
  *   POST, so the caller can apply changes live (e.g. the window theme).
+ *   `changed.size` is true only when the request actually included width/height.
  */
-export declare function makeConfigRoutes(onChange?: (value: ShellConfig) => void): WebRoute[];
+export declare function makeConfigRoutes(onChange?: (value: ShellConfig, changed?: {
+    size?: boolean;
+}) => void): WebRoute[];

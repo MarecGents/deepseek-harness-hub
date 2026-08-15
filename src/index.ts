@@ -256,9 +256,11 @@ export function apply(ctx: Context, config: Config): void {
     if (server === undefined) return
     const disposers = [
       // Apply saved theme/size to the window live (no restart needed).
-      ...makeConfigRoutes((saved) => {
+      // Only resize when the request actually changed width/height; otherwise
+      // saving other settings while maximized must not cancel the maximized state.
+      ...makeConfigRoutes((saved, changed) => {
         shell?.applyTheme(saved.theme)
-        shell?.applySize(saved.width, saved.height)
+        if (changed?.size === true) shell?.applySize(saved.width, saved.height)
       }),
     ].map((route) => server.register(route))
     routesDisposed = () => {
