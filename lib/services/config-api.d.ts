@@ -30,6 +30,8 @@ export interface ShellConfig {
     minimizeToTray: boolean;
     /** Closing the window keeps the process + tray alive instead of quitting. */
     closeToTray: boolean;
+    /** Show a Windows toast when a top-level user task completes. */
+    notifyOnTaskComplete: boolean;
 }
 /** Defaults (mirror the plugin Config composition values). */
 export declare const DEFAULT_SHELL_CONFIG: ShellConfig;
@@ -45,6 +47,12 @@ export declare function readShellConfig(): ShellConfig;
 export declare function hasStoredWindowSize(): boolean;
 /** Persist the config (best-effort, atomic write). */
 export declare function writeShellConfig(patch: Partial<ShellConfig>): ShellConfig;
+/**
+ * The persisted notify flag only — `undefined` when the user never saved it,
+ * so callers can fall back to the composition Config value instead of the
+ * DEFAULT_SHELL_CONFIG default.
+ */
+export declare function storedNotifyOnTaskComplete(): boolean | undefined;
 /**
  * Build the shell config route (one exact route; GET reads, POST updates).
  * @param onChange - invoked with the persisted config after each successful

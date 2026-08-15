@@ -1,26 +1,60 @@
 /**
- * RightSidebar — the mg-dsh-desktop right sidebar occupying the official
- * `details` slot. It mirrors the left sidebar's collapse/rail behavior and
- * provides three tabs:
+ * RightSidebar — the mg-dsh-desktop right sidebar rendered through the
+ * official `shell.overlay` slot (additive and always mounted, so it also
+ * works in blank/new conversations where the details column is forced to 0).
+ * It mirrors the left sidebar's collapse/rail behavior and provides three
+ * tabs:
  *  - Overview: context-token usage rendered as a fan/donut chart.
  *  - Files: current workspace file/folder tree, strictly synced to the
  *    current session's workspace.
  *  - Git: whether the workspace is a git repo, branch, and working-tree changes.
  */
 
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
 import clsx from 'clsx'
-import { IconPanelLeftOutline16 } from '@deepseek-ai/dsh-client-ui-primitives'
+import {
+  IconCodeOutline16,
+  IconFolderClose16,
+  IconFolderOpen16,
+  IconPanelLeftOutline16,
+} from '@deepseek-ai/dsh-client-ui-primitives'
 import { RIGHT_SIDEBAR_CSS_CLASSES as c } from './right-sidebar-style.ts'
 
-/** The details slot composes many framework props; this component only needs the injected callbacks. */
+/** The overlay slot composes many framework props; this component only needs the injected subset. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- slot props are framework-composed; we only consume a subset.
 type RightSidebarProps = any
 
-/** Width below which the details column is considered collapsed (rail mode). */
-const COLLAPSED_THRESHOLD = 10
-
 type Tab = 'overview' | 'files' | 'git'
+
+/** Subscribe to the current session's ConversationSnapshot from a root-scope slot. */
+function useSessionSnapshot(ctx: unknown, sessionId: string | undefined): unknown {
+  const sessions = (ctx as { sessions?: { binding?: (id: string) => { session?: { subscribe?: (cb: () => void) => () => void; getSnapshot?: () => unknown } } | undefined } }).sessions
+  return useSyncExternalStore(
+    useCallback((onStoreChange: () => void) => {
+      if (sessionId === undefined) return () => {}
+      return sessions?.binding?.(sessionId)?.session?.subscribe?.(onStoreChange) ?? (() => {})
+    }, [sessions, sessionId]),
+    useCallback(() => {
+      if (sessionId === undefined) return undefined
+      return sessions?.binding?.(sessionId)?.session?.getSnapshot?.()
+    }, [sessions, sessionId]),
+  )
+}
+
+/** Subscribe to one session projection value from a root-scope slot. */
+function useProjectionValue(ctx: unknown, sessionId: string | undefined, key: string): unknown {
+  const sessions = (ctx as { sessions?: { binding?: (id: string) => { session?: { projections?: { faceOf?: (key: string) => { subscribe?: (cb: () => void) => () => void; getSnapshot?: () => unknown } } } } | undefined } }).sessions
+  return useSyncExternalStore(
+    useCallback((onStoreChange: () => void) => {
+      if (sessionId === undefined) return () => {}
+      return sessions?.binding?.(sessionId)?.session?.projections?.faceOf?.(key)?.subscribe?.(onStoreChange) ?? (() => {})
+    }, [sessions, sessionId, key]),
+    useCallback(() => {
+      if (sessionId === undefined) return undefined
+      return sessions?.binding?.(sessionId)?.session?.projections?.faceOf?.(key)?.getSnapshot?.()
+    }, [sessions, sessionId, key]),
+  )
+}
 
 interface DirectoryRow {
   name: string
@@ -122,7 +156,11 @@ function TreeNode({ entry, depth }: { entry: DirectoryRow; depth: number }): Rea
         style={{ paddingLeft: `${depth * 12 + 4}px` }}
         onClick={() => { if (expandable) setOpen(!open) }}
       >
-        <span className={c.treeIcon}>{expandable ? (open ? '▾' : '▸') : '·'}</span>
+        <span className={c.treeIcon}>
+          {expandable
+            ? (open ? <IconFolderOpen16 size={14} /> : <IconFolderClose16 size={14} />)
+            : <IconCodeOutline16 size={14} />}
+        </span>
         <span className={c.treeName}>{entry.name}</span>
       </div>
       {open && children !== null && (
@@ -134,10 +172,17 @@ function TreeNode({ entry, depth }: { entry: DirectoryRow; depth: number }): Rea
   )
 }
 
-export function RightSidebar({ openDetails, closeDetails, useProjection, useSessions, useWorkspaces, useSession, sessionId }: RightSidebarProps): ReactNode {
-  const rootRef = useRef<HTMLDivElement | null>(null)
-  const [collapsed, setCollapsed] = useState(false)
+export function RightSidebar({ ctx, useSessions, useWorkspaces }: RightSidebarProps): ReactNode {
+  const [open, setOpen] = useState(true)
   const [tab, setTab] = useState<Tab>('overview')
+
+  // Reserve the sidebar's width in the official AppFrame layout: 360px while
+  // open, 56px while collapsed. The #root margin-right rule consumes this
+  // variable, so the center column gives up exactly the sidebar's width.
+  useEffect(() => {
+    document.documentElement.style.setProperty('--mg-sidebar-width', open ? '360px' : '56px')
+    return () => { document.documentElement.style.removeProperty('--mg-sidebar-width') }
+  }, [open])
 
   // Current session workspace path from the client runtime. The session
   // summary's cwd is the most direct source (same one dsh-better-sidebar
@@ -145,7 +190,7 @@ export function RightSidebar({ openDetails, closeDetails, useProjection, useSess
   // still hydrating.
   const sessions = useSessions((s: { current?: string; byId?: Record<string, { cwd?: string }> }) => s)
   const workspaces = useWorkspaces((s: { items?: Array<{ workspaceId?: string; path?: string; sessionIds?: string[] }>; recentWorkspaceId?: string }) => s)
-  const currentSessionId = sessionId ?? sessions?.current
+  const currentSessionId = sessions?.current
   const sessionCwd = currentSessionId === undefined ? undefined : sessions?.byId?.[currentSessionId]?.cwd
   const items = workspaces?.items ?? []
   const currentWorkspace = currentSessionId === undefined
@@ -156,7 +201,7 @@ export function RightSidebar({ openDetails, closeDetails, useProjection, useSess
     ?? ''
 
   // Fallback to the page-global current-workspace getter (some assemblies may
-  // not expose useWorkspaces/useSessions to the details slot).
+  // not expose useWorkspaces/useSessions to the overlay slot).
   const [fallbackPath, setFallbackPath] = useState('')
   useEffect(() => {
     const get = (window as unknown as { __mgGetCurrentWorkspace?: () => string | null }).__mgGetCurrentWorkspace
@@ -197,18 +242,23 @@ export function RightSidebar({ openDetails, closeDetails, useProjection, useSess
     })
   }
 
-  // Context token projections (same source as the composer's context meter).
-  const stats = useProjection('sessionStats') as
+  // Session projections from ctx.sessions.binding (shell.overlay is a
+  // root-scope slot, so the session-scoped useProjection/useSession props are
+  // not provided here — we subscribe through the runtime service directly).
+  const sessionSnapshot = useSessionSnapshot(ctx, currentSessionId) as
+    | { chat?: { timeline?: { turnOrder?: number[] } } }
+    | undefined
+  const stats = useProjectionValue(ctx, currentSessionId, 'sessionStats') as
     | { turns?: number; steps?: number; llmMs?: number; toolMs?: number; ttftMs?: number; ttftSteps?: number; decodeMs?: number; decodeTokens?: number }
     | undefined
-  const usage = useProjection('tokenUsage') as
+  const usage = useProjectionValue(ctx, currentSessionId, 'tokenUsage') as
     | { uncachedInputTokens?: number; cacheReadTokens?: number; cacheWriteTokens?: number; outputTokens?: number }
     | undefined
 
   // Current turn detection from the conversation timeline: the last turn in
   // turnOrder is the newest turn. When it changes, the previous round is over
   // and the next round's token counter restarts.
-  const turnOrder = useSession((s: { chat?: { timeline?: { turnOrder?: number[] } } }) => s?.chat?.timeline?.turnOrder ?? [])
+  const turnOrder = sessionSnapshot?.chat?.timeline?.turnOrder ?? []
   const currentTurn = Array.isArray(turnOrder) && turnOrder.length > 0 ? turnOrder[turnOrder.length - 1] : undefined
   const [turnBaseline, setTurnBaseline] = useState<TokenBuckets | null>(null)
   const turnKeyRef = useRef<string | null>(null)
@@ -266,33 +316,79 @@ export function RightSidebar({ openDetails, closeDetails, useProjection, useSess
     ? `conic-gradient(#3964fe 0deg ${(totalInputTokens! / totalTokens) * 360}deg, #16a34a ${(totalInputTokens! / totalTokens) * 360}deg 360deg)`
     : ''
 
-  // Collapse detection.
-  useEffect(() => {
-    const el = rootRef.current
-    if (el === null) return
-    const update = (): void => {
-      setCollapsed(el.getBoundingClientRect().width < COLLAPSED_THRESHOLD)
-    }
-    update()
-    const observer = new ResizeObserver(update)
-    observer.observe(el)
-    return () => observer.disconnect()
-  }, [])
-
-  // While collapsed, the only visible affordance is a small top-right expand
-  // button (mirrors dsh-better-sidebar). Tell the session header to yield its
-  // right padding so the button never covers the header's own controls.
-  useEffect(() => {
-    if (collapsed) document.body.setAttribute('data-mg-details-collapsed', '')
-    else document.body.removeAttribute('data-mg-details-collapsed')
-    return () => { document.body.removeAttribute('data-mg-details-collapsed') }
-  }, [collapsed])
-
-  if (collapsed) {
-    return (
-      <div ref={rootRef} className={clsx(c.root, c.collapsed)}>
+  return (
+    <div className={clsx(c.root, !open && c.collapsed)} style={{ width: open ? 360 : 56 }}>
+      {open ? (
+        <>
+          <div className={c.header}>
+            <div className={c.headerTop}>
+              <span className={c.title}>右侧栏</span>
+              <button type="button" className={c.toggle} aria-label="收起右侧栏" onClick={() => { setOpen(false) }}>
+                <IconPanelLeftOutline16 className={c.toggleIcon} size={16} />
+              </button>
+            </div>
+            <div className={c.tabs} role="tablist" aria-label="右侧栏视图">
+              {(['overview', 'files', 'git'] as Tab[]).map((key) => (
+                <button
+                  key={key}
+                  type="button"
+                  role="tab"
+                  aria-selected={tab === key}
+                  className={clsx(c.tab, tab === key && c.tabActive)}
+                  onClick={() => { setTab(key) }}
+                >
+                  {key === 'overview' ? '概览' : key === 'files' ? '文件' : 'Git'}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className={c.body}>
+            <div className={c.content}>
+              {tab === 'overview' && (
+                <Overview
+                  totalInputTokens={totalInputTokens}
+                  totalOutputTokens={totalOutputTokens}
+                  totalTokens={totalTokens}
+                  chartGradient={chartGradient}
+                  stats={stats}
+                  usage={usage}
+                  turnTokens={turnTokens}
+                  fileCount={rootEntries.filter((e) => e.isFile).length}
+                  dirCount={rootEntries.filter((e) => e.isDirectory).length}
+                  git={git}
+                  loading={workspaceLoading}
+                />
+              )}
+              {tab === 'files' && (
+                <div className={c.section}>
+                  <div className={c.sectionTitle}>
+                    工作区文件
+                    {effectivePath !== '' && (
+                      <button type="button" className={c.refresh} onClick={() => { refreshWorkspace() }}>刷新</button>
+                    )}
+                  </div>
+                  {effectivePath === ''
+                    ? <div className={c.empty}>当前会话没有关联工作区</div>
+                    : workspaceLoading && rootEntries.length === 0
+                      ? <div className={c.empty}>加载中…</div>
+                      : rootEntries.length === 0
+                        ? <div className={c.empty}>工作区为空</div>
+                        : (
+                          <ul className={c.tree}>
+                            {rootEntries.map((entry) => <TreeNode key={entry.path} entry={entry} depth={0} />)}
+                          </ul>
+                        )}
+                </div>
+              )}
+              {tab === 'git' && (
+                <GitTab git={git} loading={workspaceLoading} />
+              )}
+            </div>
+          </div>
+        </>
+      ) : (
         <div className={c.rail}>
-          <button type="button" className={c.toggle} aria-label="展开右侧栏" onClick={() => { openDetails() }}>
+          <button type="button" className={c.toggle} aria-label="展开右侧栏" onClick={() => { setOpen(true) }}>
             <IconPanelLeftOutline16 className={c.toggleIcon} size={18} />
           </button>
           <div className={c.railItems}>
@@ -301,77 +397,7 @@ export function RightSidebar({ openDetails, closeDetails, useProjection, useSess
             <span className={c.railPlaceholder} aria-hidden />
           </div>
         </div>
-      </div>
-    )
-  }
-
-  return (
-    <div ref={rootRef} className={c.root}>
-      <div className={c.header}>
-        <div className={c.headerTop}>
-          <span className={c.title}>右侧栏</span>
-          <button type="button" className={c.toggle} aria-label="收起右侧栏" onClick={() => { closeDetails() }}>
-            <IconPanelLeftOutline16 className={c.toggleIcon} size={16} />
-          </button>
-        </div>
-        <div className={c.tabs} role="tablist" aria-label="右侧栏视图">
-          {(['overview', 'files', 'git'] as Tab[]).map((key) => (
-            <button
-              key={key}
-              type="button"
-              role="tab"
-              aria-selected={tab === key}
-              className={clsx(c.tab, tab === key && c.tabActive)}
-              onClick={() => { setTab(key) }}
-            >
-              {key === 'overview' ? '概览' : key === 'files' ? '文件' : 'Git'}
-            </button>
-          ))}
-        </div>
-      </div>
-      <div className={c.body}>
-        <div className={c.content}>
-          {tab === 'overview' && (
-            <Overview
-              totalInputTokens={totalInputTokens}
-              totalOutputTokens={totalOutputTokens}
-              totalTokens={totalTokens}
-              chartGradient={chartGradient}
-              stats={stats}
-              usage={usage}
-              turnTokens={turnTokens}
-              fileCount={rootEntries.filter((e) => e.isFile).length}
-              dirCount={rootEntries.filter((e) => e.isDirectory).length}
-              git={git}
-              loading={workspaceLoading}
-            />
-          )}
-          {tab === 'files' && (
-            <div className={c.section}>
-              <div className={c.sectionTitle}>
-                工作区文件
-                {effectivePath !== '' && (
-                  <button type="button" className={c.refresh} onClick={() => { refreshWorkspace() }}>刷新</button>
-                )}
-              </div>
-              {effectivePath === ''
-                ? <div className={c.empty}>当前会话没有关联工作区</div>
-                : workspaceLoading && rootEntries.length === 0
-                  ? <div className={c.empty}>加载中…</div>
-                  : rootEntries.length === 0
-                    ? <div className={c.empty}>工作区为空</div>
-                    : (
-                      <ul className={c.tree}>
-                        {rootEntries.map((entry) => <TreeNode key={entry.path} entry={entry} depth={0} />)}
-                      </ul>
-                    )}
-            </div>
-          )}
-          {tab === 'git' && (
-            <GitTab git={git} loading={workspaceLoading} />
-          )}
-        </div>
-      </div>
+      )}
     </div>
   )
 }
@@ -400,54 +426,53 @@ function Overview(props: {
   const cacheHit = usage === undefined ? undefined : cacheHitPercent(usage)
   const inputTokens = usage === undefined ? undefined : billedInputTokens(usage)
   const outputTokens = usage?.outputTokens
-  const turnCacheHit = turnTokens === undefined ? undefined : cacheHitPercent(turnTokens)
-  const turnTotal = turnTokens === undefined ? undefined : billedInputTokens(turnTokens) + turnTokens.outputTokens
+  // New/blank conversations have no projection data yet; render zeros instead
+  // of empty states so the sidebar always shows a complete overview.
+  const zeroBuckets: TokenBuckets = { uncachedInputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, outputTokens: 0 }
+  const chartTotal = totalTokens ?? 0
+  const chartInput = totalInputTokens ?? 0
+  const chartOutput = totalOutputTokens ?? 0
+  const turn = turnTokens ?? zeroBuckets
+  const turnCache = turnTokens === undefined ? 0 : (cacheHitPercent(turnTokens) ?? 0)
+  const turnTotalValue = turnTokens === undefined ? 0 : billedInputTokens(turnTokens) + turnTokens.outputTokens
 
   return (
     <div>
       <div className={c.section}>
         <div className={c.sectionTitle}>总上下文 TOKEN</div>
-        {totalTokens === undefined
-          ? <div className={c.empty}>暂无 Token 数据</div>
-          : (
-            <div className={c.chartWrap}>
-              <div className={c.chart} style={chartGradient ? { background: chartGradient } : undefined}>
-                <div className={c.chartCenter}>
-                  <div>
-                    <div>{formatTokens(totalTokens)}</div>
-                    <div>Tokens</div>
-                  </div>
-                </div>
-              </div>
-              <div className={c.legend}>
-                <div className={c.legendRow}><i className={c.legendDot} style={{ background: '#3964fe' }} />总输入 {formatTokens(totalInputTokens ?? 0)}</div>
-                <div className={c.legendRow}><i className={c.legendDot} style={{ background: '#16a34a' }} />总输出 {formatTokens(totalOutputTokens ?? 0)}</div>
+        <div className={clsx(c.chartWrap, c.chartCard)}>
+          <div className={c.chart} style={chartGradient ? { background: chartGradient } : undefined}>
+            <div className={c.chartCenter}>
+              <div>
+                <div>{formatTokens(chartTotal)}</div>
+                <div>Tokens</div>
               </div>
             </div>
-          )}
+          </div>
+          <div className={c.legend}>
+            <div className={c.legendRow}><i className={c.legendDot} style={{ background: '#3964fe' }} />总输入 {formatTokens(chartInput)}</div>
+            <div className={c.legendRow}><i className={c.legendDot} style={{ background: '#16a34a' }} />总输出 {formatTokens(chartOutput)}</div>
+          </div>
+        </div>
         <div className={c.statGrid}>
-          <div className={c.stat}><div className={c.statLabel}>轮次 / 步数</div><div className={c.statValue}>{stats?.turns ?? '-'} 轮 · {stats?.steps ?? '-'} 步</div></div>
-          <div className={c.stat}><div className={c.statLabel}>LLM 耗时</div><div className={c.statValue}>{stats?.llmMs !== undefined ? formatDuration(stats.llmMs) : '-'}</div></div>
-          <div className={c.stat}><div className={c.statLabel}>工具调用</div><div className={c.statValue}>{stats?.toolMs !== undefined ? formatDuration(stats.toolMs) : '-'}</div></div>
-          <div className={c.stat}><div className={c.statLabel}>首 token 平均</div><div className={c.statValue}>{ttftAvg !== undefined ? formatDuration(ttftAvg) : '-'}</div></div>
-          <div className={c.stat}><div className={c.statLabel}>速度</div><div className={c.statValue}>{tps !== undefined ? `${formatTokensPerSecond(tps)} tok/s` : '-'}</div></div>
-          <div className={c.stat}><div className={c.statLabel}>缓存命中</div><div className={c.statValue}>{cacheHit !== undefined && cacheHit !== null ? `${cacheHit}%` : '-'}</div></div>
-          <div className={c.stat}><div className={c.statLabel}>输入 Tokens</div><div className={c.statValue}>{inputTokens !== undefined ? `${formatTokens(inputTokens)} tok` : '-'}</div></div>
-          <div className={c.stat}><div className={c.statLabel}>输出 Tokens</div><div className={c.statValue}>{outputTokens !== undefined ? `${formatTokens(outputTokens)} tok` : '-'}</div></div>
+          <div className={c.stat}><div className={c.statLabel}>轮次 / 步数</div><div className={c.statValue}>{stats?.turns ?? 0} 轮 · {stats?.steps ?? 0} 步</div></div>
+          <div className={c.stat}><div className={c.statLabel}>LLM 耗时</div><div className={c.statValue}>{formatDuration(stats?.llmMs ?? 0)}</div></div>
+          <div className={c.stat}><div className={c.statLabel}>工具调用</div><div className={c.statValue}>{formatDuration(stats?.toolMs ?? 0)}</div></div>
+          <div className={c.stat}><div className={c.statLabel}>首 token 平均</div><div className={c.statValue}>{formatDuration(ttftAvg ?? 0)}</div></div>
+          <div className={c.stat}><div className={c.statLabel}>速度</div><div className={c.statValue}>{formatTokensPerSecond(tps ?? 0)} tok/s</div></div>
+          <div className={c.stat}><div className={c.statLabel}>缓存命中</div><div className={c.statValue}>{cacheHit ?? 0}%</div></div>
+          <div className={c.stat}><div className={c.statLabel}>输入 Tokens</div><div className={c.statValue}>{formatTokens(inputTokens ?? 0)} tok</div></div>
+          <div className={c.stat}><div className={c.statLabel}>输出 Tokens</div><div className={c.statValue}>{formatTokens(outputTokens ?? 0)} tok</div></div>
         </div>
       </div>
       <div className={c.section}>
         <div className={c.sectionTitle}>本轮对话 Token</div>
-        {turnTokens === undefined
-          ? <div className={c.empty}>暂无本轮数据</div>
-          : (
-            <div className={c.statGrid}>
-              <div className={c.stat}><div className={c.statLabel}>本轮输入</div><div className={c.statValue}>{formatTokens(billedInputTokens(turnTokens))} tok</div></div>
-              <div className={c.stat}><div className={c.statLabel}>本轮输出</div><div className={c.statValue}>{formatTokens(turnTokens.outputTokens)} tok</div></div>
-              <div className={c.stat}><div className={c.statLabel}>本轮缓存命中</div><div className={c.statValue}>{turnCacheHit !== undefined && turnCacheHit !== null ? `${turnCacheHit}%` : '-'}</div></div>
-              <div className={c.stat}><div className={c.statLabel}>本轮总计</div><div className={c.statValue}>{turnTotal !== undefined ? `${formatTokens(turnTotal)} tok` : '-'}</div></div>
-            </div>
-          )}
+        <div className={c.statGrid}>
+          <div className={c.stat}><div className={c.statLabel}>本轮输入</div><div className={c.statValue}>{formatTokens(billedInputTokens(turn))} tok</div></div>
+          <div className={c.stat}><div className={c.statLabel}>本轮输出</div><div className={c.statValue}>{formatTokens(turn.outputTokens)} tok</div></div>
+          <div className={c.stat}><div className={c.statLabel}>本轮缓存命中</div><div className={c.statValue}>{turnCache}%</div></div>
+          <div className={c.stat}><div className={c.statLabel}>本轮总计</div><div className={c.statValue}>{formatTokens(turnTotalValue)} tok</div></div>
+        </div>
       </div>
       <div className={c.section}>
         <div className={c.sectionTitle}>工作区</div>

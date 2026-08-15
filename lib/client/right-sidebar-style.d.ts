@@ -24,6 +24,7 @@ export declare const RIGHT_SIDEBAR_CSS_CLASSES: {
     readonly sectionTitle: "mg-rs-section-title";
     readonly refresh: "mg-rs-refresh";
     readonly chartWrap: "mg-rs-chart-wrap";
+    readonly chartCard: "mg-rs-chart-card";
     readonly chart: "mg-rs-chart";
     readonly chartCenter: "mg-rs-chart-center";
     readonly legend: "mg-rs-legend";
