@@ -36,7 +36,7 @@ import type {} from '@deepseek-ai/dsh-agent'
 import { installSettingsSection, settingsNamespace } from '@deepseek-ai/dsh-settings'
 import z from '@deepseek-ai/schemastery'
 import { openDesktopShell, type DesktopShellHandle } from './desktop.ts'
-import { hasStoredWindowSize, makeConfigRoutes, migrateLegacyPaths, readShellConfig, type ShellConfig } from './services/config-api.js'
+import { makeConfigRoutes, migrateLegacyPaths, readShellConfig, type ShellConfig } from './services/config-api.js'
 import { dshHome } from './services/state-store.js'
 import { openFolderInExplorer } from './services/explorer.js'
 
@@ -193,17 +193,17 @@ function newTaskInWeb(ctx: Context, dispatch: (name: string, detail?: Record<str
 
 /**
  * Merge the persisted shell config over the composition entry (persisted
- * wins). When the user never saved a window size, width/height resolve to
- * `undefined` so the desktop shell sizes the default window to the launch
- * screen (see desktop.ts); 1280×720 stays as the shell's last-resort floor.
+ * wins). Startup width/height intentionally stay `undefined`: the desktop
+ * shell always opens non-maximized at 3/4 of the launch screen. The plugin
+ * page's saved resolution only applies immediately while the window is not
+ * maximized (see DesktopShellHandle.applySize).
  */
 function effectiveConfig(config: Config): Config {
   const stored = readShellConfig()
-  const sized = hasStoredWindowSize()
   return {
     ...config,
-    width: sized ? stored.width : (undefined as unknown as number),
-    height: sized ? stored.height : (undefined as unknown as number),
+    width: undefined as unknown as number,
+    height: undefined as unknown as number,
     theme: stored.theme ?? config.theme,
     minimizeToTray: stored.minimizeToTray ?? config.minimizeToTray,
     closeToTray: stored.closeToTray ?? config.closeToTray,
@@ -255,8 +255,11 @@ export function apply(ctx: Context, config: Config): void {
     const server = ctx.get('webServer')
     if (server === undefined) return
     const disposers = [
-      // Apply a saved theme to the window live (no restart needed).
-      ...makeConfigRoutes((saved) => { shell?.applyTheme(saved.theme) }),
+      // Apply saved theme/size to the window live (no restart needed).
+      ...makeConfigRoutes((saved) => {
+        shell?.applyTheme(saved.theme)
+        shell?.applySize(saved.width, saved.height)
+      }),
     ].map((route) => server.register(route))
     routesDisposed = () => {
       for (const dispose of disposers) void dispose()

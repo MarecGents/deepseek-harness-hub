@@ -71,6 +71,11 @@ export interface DesktopShellHandle {
    */
   applyTheme(theme: 'system' | 'light' | 'dark'): void
   /**
+   * Apply a window size immediately (from the settings card's width/height).
+   * No-op while maximized; the next restore uses the default 3/4 size.
+   */
+  applySize(width: number, height: number): void
+  /**
    * Dispatch a custom event to the web page (tray → client-plugin bridge).
    * Retries until the page's listener signals ready, so a click during the
    * SPA boot is not lost.
@@ -164,6 +169,15 @@ export function openDesktopShell(
   const splash = splashHtml(darkByDefault, dshFaviconDataUrl())
   const targetUrl = `${BASE_URL}:${port}`
 
+  /** Default non-maximized size: 3/4 of the launch screen, 1280×720 fallback. */
+  const defaultSize = (): { width: number; height: number } => {
+    const screen = resolveLaunchScreen()
+    return {
+      width: screen === undefined ? 1280 : Math.round((screen.width * 3) / 4),
+      height: screen === undefined ? 720 : Math.round((screen.height * 3) / 4),
+    }
+  }
+
   // ── Window factory (recreatable for close-to-tray) ────────────────────────
   let win: BrowserWindow | undefined
   let webview: JsWebview | undefined
@@ -223,15 +237,11 @@ export function openDesktopShell(
     detector?.stop()
     detector = undefined
 
-    // Default window size: a saved size wins; otherwise size to 3/4 of the
-    // launch screen (multi-monitor aware via the cursor's monitor), with
-    // 1280×720 as the last-resort floor when the screen cannot be resolved.
-    const screen = resolveLaunchScreen()
-    const width = options.width ?? (screen === undefined ? 1280 : Math.round((screen.width * 3) / 4))
-    const height = options.height ?? (screen === undefined ? 720 : Math.round((screen.height * 3) / 4))
-    if (options.width === undefined) {
-      console.log(`[mg-dsh-desktop] default window ${width}x${height} (screen ${screen?.width ?? '?'}x${screen?.height ?? '?'})`)
-    }
+    // Startup/restore size is always 3/4 of the launch screen (the plugin
+    // page's width/height only applies immediately while not maximized).
+    const size = defaultSize()
+    const { width, height } = size
+    console.log(`[mg-dsh-desktop] default window ${width}x${height}`)
 
     const w = app.createBrowserWindow({
       title: options.title,
@@ -271,10 +281,24 @@ export function openDesktopShell(
     applyWindowTheme(w, wv, themeSetting)
 
     // Persist only the maximized flag (geometry is intentionally not kept).
+    // When leaving maximized state, restore to the default 3/4 size.
+    let wasMaximized = w.isMaximized()
     const persist = (): void => {
       try { store.save({ maximized: w.isMaximized() }) } catch { /* best-effort */ }
     }
-    w.on('resize', persist)
+    w.on('resize', () => {
+      const maximized = w.isMaximized()
+      if (wasMaximized && !maximized) {
+        const restored = defaultSize()
+        try {
+          w.setSize(restored.width, restored.height, true)
+        } catch {
+          // Best-effort; the window is already restored to the OS default.
+        }
+      }
+      wasMaximized = maximized
+      persist()
+    })
 
     // Minimize-to-tray: poll minimized state and hide the window so the
     // taskbar entry disappears; the tray restores it. Behavior is read live
@@ -454,6 +478,14 @@ export function openDesktopShell(
       themeSetting = theme
       if (win !== undefined && webview !== undefined && !webview.isDisposed()) {
         applyWindowTheme(win, webview, theme)
+      }
+    },
+    applySize: (width: number, height: number) => {
+      if (win === undefined || win.isDisposed() || win.isMaximized()) return
+      try {
+        win.setSize(width, height, true)
+      } catch {
+        // Best-effort; a failed resize must not break the settings save.
       }
     },
     dispatchEvent,

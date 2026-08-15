@@ -66,18 +66,18 @@ async function fetchConfig(): Promise<ShellConfig | null> {
   }
 }
 
-/** Write the shell config document (POST); true when persisted. */
-async function saveConfig(patch: Partial<ShellConfig>): Promise<boolean> {
+/** Write the shell config document (POST); returns the persisted value. */
+async function saveConfig(patch: Partial<ShellConfig>): Promise<ShellConfig | null> {
   try {
     const res = await fetch('/api/mg-dsh-desktop/config', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(patch),
     })
-    const body = (await res.json()) as { ok?: boolean }
-    return res.ok && body.ok === true
+    const body = (await res.json()) as { ok?: boolean; value?: ShellConfig }
+    return res.ok && body.ok === true && body.value !== undefined ? body.value : null
   } catch {
-    return false
+    return null
   }
 }
 
@@ -132,10 +132,11 @@ export function DesktopSettingsCard(_props: DesktopSettingsCardProps): ReactNode
       theme: draft.theme,
       minimizeToTray: draft.minimizeToTray,
       closeToTray: draft.closeToTray,
-    }).then((ok) => {
+    }).then((saved) => {
       setSaving(false)
-      if (ok) {
-        setConfig(draft)
+      if (saved !== null) {
+        setConfig(saved)
+        setDraft(saved)
         setSaved(true)
       } else {
         setFailed(true)
@@ -182,6 +183,7 @@ export function DesktopSettingsCard(_props: DesktopSettingsCardProps): ReactNode
                           className={c.input}
                           type="number"
                           min={480}
+                          max={Math.floor(window.screen.width)}
                           aria-label={COPY.widthLabel}
                           value={draft.width}
                           onChange={(event) => {
@@ -196,6 +198,7 @@ export function DesktopSettingsCard(_props: DesktopSettingsCardProps): ReactNode
                           className={c.input}
                           type="number"
                           min={360}
+                          max={Math.floor(window.screen.height)}
                           aria-label={COPY.heightLabel}
                           value={draft.height}
                           onChange={(event) => {

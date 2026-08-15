@@ -65,6 +65,11 @@ export interface DesktopShellHandle {
      */
     applyTheme(theme: 'system' | 'light' | 'dark'): void;
     /**
+     * Apply a window size immediately (from the settings card's width/height).
+     * No-op while maximized; the next restore uses the default 3/4 size.
+     */
+    applySize(width: number, height: number): void;
+    /**
      * Dispatch a custom event to the web page (tray → client-plugin bridge).
      * Retries until the page's listener signals ready, so a click during the
      * SPA boot is not lost.
