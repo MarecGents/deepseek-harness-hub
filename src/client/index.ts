@@ -53,8 +53,8 @@ export interface SettingsPluginItemOwnerProps {
   children?: never
 }
 
-/** Required services: slots (card), workspaces + sessions (tray), layout (right sidebar). */
-export const inject = ['slots', 'workspaces', 'sessions', 'layout']
+/** Required services: slots (card + overlay), workspaces + sessions (tray + sidebar data). */
+export const inject = ['slots', 'workspaces', 'sessions']
 
 /** Resolve the current session's workspace from the client runtime. */
 function currentWorkspace(ctx: ClientContext): { path?: string; id?: string } | null {
@@ -163,39 +163,21 @@ export function apply(ctx: ClientContext): void {
     console.warn('[mg-dsh-desktop] settings card injection failed:', error)
   }
 
-  // Right sidebar: occupy the official details slot and open it by default.
-  // priority -1 beats the official ui-conversation DetailsPanel (priority 0),
-  // so our right sidebar is the live occupant.
+  // Right sidebar: render through the frame-wide shell.overlay slot instead
+  // of the details column. The official details column is forced to width 0
+  // for blank/new sessions (AppFrame gates detailsSession on blank===false),
+  // which would make the sidebar impossible to expand in a fresh conversation.
+  // shell.overlay is additive and always mounted, so the sidebar works for
+  // both new and existing sessions. The sidebar reserves its own width through
+  // #root margin-right (--mg-sidebar-width).
   try {
     slots.register({
-      name: 'details',
-      priority: -1,
-      inject: () => {
-        const layout = (ctx as unknown as { layout?: { openDetails(): void; closeDetails(): void } }).layout
-        return {
-          openDetails: () => { layout?.openDetails() },
-          closeDetails: () => { layout?.closeDetails() },
-        }
-      },
+      name: 'shell.overlay',
+      id: 'mg-dsh-desktop-right-sidebar',
+      order: 10,
+      inject: () => ({ ctx }),
     }, RightSidebar)
   } catch (error) {
     console.warn('[mg-dsh-desktop] right sidebar registration failed:', error)
   }
-
-  // The layout panel actions may not be wired until the root entry's first
-  // render; retry opening the details column a few times.
-  let tries = 0
-  const tryOpenDetails = (): void => {
-    const layout = (ctx as unknown as { layout?: { openDetails(): void } }).layout
-    if (layout === undefined) {
-      if (++tries < 20) setTimeout(tryOpenDetails, 100)
-      return
-    }
-    try {
-      layout.openDetails()
-    } catch {
-      if (++tries < 20) setTimeout(tryOpenDetails, 100)
-    }
-  }
-  setTimeout(tryOpenDetails, 100)
 }
