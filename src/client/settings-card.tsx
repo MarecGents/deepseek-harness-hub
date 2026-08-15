@@ -34,7 +34,7 @@ interface ShellConfig {
 
 /** Localized copy kept inline (the card is small; no locale plugin needed). */
 const COPY = {
-  title: 'Marec-DSH-Plugin',
+  title: 'MG DSH 设置',
   description: '桌面壳配置：窗口尺寸、主题与托盘行为',
   unsaved: '未保存',
   readOnly: '当前文档只读，无法保存',
@@ -267,9 +267,9 @@ export function DesktopSettingsCard(_props: DesktopSettingsCardProps): ReactNode
                   )}
                 </>
               )}
-            {failed ? <p className={c.failed} role="status">{COPY.saveFailed}</p> : null}
-            {saved ? <p className={c.saved} role="status">{COPY.saved}</p> : null}
             <div className={c.footer}>
+              {failed ? <p className={c.failed} role="status">{COPY.saveFailed}</p> : null}
+              {saved ? <p className={c.saved} role="status">{COPY.saved}</p> : null}
               <button type="button" className={c.discard} disabled={blocked} onClick={onDiscard}>
                 {COPY.discard}
               </button>

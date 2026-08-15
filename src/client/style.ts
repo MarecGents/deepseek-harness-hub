@@ -5,12 +5,11 @@
  * so the styles live as a string here, use the official `--dsw-alias-*`
  * design tokens, and carry a stable `mg-*` class prefix.
  *
- * The card mirrors the official PluginCard look (ui-settings-plugins): a
- * collapsible header (name + description + chevron), then the controls body
- * with a save/discard footer. Interactions: header hover/active background,
- * focus rings in the brand color with a soft halo, control hover borders,
- * disabled dimming, a pulse loading skeleton, and a save feedback state
- * machine (saving → saved fade → failed).
+ * The card mirrors the official PluginCard look (ui-settings-plugins) and
+ * its field styles (fields.module.css): a collapsible header (name +
+ * description + chevron), then the controls body with a save/discard footer.
+ * Typography and geometry intentionally match the upstream DeepSeek Harness
+ * plugin page rather than inventing a second visual system.
  */
 
 /** Card class names — the single source the components and the stylesheet share. */
@@ -50,93 +49,132 @@ const css = CARD_CSS_CLASSES
 const STYLE_TEXT = `
 .${css.card} {
   list-style: none;
-  border-radius: 10px;
+  border-radius: 12px;
   border: 1px solid var(--dsw-alias-border-l2, rgb(0 0 0 / 10%));
   background: var(--dsw-alias-bg-layer-3, #ffffff);
-  overflow: hidden;
+  transition: border-color 0.16s, background 0.16s;
+}
+.${css.card}:hover { border-color: var(--dsw-alias-label-dimmed, rgb(0 0 0 / 20%)); }
+.${css.cardOpen} {
+  background: var(--dsw-alias-bg-layer-2, #ffffff);
+  border-color: var(--dsw-alias-label-dimmed, rgb(0 0 0 / 20%));
 }
 .${css.header} {
-  display: flex;
-  align-items: center;
-  gap: 12px;
   width: 100%;
-  padding: 14px 16px;
-  border: none;
-  background: transparent;
+  appearance: none;
+  border: 0;
+  background: none;
   color: inherit;
   font: inherit;
   text-align: left;
   cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: 12px;
 }
-.${css.header}:hover { background: var(--dsw-alias-interactive-bg-hover, rgb(0 0 0 / 4%)); }
-.${css.header}:active { background: var(--dsw-alias-interactive-bg-active, rgb(0 0 0 / 6%)); }
-.${css.header}:focus-visible { outline: 2px solid var(--dsw-alias-brand-primary, #3964fe); outline-offset: -2px; }
-.${css.headText} { display: flex; flex-direction: column; gap: 3px; flex: 1; min-width: 0; }
+.${css.header}:focus-visible {
+  outline: 2px solid var(--dsw-alias-brand-primary, #3964fe);
+  outline-offset: -2px;
+}
+.${css.headText} {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
 .${css.name} {
-  font-size: 14px; line-height: 20px; font-weight: 600;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.4;
   color: var(--dsw-alias-label-primary, #0f1115);
-  letter-spacing: -0.01em;
 }
 .${css.description} {
-  font-size: 12px; line-height: 18px;
+  font-size: 13px;
+  line-height: 1.5;
   color: var(--dsw-alias-label-tertiary, #81858c);
 }
 .${css.pending} {
-  flex: none; font-size: 11px; line-height: 16px;
-  color: var(--dsw-alias-brand-primary, #3964fe);
-  background: color-mix(in srgb, var(--dsw-alias-brand-primary, #3964fe) 12%, transparent);
-  border-radius: 999px; padding: 1px 8px;
+  flex: none;
+  border-radius: 999px;
+  padding: 1px 8px;
+  font-size: 11px;
+  line-height: 17px;
+  font-weight: 500;
+  white-space: nowrap;
+  background: var(--dsw-alias-bg-module-platform, #f5f6f7);
+  color: var(--dsw-alias-label-secondary, #61666b);
 }
 .${css.chevron} {
-  flex: none; color: var(--dsw-alias-label-tertiary, #81858c);
-  transition: transform 0.15s ease, color 0.15s ease;
+  flex: none;
+  color: var(--dsw-alias-label-tertiary, #81858c);
+  transition: transform 0.16s;
 }
-.${css.header}:hover .${css.chevron} { color: var(--dsw-alias-label-primary, #0f1115); }
 .${css.chevronOpen} { transform: rotate(180deg); }
 .${css.body} {
-  border-top: 1px solid var(--dsw-alias-border-l1, rgb(0 0 0 / 6%));
-  padding: 14px 16px 16px;
-  display: flex; flex-direction: column; gap: 14px;
+  border-top: 1px solid var(--dsw-alias-border-l2, rgb(0 0 0 / 10%));
+  margin: 0 16px;
+  padding-bottom: 8px;
 }
 .${css.readOnly} {
-  font-size: 12px; line-height: 18px; color: var(--dsw-alias-label-tertiary, #81858c);
+  margin: 12px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--dsw-alias-label-tertiary, #81858c);
 }
-.${css.section} { display: flex; flex-direction: column; gap: 10px; }
+.${css.section} { display: flex; flex-direction: column; }
 .${css.sectionTitle} {
-  font-size: 12px; line-height: 16px; font-weight: 600;
-  color: var(--dsw-alias-label-secondary, #5b5f66);
-  letter-spacing: 0.02em;
+  margin: 0;
+  padding: 8px 0 4px;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.5;
+  color: var(--dsw-alias-label-secondary, #61666b);
 }
-.${css.field} { display: flex; flex-direction: column; gap: 7px; }
+.${css.field} {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 0;
+}
+.${css.field} + .${css.field} { border-top: 1px solid var(--dsw-alias-border-l2, rgb(0 0 0 / 10%)); }
 .${css.fieldLabel} {
-  font-size: 12px; line-height: 16px;
-  color: var(--dsw-alias-label-secondary, #5b5f66);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.5;
+  color: var(--dsw-alias-label-primary, #0f1115);
 }
 .${css.control} {
-  display: flex; align-items: center; gap: 8px;
-  font-size: 12px; line-height: 18px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  line-height: 1.5;
   color: var(--dsw-alias-label-primary, #0f1115);
 }
 .${css.input}, .${css.select} {
-  width: 100%; box-sizing: border-box;
-  height: 28px; padding: 0 8px;
-  font: inherit;
-  color: var(--dsw-alias-label-primary, #0f1115);
-  /* Transparent, not a literal fill: there is no --dsw-alias-bg-input
-   * token, and a hardcoded white fallback breaks dark themes (white text
-   * on a white field). The card body's bg-layer-3 shows through, so the
-   * field is correct in both themes. */
-  background: transparent;
+  width: 100%;
+  box-sizing: border-box;
+  height: 34px;
+  padding: 0 12px;
   border: 1px solid var(--dsw-alias-border-l2, rgb(0 0 0 / 10%));
-  border-radius: 6px;
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-layer-3, #ffffff);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--dsw-alias-label-primary, #0f1115);
 }
-.${css.input}:hover, .${css.select}:hover { border-color: var(--dsw-alias-border-l3, rgb(0 0 0 / 16%)); }
-.${css.input}:focus, .${css.select}:focus {
+.${css.input}:focus-visible, .${css.select}:focus-visible {
   outline: none;
   border-color: var(--dsw-alias-brand-primary, #3964fe);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--dsw-alias-brand-primary, #3964fe) 25%, transparent);
 }
-.${css.input}:disabled, .${css.select}:disabled { opacity: 0.5; cursor: not-allowed; }
+.${css.input}:disabled, .${css.select}:disabled {
+  color: var(--dsw-alias-label-tertiary, #81858c);
+  cursor: default;
+}
 /* The native dropdown list inherits the select's color but can paint a
  * light panel — under a dark theme that yields white-on-white options.
  * Pin both colors explicitly so the list reads correctly either way. */
@@ -144,51 +182,91 @@ const STYLE_TEXT = `
   color: var(--dsw-alias-label-primary, #0f1115);
   background: var(--dsw-alias-bg-layer-3, #ffffff);
 }
-.${css.checkboxRow} { display: flex; align-items: center; gap: 8px; }
+.${css.checkboxRow} {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--dsw-alias-label-primary, #0f1115);
+  cursor: pointer;
+}
 .${css.checkboxRow} input[type='checkbox'] {
-  width: 14px; height: 14px;
-  /* Fixed DeepSeek blue: the brand token turns near-white under dark
-   * themes, which would wash the tick out. */
-  accent-color: #3964fe;
+  width: 16px;
+  height: 16px;
+  /* DeepSeek business blue stays legible in both themes. */
+  accent-color: var(--dsw-alias-state-business-primary, #3964fe);
 }
 .${css.checkboxRow} input[type='checkbox']:focus-visible {
-  outline: 2px solid var(--dsw-alias-brand-primary, #3964fe); outline-offset: 2px;
+  outline: 2px solid var(--dsw-alias-brand-primary, #3964fe);
+  outline-offset: 2px;
 }
-.${css.checkboxRow} input[type='checkbox']:disabled { opacity: 0.5; }
-.${css.hint} { font-size: 11px; line-height: 16px; color: var(--dsw-alias-label-tertiary, #81858c); }
-.${css.footer} { display: flex; justify-content: flex-end; gap: 8px; margin-top: 2px; }
+.${css.checkboxRow} input[type='checkbox']:disabled { opacity: 0.4; }
+.${css.hint} {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--dsw-alias-label-tertiary, #81858c);
+}
+.${css.checkboxRow} + .${css.hint} { margin-top: -8px; }
+.${css.footer} {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 0 4px;
+  border-top: 1px solid var(--dsw-alias-border-l2, rgb(0 0 0 / 10%));
+}
 .${css.discard}, .${css.save} {
-  height: 28px; padding: 0 12px; border-radius: 6px;
-  font: inherit; font-size: 12px; line-height: 18px; cursor: pointer;
+  appearance: none;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 5px 14px;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.5;
+  cursor: pointer;
 }
 .${css.discard} {
+  border-color: var(--dsw-alias-border-l2, rgb(0 0 0 / 10%));
+  background: none;
+  color: var(--dsw-alias-label-secondary, #61666b);
+}
+.${css.discard}:hover:not(:disabled) {
   color: var(--dsw-alias-label-primary, #0f1115);
-  background: transparent;
-  border: 1px solid var(--dsw-alias-border-l2, rgb(0 0 0 / 10%));
+  border-color: var(--dsw-alias-label-dimmed, rgb(0 0 0 / 20%));
 }
-.${css.discard}:hover { background: var(--dsw-alias-interactive-bg-hover, rgb(0 0 0 / 4%)); }
-.${css.discard}:disabled { opacity: 0.5; cursor: not-allowed; }
 .${css.save} {
-  /* Foreground follows the official primary-button contrast token: dark
-   * themes turn the brand fill near-white, so the label must flip to a
-   * dark ink instead of hardcoded white. */
-  color: var(--dsw-alias-label-primary-foreground, #ffffff);
-  background: var(--dsw-alias-brand-primary, #3964fe);
-  border: 1px solid transparent;
+  background: var(--dsw-alias-label-primary, #0f1115);
+  color: var(--dsw-alias-bg-layer-3, #ffffff);
 }
-.${css.save}:hover { filter: brightness(0.96); }
-.${css.save}:focus-visible {
-  outline: 2px solid var(--dsw-alias-brand-primary, #3964fe); outline-offset: 2px;
+.${css.discard}:disabled, .${css.save}:disabled { opacity: 0.4; cursor: default; }
+.${css.discard}:focus-visible, .${css.save}:focus-visible {
+  outline: 2px solid var(--dsw-alias-brand-primary, #3964fe);
+  outline-offset: 1px;
 }
-.${css.save}:disabled { opacity: 0.55; cursor: not-allowed; }
-.${css.failed} { font-size: 12px; line-height: 18px; color: #dc2626; }
+.${css.failed} {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--dsw-alias-state-error-primary, #dc2626);
+}
 .${css.saved} {
-  font-size: 12px; line-height: 18px; color: #16a34a;
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--dsw-alias-state-success-primary, #16a34a);
   animation: mg-fade-out 2.2s ease forwards;
 }
 @keyframes mg-fade-out { from { opacity: 1; } to { opacity: 0; } }
 .${css.loading} {
-  height: 72px; border-radius: 6px;
+  height: 72px;
+  border-radius: 8px;
   background: linear-gradient(90deg, transparent, var(--dsw-alias-interactive-bg-hover, rgb(0 0 0 / 4%)), transparent);
   background-size: 200% 100%;
   animation: mg-pulse 1.2s ease-in-out infinite;

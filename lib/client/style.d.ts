@@ -5,12 +5,11 @@
  * so the styles live as a string here, use the official `--dsw-alias-*`
  * design tokens, and carry a stable `mg-*` class prefix.
  *
- * The card mirrors the official PluginCard look (ui-settings-plugins): a
- * collapsible header (name + description + chevron), then the controls body
- * with a save/discard footer. Interactions: header hover/active background,
- * focus rings in the brand color with a soft halo, control hover borders,
- * disabled dimming, a pulse loading skeleton, and a save feedback state
- * machine (saving → saved fade → failed).
+ * The card mirrors the official PluginCard look (ui-settings-plugins) and
+ * its field styles (fields.module.css): a collapsible header (name +
+ * description + chevron), then the controls body with a save/discard footer.
+ * Typography and geometry intentionally match the upstream DeepSeek Harness
+ * plugin page rather than inventing a second visual system.
  */
 /** Card class names — the single source the components and the stylesheet share. */
 export declare const CARD_CSS_CLASSES: {

@@ -1,7 +1,9 @@
 /**
  * Right-sidebar styles — injected as a string (same rationale as the card
  * stylesheet: tsdown extracts .css files the dsh client loader never fetches).
- * Uses official `--dsw-alias-*` tokens and a stable `mg-rs-*` class prefix.
+ * Uses official `--dsw-alias-*` / `--dsw-specific-*` tokens and the upstream
+ * sidebar geometry (ui-sidebar/SidebarRoot.module.css): round icon buttons,
+ * 13–14px type scale, and the settings-page tab underline.
  */
 /** Right-sidebar class names shared by the component and the stylesheet. */
 export declare const RIGHT_SIDEBAR_CSS_CLASSES: {

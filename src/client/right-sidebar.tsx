@@ -178,8 +178,8 @@ function TreeNode({ entry, depth }: { entry: DirectoryRow; depth: number }): Rea
       >
         <span className={c.treeIcon}>
           {expandable
-            ? (open ? <IconFolderOpen16 size={20} /> : <IconFolderClose16 size={20} />)
-            : <IconCodeOutline16 size={20} />}
+            ? (open ? <IconFolderOpen16 size={16} /> : <IconFolderClose16 size={16} />)
+            : <IconCodeOutline16 size={16} />}
         </span>
         <span className={c.treeName}>{entry.name}</span>
       </div>
@@ -337,7 +337,7 @@ export function RightSidebar({ ctx }: RightSidebarProps): ReactNode {
     ? totalInputTokens + totalOutputTokens
     : undefined
   const chartGradient = totalTokens !== undefined && totalTokens > 0
-    ? `conic-gradient(#3964fe 0deg ${(totalInputTokens! / totalTokens) * 360}deg, #16a34a ${(totalInputTokens! / totalTokens) * 360}deg 360deg)`
+    ? `conic-gradient(var(--dsw-alias-state-business-primary, #3964fe) 0deg ${(totalInputTokens! / totalTokens) * 360}deg, var(--dsw-alias-state-success-primary, #16a34a) ${(totalInputTokens! / totalTokens) * 360}deg 360deg)`
     : ''
 
   return (
@@ -414,13 +414,13 @@ export function RightSidebar({ ctx }: RightSidebarProps): ReactNode {
           </button>
           <div className={c.railItems}>
             <button type="button" className={c.railItem} data-tip="概览" aria-label="概览" onClick={() => { setTab('overview'); setOpen(true) }}>
-              <IconDataOutline16 size={20} />
+              <IconDataOutline16 size={18} />
             </button>
             <button type="button" className={c.railItem} data-tip="文件" aria-label="文件" onClick={() => { setTab('files'); setOpen(true) }}>
-              <IconFolderOpen16 size={20} />
+              <IconFolderOpen16 size={18} />
             </button>
             <button type="button" className={c.railItem} data-tip="Git" aria-label="Git" onClick={() => { setTab('git'); setOpen(true) }}>
-              <IconBranchOutline16 size={20} />
+              <IconBranchOutline16 size={18} />
             </button>
           </div>
         </div>
@@ -477,8 +477,8 @@ function Overview(props: {
             </div>
           </div>
           <div className={c.legend}>
-            <div className={c.legendRow}><i className={c.legendDot} style={{ background: '#3964fe' }} />总输入 {formatTokens(chartInput)}</div>
-            <div className={c.legendRow}><i className={c.legendDot} style={{ background: '#16a34a' }} />总输出 {formatTokens(chartOutput)}</div>
+            <div className={c.legendRow}><i className={c.legendDot} style={{ background: 'var(--dsw-alias-state-business-primary, #3964fe)' }} />总输入 {formatTokens(chartInput)}</div>
+            <div className={c.legendRow}><i className={c.legendDot} style={{ background: 'var(--dsw-alias-state-success-primary, #16a34a)' }} />总输出 {formatTokens(chartOutput)}</div>
           </div>
         </div>
         <div className={c.statGrid}>
