@@ -489,7 +489,10 @@ export function openDesktopShell(
 
   tray = new WebViewTray(app, {
     title: options.title,
-    icon: dshFaviconTray(),
+    // The tray surface follows the OS theme, not the page theme: black
+    // whale on a light tray, white whale on a dark one (the tray icon is
+    // set once at creation — a system theme change applies next launch).
+    icon: dshFaviconTray(osThemeIsLight() === false),
   }, {
     onDoubleClick: showWindow,
     onCommand: (command: TrayCommand) => {
