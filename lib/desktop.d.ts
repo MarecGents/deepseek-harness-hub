@@ -66,7 +66,8 @@ export interface DesktopShellHandle {
     applyTheme(theme: 'system' | 'light' | 'dark'): void;
     /**
      * Apply a window size immediately (from the settings card's width/height).
-     * No-op while maximized; the next restore uses the default 3/4 size.
+     * If the window is maximized, it is un-maximized first and the persisted
+     * maximized flag is cleared; the window then resizes to the requested size.
      */
     applySize(width: number, height: number): void;
     /**

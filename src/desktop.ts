@@ -72,7 +72,8 @@ export interface DesktopShellHandle {
   applyTheme(theme: 'system' | 'light' | 'dark'): void
   /**
    * Apply a window size immediately (from the settings card's width/height).
-   * No-op while maximized; the next restore uses the default 3/4 size.
+   * If the window is maximized, it is un-maximized first and the persisted
+   * maximized flag is cleared; the window then resizes to the requested size.
    */
   applySize(width: number, height: number): void
   /**
@@ -187,6 +188,8 @@ export function openDesktopShell(
   let closedToTray = false
   let themeSetting: DesktopOptions['theme'] = options.theme
   let tray: WebViewTray | undefined
+  /** Custom size requested while maximized; consumed by the next un-maximize. */
+  let pendingCustomSize: { width: number; height: number } | undefined
 
   /**
    * Apply the title-bar theme to one window/webview pair. 'system' follows
@@ -289,7 +292,10 @@ export function openDesktopShell(
     w.on('resize', () => {
       const maximized = w.isMaximized()
       if (wasMaximized && !maximized) {
-        const restored = defaultSize()
+        // If the user saved a custom size while maximized, restore to that
+        // size; otherwise restore to the default 3/4 of the screen.
+        const restored = pendingCustomSize ?? defaultSize()
+        pendingCustomSize = undefined
         try {
           w.setSize(restored.width, restored.height, true)
         } catch {
@@ -481,9 +487,17 @@ export function openDesktopShell(
       }
     },
     applySize: (width: number, height: number) => {
-      if (win === undefined || win.isDisposed() || win.isMaximized()) return
+      if (win === undefined || win.isDisposed()) return
       try {
+        if (win.isMaximized()) {
+          // Saving a custom size while maximized: exit maximize first and let
+          // the resize handler apply the requested size (via pendingCustomSize).
+          pendingCustomSize = { width, height }
+          win.setMaximized(false)
+        }
         win.setSize(width, height, true)
+        // If we just left the maximized state, persist that fact immediately.
+        if (!win.isMaximized()) store.save({ maximized: false })
       } catch {
         // Best-effort; a failed resize must not break the settings save.
       }
