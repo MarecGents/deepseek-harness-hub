@@ -8,6 +8,7 @@ export declare const RIGHT_SIDEBAR_CSS_CLASSES: {
     readonly root: "mg-rs-root";
     readonly collapsed: "mg-rs-collapsed";
     readonly header: "mg-rs-header";
+    readonly headerTop: "mg-rs-header-top";
     readonly title: "mg-rs-title";
     readonly toggle: "mg-rs-toggle";
     readonly toggleIcon: "mg-rs-toggle-icon";

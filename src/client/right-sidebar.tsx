@@ -204,12 +204,12 @@ export function RightSidebar({ openDetails, closeDetails, useProjection, useSess
   return (
     <div ref={rootRef} className={c.root}>
       <div className={c.header}>
-        <span className={c.title}>右侧栏</span>
-        <button type="button" className={c.toggle} aria-label="收起右侧栏" onClick={() => { closeDetails() }}>
-          <IconPanelLeftOutline16 className={c.toggleIcon} size={16} />
-        </button>
-      </div>
-      <div className={c.body}>
+        <div className={c.headerTop}>
+          <span className={c.title}>右侧栏</span>
+          <button type="button" className={c.toggle} aria-label="收起右侧栏" onClick={() => { closeDetails() }}>
+            <IconPanelLeftOutline16 className={c.toggleIcon} size={16} />
+          </button>
+        </div>
         <div className={c.tabs} role="tablist" aria-label="右侧栏视图">
           {(['overview', 'files', 'git'] as Tab[]).map((key) => (
             <button
@@ -224,6 +224,8 @@ export function RightSidebar({ openDetails, closeDetails, useProjection, useSess
             </button>
           ))}
         </div>
+      </div>
+      <div className={c.body}>
         <div className={c.content}>
           {tab === 'overview' && (
             <Overview
