@@ -114,7 +114,7 @@ export class WebViewThemeDetector implements ThemeDetector {
       + ` : -1`,
       (error, result) => {
         if (error) {
-          console.warn('[mg-dsh-desktop] theme probe failed:', error)
+          console.warn('[dsh-hub] theme probe failed:', error)
           return
         }
         const raw = (result ?? '').trim()

@@ -276,7 +276,7 @@ const STYLE_TEXT = `
 
 /** Inject the card stylesheet once (idempotent; no-op when already present). */
 export function injectCardStyle(): void {
-  const id = 'mg-dsh-desktop-style'
+  const id = 'dsh-hub-style'
   if (document.getElementById(id) !== null) return
   const style = document.createElement('style')
   style.id = id

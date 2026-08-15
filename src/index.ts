@@ -1,16 +1,16 @@
 /**
- * mg-dsh-desktop host half — the desktop shell over the web-app layer.
+ * dsh-hub host half — the desktop shell over the web-app layer.
  *
  * Launch gating: the desktop window, the config API, and the settings
  * namespace are active ONLY when the process was started by this project —
- * the desktop shortcut or the `mg-dsh` command, both of which set
- * `MG_DSH_DESKTOP_LAUNCHED=1`. The cordis.patch.yml row is additionally
+ * the desktop shortcut or the `dsh-hub` command, both of which set
+ * `DSH_HUB_LAUNCHED=1`. The cordis.patch.yml row is additionally
  * `disabled` under any other launch, so a plain command-line `dsh web` never
  * even mounts this plugin: no window, no client row in __DSH_BOOT__, nothing
  * injected.
  *
  * Config surface: the client settings card reads/writes the shell config
- * through this plugin's own HTTP routes (`/api/mg-dsh-desktop/config`).
+ * through this plugin's own HTTP routes (`/api/dsh-hub/config`).
  * This is deliberate — dsh's RPC `settings.describe` exposes only a
  * hard-coded allowlist in the api-proxy (third-party plugin namespaces are
  * "deferred work" per its source comment), so the supported pattern for
@@ -19,7 +19,7 @@
  * via the official `installSettingsSection` for in-process consumers and for
  * the day the allowlist opens up.
  *
- * @module mg-dsh-desktop
+ * @module dsh-hub
  */
 
 import { mkdirSync, writeFileSync } from 'node:fs'
@@ -42,7 +42,7 @@ import { openFolderInExplorer } from './services/explorer.js'
 import { makeWorkspaceRoutes } from './services/workspace-api.js'
 
 /** Stable Cordis plugin name (referenced by cordis.patch.yml's insert row). */
-export const name = 'mg-dsh-desktop'
+export const name = 'dsh-hub'
 
 /**
  * Optional services are read via `ctx.get`, never injected: declaring
@@ -84,24 +84,24 @@ export const Config: z<Config> = z.object({
 })
 
 /** Settings namespace owned by this plugin (spelled like the package). */
-export const SETTINGS_NS = settingsNamespace('mg-dsh-desktop')
+export const SETTINGS_NS = settingsNamespace('dsh-hub')
 
-/** Env marker the desktop shortcut / `mg-dsh` command sets before spawning dsh web. */
-export const LAUNCHED_BY_SHORTCUT_ENV = 'MG_DSH_DESKTOP_LAUNCHED'
+/** Env marker the desktop shortcut / `dsh-hub` command sets before spawning dsh web. */
+export const LAUNCHED_BY_SHORTCUT_ENV = 'DSH_HUB_LAUNCHED'
 
 /** Loader entry name of the web server row (web-app bundle's patch). */
 const WEB_SERVER_ENTRY = '@deepseek-ai/dsh-host-webserver'
 /** FiberState.Active — keep the numeric value so no cordis enum import is needed. */
 const FIBER_ACTIVE = 2
 
-/** True when this process was started by the desktop shortcut or `mg-dsh`. */
+/** True when this process was started by the desktop shortcut or `dsh-hub`. */
 export function launchedByShortcut(): boolean {
   return process.env[LAUNCHED_BY_SHORTCUT_ENV] === '1'
 }
 
 /** Marker the launcher checks so an intentional tray quit is never auto-restarted. */
 function quitMarkerFile(): string {
-  return join(dshHome(), 'mg-dsh-desktop', 'quit.marker')
+  return join(dshHome(), 'dsh-hub', 'quit.marker')
 }
 
 /**
@@ -136,19 +136,19 @@ async function openWorkspaceDir(
   getCurrentPath: (cb: (path: string | null) => void) => void,
 ): Promise<void> {
   const startedAt = Date.now()
-  console.log(`[mg-dsh-desktop] open workspace start at ${startedAt}`)
+  console.log(`[dsh-hub] open workspace start at ${startedAt}`)
   try {
     getCurrentPath((path) => {
       const cwd = path ?? activeCwd ?? process.cwd()
       try {
         openFolderInExplorer(cwd)
-        console.log(`[mg-dsh-desktop] explorer launched in ${Date.now() - startedAt}ms (${cwd})`)
+        console.log(`[dsh-hub] explorer launched in ${Date.now() - startedAt}ms (${cwd})`)
       } catch (error) {
-        console.warn(`[mg-dsh-desktop] open workspace failed in ${Date.now() - startedAt}ms:`, error)
+        console.warn(`[dsh-hub] open workspace failed in ${Date.now() - startedAt}ms:`, error)
       }
     })
   } catch (error) {
-    console.warn(`[mg-dsh-desktop] open workspace failed in ${Date.now() - startedAt}ms:`, error)
+    console.warn(`[dsh-hub] open workspace failed in ${Date.now() - startedAt}ms:`, error)
   }
 }
 
@@ -191,10 +191,10 @@ export function apply(ctx: Context, config: Config): void {
 
   const launched = launchedByShortcut()
   if (!launched) {
-    console.log('[mg-dsh-desktop] not launched by the desktop shortcut; shell + plugin page disabled (CLI mode)')
+    console.log('[dsh-hub] not launched by the desktop shortcut; shell + plugin page disabled (CLI mode)')
     return
   }
-  console.log('[mg-dsh-desktop] launched by shortcut; desktop shell + plugin page active')
+  console.log('[dsh-hub] launched by shortcut; desktop shell + plugin page active')
 
   let shell: DesktopShellHandle | undefined
   let opened = false
@@ -264,7 +264,7 @@ export function apply(ctx: Context, config: Config): void {
     if (opened) return
     const server = ctx.get('webServer')
     if (server === undefined) {
-      console.log('[mg-dsh-desktop] no web server in this profile; desktop shell skipped')
+      console.log('[dsh-hub] no web server in this profile; desktop shell skipped')
       return
     }
     registerRoutes()
@@ -293,9 +293,9 @@ export function apply(ctx: Context, config: Config): void {
           return { minimizeToTray: stored.minimizeToTray, closeToTray: stored.closeToTray }
         },
       }, () => exitProcess(ctx))
-      console.log(`[mg-dsh-desktop] desktop shell opened on http://127.0.0.1:${server.port}`)
+      console.log(`[dsh-hub] desktop shell opened on http://127.0.0.1:${server.port}`)
     } catch (error) {
-      console.error('[mg-dsh-desktop] failed to open desktop shell:', error)
+      console.error('[dsh-hub] failed to open desktop shell:', error)
     }
   }
 

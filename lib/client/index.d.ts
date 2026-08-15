@@ -1,12 +1,12 @@
 /**
- * mg-dsh-desktop browser half — registers a settings card into the dsh
+ * dsh-hub browser half — registers a settings card into the dsh
  * settings → plugins page and bridges tray commands from the desktop shell.
  *
  * The card reads/writes the shell config through this plugin's own HTTP
  * routes, so it works without dsh's settings namespace allowlist (which does
  * not expose third-party namespaces yet). The card renders only while the
  * host serves the config API, which happens only when the process was
- * launched by this project (desktop shortcut / `mg-dsh`); a plain
+ * launched by this project (desktop shortcut / `dsh-hub`); a plain
  * command-line `dsh web` never mounts the bundle at all.
  *
  * The tray bridge: the desktop shell dispatches tray commands into the page
@@ -17,7 +17,7 @@
  * dsh-pet): declare the slot shape, then `slots.inject('settings.plugin.item',
  * ...)`.
  *
- * @module mg-dsh-desktop/client
+ * @module dsh-hub/client
  */
 import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client';
 declare module '@deepseek-ai/dsh-client-ui-slots' {

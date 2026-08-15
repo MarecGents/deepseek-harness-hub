@@ -4,7 +4,7 @@
  * bundle is installed into the `web` profile, boots `dsh web` with output
  * redirected to a log file, and exits with dsh's exit code.
  *
- * The window itself is opened by the mg-dsh-desktop bundle plugin inside the
+ * The window itself is opened by the dsh-hub bundle plugin inside the
  * dsh process; closing it quits dsh, which ends this launcher.
  */
 
@@ -15,7 +15,7 @@ import { fileURLToPath } from 'node:url'
 import { acquireLock, dshHome, releaseLock } from './lock.mjs'
 
 const PACKAGE_ROOT = dirname(dirname(fileURLToPath(import.meta.url)))
-const BUNDLE_NAME = 'mg-dsh-desktop'
+const BUNDLE_NAME = 'dsh-hub'
 const LOG_FILE = join(PACKAGE_ROOT, 'dsh.log')
 
 /** Max automatic restarts after an unexpected dsh crash (webviewjs SIGSEGV etc). */
@@ -88,7 +88,7 @@ function findDsh() {
 /** Show a Windows message box (the launcher runs hidden, so stderr is invisible). */
 function alert(message) {
   try {
-    const ps = `[System.Windows.Forms.MessageBox]::Show('${message.replaceAll("'", "''")}', 'mg-dsh-desktop')`
+    const ps = `[System.Windows.Forms.MessageBox]::Show('${message.replaceAll("'", "''")}', 'dsh-hub')`
     spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command',
       'Add-Type -AssemblyName System.Windows.Forms; ' + ps], { windowsHide: true })
   } catch {
@@ -110,7 +110,7 @@ function decodeConsoleOutput(buffer) {
 const WEB_PROFILE_BUNDLES = ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app']
 
 /**
- * Make sure `mg-dsh-desktop` is part of the web profile WITHOUT depending on
+ * Make sure `dsh-hub` is part of the web profile WITHOUT depending on
  * pnpm or `dsh plugin`: dsh resolves profile bundles from
  * `profile/node_modules/<name>` (createRequire-based), so a junction into the
  * package directory plus the `dsh.profile.bundles` list entry is enough.
@@ -196,7 +196,7 @@ function ensureBundleInstalled() {
 
 /** Marker written by the plugin right before an intentional tray Quit. */
 function quitMarkerFile() {
-  return join(dshHome(), 'mg-dsh-desktop', 'quit.marker')
+  return join(dshHome(), 'dsh-hub', 'quit.marker')
 }
 
 function quitRequested() {
@@ -272,7 +272,7 @@ function main() {
     })
     dshCmd = findDsh()
     if (dshCmd === null || install.status !== 0) {
-      const message = 'mg-dsh-desktop could not find or install the dsh CLI.\n\nPlease run: npm install -g @deepseek-ai/dsh'
+      const message = 'dsh-hub could not find or install the dsh CLI.\n\nPlease run: npm install -g @deepseek-ai/dsh'
       log(message)
       alert(message)
       process.exit(1)
@@ -281,7 +281,7 @@ function main() {
   log(`using dsh: ${dshCmd}`)
 
   if (!ensureBundleInstalled(dshCmd)) {
-    alert('mg-dsh-desktop could not register itself with the web profile.\nSee the dsh.log file next to the package for details.')
+    alert('dsh-hub could not register itself with the web profile.\nSee the dsh.log file next to the package for details.')
     process.exit(1)
   }
 
@@ -299,10 +299,10 @@ function main() {
       stdio: ['ignore', 'pipe', 'pipe'],
       env: {
         ...process.env,
-        // Tells the mg-dsh-desktop bundle plugin that this process was started
+        // Tells the dsh-hub bundle plugin that this process was started
         // from the desktop shortcut: it opens the window and registers the
         // settings card. A plain `dsh web` on a command line leaves both off.
-        MG_DSH_DESKTOP_LAUNCHED: '1',
+        DSH_HUB_LAUNCHED: '1',
       },
     })
     const logStream = (chunk) => {
@@ -312,7 +312,7 @@ function main() {
     child.stderr.on('data', logStream)
     child.on('error', (error) => {
       log(`dsh failed to start: ${error.message}`)
-      alert('mg-dsh-desktop could not start dsh. See dsh.log for details.')
+      alert('dsh-hub could not start dsh. See dsh.log for details.')
       process.exit(1)
     })
     child.on('exit', (code, signal) => {
@@ -344,7 +344,7 @@ function main() {
       }
 
       log(`dsh exited unexpectedly ${MAX_RESTARTS} times; giving up`)
-      alert('mg-dsh-desktop 连续异常退出。\n\n请查看 dsh.log 获取详细信息。')
+      alert('dsh-hub 连续异常退出。\n\n请查看 dsh.log 获取详细信息。')
       process.exit(code ?? 1)
     })
   }

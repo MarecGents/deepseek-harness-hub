@@ -26,7 +26,7 @@ const FOCUS_TIMEOUT_MS = 8_000
  * user32; the koffi path is faster and avoids a ~1s PowerShell cold start.
  */
 const FOCUS_SCRIPT = `
-$title = $env:MG_DSH_EXPLORER_TITLE
+$title = $env:DSH_HUB_EXPLORER_TITLE
 $deadline = (Get-Date).AddSeconds(8)
 $p = $null
 do {
@@ -163,7 +163,7 @@ function runPowerShellFocus(folderPath: string): void {
     const child = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', FOCUS_SCRIPT], {
       env: {
         ...process.env,
-        MG_DSH_EXPLORER_TITLE: basename(folderPath),
+        DSH_HUB_EXPLORER_TITLE: basename(folderPath),
       },
       windowsHide: true,
       stdio: 'ignore',
@@ -171,7 +171,7 @@ function runPowerShellFocus(folderPath: string): void {
     })
     child.unref()
   } catch (error) {
-    console.warn(`[mg-dsh-desktop] explorer focus (powershell) failed: ${String(error)}`)
+    console.warn(`[dsh-hub] explorer focus (powershell) failed: ${String(error)}`)
   }
 }
 
@@ -210,17 +210,17 @@ function focusExplorerWindow(folderPath: string): void {
   const attempt = (): void => {
     try {
       if (api.tryFocus(title)) {
-        console.log(`[mg-dsh-desktop] explorer focused in ${Date.now() - startedAt}ms (${title})`)
+        console.log(`[dsh-hub] explorer focused in ${Date.now() - startedAt}ms (${title})`)
         return
       }
     } catch (error) {
-      console.warn(`[mg-dsh-desktop] explorer focus failed: ${String(error)}`)
+      console.warn(`[dsh-hub] explorer focus failed: ${String(error)}`)
       return
     }
     if (Date.now() - startedAt < FOCUS_TIMEOUT_MS) {
       setTimeout(attempt, FOCUS_POLL_MS)
     } else {
-      console.warn(`[mg-dsh-desktop] explorer focus timeout after ${Date.now() - startedAt}ms (${title})`)
+      console.warn(`[dsh-hub] explorer focus timeout after ${Date.now() - startedAt}ms (${title})`)
     }
   }
   setTimeout(attempt, FOCUS_POLL_MS)

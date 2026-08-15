@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 /**
- * mg-dsh — the mg-dsh-desktop launcher command. Boots `dsh web` with the
+ * dsh-hub — the dsh-hub launcher command. Boots `dsh web` with the
  * desktop-shell marker set, so the plugin opens the native window and injects
- * the plugin config page. Anything after `mg-dsh` is forwarded to `dsh web`.
+ * the plugin config page. Anything after `dsh-hub` is forwarded to `dsh web`.
  *
  * Usage:
- *   mg-dsh                 # boot dsh web with the desktop shell
- *   mg-dsh --port 4000     # forward extra args to dsh web
+ *   dsh-hub                 # boot dsh web with the desktop shell
+ *   dsh-hub --port 4000     # forward extra args to dsh web
  */
 
 import { spawn, spawnSync } from 'node:child_process'
@@ -64,17 +64,17 @@ function main() {
   // uses a random port, so only a PID lock can reliably prevent two desktop
   // instances from fighting over the same dsh profile.
   if (!acquireLock(log)) {
-    console.error('mg-dsh: DeepSeek Harness Desktop is already running.')
+    console.error('dsh-hub: DeepSeek Harness Desktop is already running.')
     process.exit(0)
   }
   process.on('exit', releaseLock)
 
   const dshCmd = findDsh()
   if (dshCmd === null) {
-    console.error('mg-dsh: dsh CLI not found. Install it with: npm install -g @deepseek-ai/dsh')
+    console.error('dsh-hub: dsh CLI not found. Install it with: npm install -g @deepseek-ai/dsh')
     process.exit(1)
   }
-  log(`mg-dsh: using dsh ${dshCmd}, extra args: ${process.argv.slice(2).join(' ')}`)
+  log(`dsh-hub: using dsh ${dshCmd}, extra args: ${process.argv.slice(2).join(' ')}`)
 
   // Random web port by default (`--port 0` = the OS picks a free one), so a
   // busy 3080 can never collide with the desktop shell. An explicit `--port`
@@ -92,15 +92,15 @@ function main() {
     stdio: 'inherit',
     env: {
       ...process.env,
-      MG_DSH_DESKTOP_LAUNCHED: '1',
+      DSH_HUB_LAUNCHED: '1',
     },
   })
   child.on('error', (error) => {
-    log(`mg-dsh: dsh failed to start: ${error.message}`)
+    log(`dsh-hub: dsh failed to start: ${error.message}`)
     process.exit(1)
   })
   child.on('exit', (code) => {
-    log(`mg-dsh: dsh exited with code ${code ?? 'null'}`)
+    log(`dsh-hub: dsh exited with code ${code ?? 'null'}`)
     process.exit(code ?? 0)
   })
 }

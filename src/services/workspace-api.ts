@@ -13,7 +13,7 @@ import { isAbsolute, join } from 'node:path'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { WebRoute } from '@deepseek-ai/dsh-host-webserver'
 
-const API_PREFIX = '/api/mg-dsh-desktop/workspace'
+const API_PREFIX = '/api/dsh-hub/workspace'
 const MAX_ENTRIES = 1000
 const GIT_TIMEOUT_MS = 3000
 

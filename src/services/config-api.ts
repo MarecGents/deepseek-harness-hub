@@ -1,5 +1,5 @@
 /**
- * mg-dsh-desktop config API — same-origin JSON endpoints the client
+ * dsh-hub config API — same-origin JSON endpoints the client
  * settings card uses to read and write the shell configuration (window size
  * policy, theme, tray). Deliberately NOT a settings namespace: dsh's RPC
  * settings.describe exposes only a hard-coded allowlist (third-party plugin
@@ -16,25 +16,27 @@ import { dshHome } from './state-store.js'
 import { resolveLaunchScreen } from './screen.js'
 
 /**
- * One-time migration from the pre-release `marec-dsh-desktop` names (the
- * package was renamed before its first npm publish). Best-effort; called at
- * plugin apply so existing installs keep their window settings.
+ * One-time migration from the pre-release names (`marec-dsh-desktop` and
+ * `mg-dsh-desktop`) to the current `dsh-hub` home directory. Best-effort;
+ * called at plugin apply so existing installs keep their window settings.
  */
 export function migrateLegacyPaths(): void {
   try {
-    const oldDir = join(dshHome(), 'marec-dsh-desktop')
-    const newDir = join(dshHome(), 'mg-dsh-desktop')
-    if (existsSync(oldDir) && !existsSync(newDir)) renameSync(oldDir, newDir)
-    const oldState = join(dshHome(), 'marec-dsh-desktop-window-state.json')
-    const newState = join(dshHome(), 'mg-dsh-desktop-window-state.json')
-    if (existsSync(oldState) && !existsSync(newState)) renameSync(oldState, newState)
+    const newDir = join(dshHome(), 'dsh-hub')
+    for (const legacy of ['marec-dsh-desktop', 'mg-dsh-desktop']) {
+      const oldDir = join(dshHome(), legacy)
+      if (existsSync(oldDir) && !existsSync(newDir)) renameSync(oldDir, newDir)
+      const oldState = join(dshHome(), `${legacy}-window-state.json`)
+      const newState = join(dshHome(), 'dsh-hub-window-state.json')
+      if (existsSync(oldState) && !existsSync(newState)) renameSync(oldState, newState)
+    }
   } catch {
     // Best-effort; a failed migration must not break startup.
   }
 }
 
 /** Browser-facing base path of the shell config API. */
-export const CONFIG_API_PREFIX = '/api/mg-dsh-desktop'
+export const CONFIG_API_PREFIX = '/api/dsh-hub'
 
 /** Runtime shell config persisted under the harness home. */
 export interface ShellConfig {
@@ -67,7 +69,7 @@ export const DEFAULT_SHELL_CONFIG: ShellConfig = {
 
 /** Config document path under the harness home. */
 export function configFile(): string {
-  return join(dshHome(), 'mg-dsh-desktop', 'config.json')
+  return join(dshHome(), 'dsh-hub', 'config.json')
 }
 
 /** Read the persisted config; returns defaults when absent or malformed. */
@@ -98,7 +100,7 @@ export function hasStoredWindowSize(): boolean {
 export function writeShellConfig(patch: Partial<ShellConfig>): ShellConfig {
   const next = { ...readShellConfig(), ...patch }
   try {
-    const dir = join(dshHome(), 'mg-dsh-desktop')
+    const dir = join(dshHome(), 'dsh-hub')
     mkdirSync(dir, { recursive: true })
     const file = configFile()
     const tmp = `${file}.tmp`

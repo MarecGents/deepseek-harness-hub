@@ -1,5 +1,5 @@
 /**
- * RightSidebar — the mg-dsh-desktop right sidebar mounted as a body portal
+ * RightSidebar — the dsh-hub right sidebar mounted as a body portal
  * (like dsh-better-sidebar), independent of the official details column so it
  * also works in blank/new conversations where the details column is forced
  * to 0. It mirrors the left sidebar's collapse/rail behavior and provides
@@ -145,7 +145,7 @@ function cacheHitPercent(usage: { cacheReadTokens?: number; uncachedInputTokens?
 
 async function fetchDir(path: string): Promise<DirectoryRow[]> {
   try {
-    const res = await fetch(`/api/mg-dsh-desktop/workspace/list?${new URLSearchParams({ path })}`)
+    const res = await fetch(`/api/dsh-hub/workspace/list?${new URLSearchParams({ path })}`)
     const body = (await res.json()) as { ok?: boolean; entries?: DirectoryRow[] }
     return body.ok === true ? (body.entries ?? []) : []
   } catch {
@@ -155,7 +155,7 @@ async function fetchDir(path: string): Promise<DirectoryRow[]> {
 
 async function fetchGit(path: string): Promise<GitInfo | null> {
   try {
-    const res = await fetch(`/api/mg-dsh-desktop/workspace/git?${new URLSearchParams({ path })}`)
+    const res = await fetch(`/api/dsh-hub/workspace/git?${new URLSearchParams({ path })}`)
     const body = (await res.json()) as GitInfo & { ok?: boolean }
     return body.ok === true ? body : null
   } catch {

@@ -1,12 +1,12 @@
 /**
- * mg-dsh-desktop browser half — registers a settings card into the dsh
+ * dsh-hub browser half — registers a settings card into the dsh
  * settings → plugins page and bridges tray commands from the desktop shell.
  *
  * The card reads/writes the shell config through this plugin's own HTTP
  * routes, so it works without dsh's settings namespace allowlist (which does
  * not expose third-party namespaces yet). The card renders only while the
  * host serves the config API, which happens only when the process was
- * launched by this project (desktop shortcut / `mg-dsh`); a plain
+ * launched by this project (desktop shortcut / `dsh-hub`); a plain
  * command-line `dsh web` never mounts the bundle at all.
  *
  * The tray bridge: the desktop shell dispatches tray commands into the page
@@ -17,7 +17,7 @@
  * dsh-pet): declare the slot shape, then `slots.inject('settings.plugin.item',
  * ...)`.
  *
- * @module mg-dsh-desktop/client
+ * @module dsh-hub/client
  */
 
 import { createElement } from 'react'
@@ -123,10 +123,10 @@ function handleShellCommand(ctx: ClientContext, event: Event): void {
     workspaces?: { startSession?: () => void }
   }).workspaces
   if (workspaces === undefined || workspaces.startSession === undefined) {
-    console.warn('[mg-dsh-desktop] new-task ignored: workspaces service unavailable')
+    console.warn('[dsh-hub] new-task ignored: workspaces service unavailable')
     return
   }
-  console.log('[mg-dsh-desktop] new-task (current session workspace)')
+  console.log('[dsh-hub] new-task (current session workspace)')
   workspaces.startSession()
 }
 
@@ -156,13 +156,13 @@ export function apply(ctx: ClientContext): void {
     slots.inject('settings.plugin.item', function* () {
       yield slots.register({
         name: 'settings.plugin.item',
-        id: 'mg-dsh-desktop',
+        id: 'dsh-hub',
         order: 30,
       }, (props: DesktopSettingsCardProps) => DesktopSettingsCard(props))
     })
   } catch (error) {
     // Card mounting must never take down the tray bridge.
-    console.warn('[mg-dsh-desktop] settings card injection failed:', error)
+    console.warn('[dsh-hub] settings card injection failed:', error)
   }
 
   // Right sidebar: mount a body portal like dsh-better-sidebar. This keeps
@@ -172,8 +172,8 @@ export function apply(ctx: ClientContext): void {
   try {
     ctx.effect(() => {
       const host = document.createElement('div')
-      host.id = 'mg-dsh-desktop-right-sidebar-root'
-      host.setAttribute('data-mg-dsh-desktop-right-sidebar', '')
+      host.id = 'dsh-hub-right-sidebar-root'
+      host.setAttribute('data-dsh-hub-right-sidebar', '')
       document.body.appendChild(host)
       const root: Root = createRoot(host)
       root.render(createElement(RightSidebar, { ctx }))
@@ -181,8 +181,8 @@ export function apply(ctx: ClientContext): void {
         root.unmount()
         host.remove()
       }
-    }, 'mg-dsh-desktop: right sidebar mount')
+    }, 'dsh-hub: right sidebar mount')
   } catch (error) {
-    console.warn('[mg-dsh-desktop] right sidebar mount failed:', error)
+    console.warn('[dsh-hub] right sidebar mount failed:', error)
   }
 }

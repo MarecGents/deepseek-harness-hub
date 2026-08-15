@@ -132,7 +132,7 @@ function applyWindowIcon(w: BrowserWindow, dark: boolean): void {
 /** Apply the title-bar theme; koffi fast path, PowerShell fallback. */
 function applyNativeTitleBarTheme(hwnd: bigint, dark: boolean): void {
   if (setTitleBarDark(hwnd, dark)) {
-    console.log(`[mg-dsh-desktop] dwm(${hwnd}, ${dark ? 'dark' : 'light'}) -> 0`)
+    console.log(`[dsh-hub] dwm(${hwnd}, ${dark ? 'dark' : 'light'}) -> 0`)
   } else {
     setTitleBarDarkPowerShell(hwnd, dark)
   }
@@ -218,9 +218,9 @@ export function openDesktopShell(
     let hwnd: bigint | undefined
     try {
       hwnd = w.getNativeHandle()
-      console.log(`[mg-dsh-desktop] window hwnd: ${hwnd}`)
+      console.log(`[dsh-hub] window hwnd: ${hwnd}`)
     } catch (error) {
-      console.warn(`[mg-dsh-desktop] getNativeHandle failed: ${String(error)}`)
+      console.warn(`[dsh-hub] getNativeHandle failed: ${String(error)}`)
     }
     if (theme === 'system') {
       // dsh defaults dark; corrected by the first probe as soon as the SPA paints.
@@ -230,7 +230,7 @@ export function openDesktopShell(
       if (hwnd !== undefined) applyNativeTitleBarTheme(hwnd, true)
       detector = new WebViewThemeDetector(wv)
       detector.start((dark) => {
-        console.log(`[mg-dsh-desktop] page theme ${dark ? 'dark' : 'light'}`)
+        console.log(`[dsh-hub] page theme ${dark ? 'dark' : 'light'}`)
         w.setTheme(dark ? Theme.Dark : Theme.Light)
         wv.setBackgroundColor(...(dark ? DARK_BG : LIGHT_BG), 255)
         applyWindowIcon(w, dark)
@@ -259,7 +259,7 @@ export function openDesktopShell(
     // page's width/height only applies immediately while not maximized).
     const size = defaultSize()
     const { width, height } = size
-    console.log(`[mg-dsh-desktop] default window ${width}x${height}`)
+    console.log(`[dsh-hub] default window ${width}x${height}`)
 
     const w = app.createBrowserWindow({
       title: options.title,
@@ -434,7 +434,7 @@ export function openDesktopShell(
   const dispatchEvent = (name: string, detail: Record<string, unknown> = {}): void => {
     if (webview === undefined || webview.isDisposed()) return
     const startedAt = Date.now()
-    console.log(`[mg-dsh-desktop] dispatch start ${name} at ${startedAt}`)
+    console.log(`[dsh-hub] dispatch start ${name} at ${startedAt}`)
     const js = dispatchScript(name, detail)
     let tries = 0
     const attempt = (): void => {
@@ -442,12 +442,12 @@ export function openDesktopShell(
       if (wv === undefined || wv.isDisposed()) return
       wv.evaluateScriptWithCallback(js, (error, result) => {
         if (error) {
-          console.warn(`[mg-dsh-desktop] dispatch ${name} failed:`, error)
+          console.warn(`[dsh-hub] dispatch ${name} failed:`, error)
           return
         }
         const status = result?.trim()
         if (status === '1') {
-          console.log(`[mg-dsh-desktop] dispatched ${name} in ${Date.now() - startedAt}ms`)
+          console.log(`[dsh-hub] dispatched ${name} in ${Date.now() - startedAt}ms`)
           return
         }
         // 20 × 300ms covers a cold SPA boot; by then the page's client
@@ -456,7 +456,7 @@ export function openDesktopShell(
           tries += 1
           setTimeout(attempt, 300)
         } else {
-          console.warn(`[mg-dsh-desktop] dispatch ${name} never reached a ready page (${Date.now() - startedAt}ms)`)
+          console.warn(`[dsh-hub] dispatch ${name} never reached a ready page (${Date.now() - startedAt}ms)`)
         }
       })
     }
@@ -575,14 +575,14 @@ export function openDesktopShell(
           && win.isVisible()
           && !win.isMinimized()
         if (watching) {
-          console.log('[mg-dsh-desktop] task complete while window visible; skipping toast')
+          console.log('[dsh-hub] task complete while window visible; skipping toast')
           return
         }
         // Spam guard: at most one toast per cooldown window, so a burst of
         // completed turns does not stack toasts.
         const now = Date.now()
         if (now - lastNotifiedAt < NOTIFY_COOLDOWN_MS) {
-          console.log('[mg-dsh-desktop] task toast throttled by cooldown')
+          console.log('[dsh-hub] task toast throttled by cooldown')
           return
         }
         lastNotifiedAt = now
@@ -594,14 +594,14 @@ export function openDesktopShell(
         // (ERR_UNHANDLED_ERROR), so subscribe before anything can fire. A
         // disabled-notifications OS setting arrives here as a benign error.
         notification.on('error', (event) => {
-          console.warn(`[mg-dsh-desktop] task notification error:`, event.error?.message ?? event.error)
+          console.warn(`[dsh-hub] task notification error:`, event.error?.message ?? event.error)
         })
         notification.onclick = () => showWindow()
         notification.onclose = () => {
           if (activeNotification === notification) activeNotification = undefined
         }
       } catch (error) {
-        console.warn(`[mg-dsh-desktop] task notification failed:`, error)
+        console.warn(`[dsh-hub] task notification failed:`, error)
       }
     },
     dispose: () => {

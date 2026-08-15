@@ -89,7 +89,7 @@ export class WebViewTray {
         }
       })
       child.stderr.on('data', (chunk) => {
-        console.warn(`[mg-dsh-desktop] tray-helper stderr: ${chunk.toString().trim()}`)
+        console.warn(`[dsh-hub] tray-helper stderr: ${chunk.toString().trim()}`)
       })
       child.stdout.on('data', (chunk) => this.onStdout(chunk))
 
@@ -102,7 +102,7 @@ export class WebViewTray {
         height: icon.height,
       })}\n`)
     } catch (error) {
-      console.warn(`[mg-dsh-desktop] tray helper failed to start: ${String(error)}`)
+      console.warn(`[dsh-hub] tray helper failed to start: ${String(error)}`)
       this.fallbackToInProcess(options)
     }
   }
@@ -150,7 +150,7 @@ export class WebViewTray {
       this.tray.on('double-click', () => this.actions.onDoubleClick())
       this.app.on('custom-menu-click', this.onMenuClick)
     } catch (error) {
-      console.warn(`[mg-dsh-desktop] in-process tray fallback failed: ${String(error)}`)
+      console.warn(`[dsh-hub] in-process tray fallback failed: ${String(error)}`)
     }
   }
 

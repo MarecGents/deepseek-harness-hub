@@ -1,5 +1,5 @@
 /**
- * mg-dsh-desktop settings card — one card in the dsh settings → plugins
+ * dsh-hub settings card — one card in the dsh settings → plugins
  * page, styled after the official PluginCard (collapsible header, themed
  * controls, save/discard footer). It edits the shell config (window size,
  * theme, tray behavior) through this plugin's own HTTP routes, and shows the
@@ -7,7 +7,7 @@
  *
  * The card renders only while the host serves the config API, which happens
  * only when the process was launched by this project (desktop shortcut /
- * `mg-dsh`); a plain command-line `dsh web` never mounts the bundle at all.
+ * `dsh-hub`); a plain command-line `dsh web` never mounts the bundle at all.
  */
 
 import { useEffect, useState, type ReactNode } from 'react'
@@ -60,7 +60,7 @@ const COPY = {
 /** Read one shell config document (GET), or null on failure. */
 async function fetchConfig(): Promise<ShellConfig | null> {
   try {
-    const res = await fetch('/api/mg-dsh-desktop/config')
+    const res = await fetch('/api/dsh-hub/config')
     if (!res.ok) return null
     const body = (await res.json()) as { ok?: boolean; value?: ShellConfig }
     return body.ok === true && body.value !== undefined ? body.value : null
@@ -72,7 +72,7 @@ async function fetchConfig(): Promise<ShellConfig | null> {
 /** Write the shell config document (POST); returns the persisted value. */
 async function saveConfig(patch: Partial<ShellConfig>): Promise<ShellConfig | null> {
   try {
-    const res = await fetch('/api/mg-dsh-desktop/config', {
+    const res = await fetch('/api/dsh-hub/config', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(patch),

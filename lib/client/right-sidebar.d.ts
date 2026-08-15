@@ -1,5 +1,5 @@
 /**
- * RightSidebar — the mg-dsh-desktop right sidebar mounted as a body portal
+ * RightSidebar — the dsh-hub right sidebar mounted as a body portal
  * (like dsh-better-sidebar), independent of the official details column so it
  * also works in blank/new conversations where the details column is forced
  * to 0. It mirrors the left sidebar's collapse/rail behavior and provides

@@ -1,11 +1,14 @@
 {
-  "name": "mg-dsh-desktop",
-  "version": "0.1.8-rc.2",
-  "description": "DeepSeek Harness desktop shell + feature plugin integration. Launches dsh's Web UI in a native WebView2 window with theme sync and window-state memory; injects the plugin config page only when started by this project (desktop shortcut or `mg-dsh` command).",
+  "name": "@marecgents/dsh-hub",
+  "version": "0.0.1-rc.8",
+  "description": "DeepSeek Harness desktop hub — native desktop shell (WebView2) for dsh's Web UI with tray, theme sync, window-state memory and a right sidebar. Injects the shell + plugin page only when launched by this project (desktop shortcut or `dsh-hub` command).",
   "license": "MIT",
   "type": "module",
   "main": "lib/index.js",
   "types": "lib/types/index.d.ts",
+  "publishConfig": {
+    "access": "public"
+  },
   "exports": {
     ".": {
       "types": "./lib/types/index.d.ts",
@@ -29,7 +32,7 @@
     "README.md"
   ],
   "bin": {
-    "mg-dsh": "bin/mg-dsh.mjs"
+    "dsh-hub": "bin/dsh-hub.mjs"
   },
   "scripts": {
     "build": "tsc",

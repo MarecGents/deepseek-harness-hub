@@ -4,7 +4,7 @@
  *
  * The desktop shell uses a random web port, so a netstat check on 3080 can
  * no longer detect a running desktop instance. A PID lock under $DSH_HOME is
- * the reliable guard: both the hidden shortcut launcher and the `mg-dsh`
+ * the reliable guard: both the hidden shortcut launcher and the `dsh-hub`
  * terminal command share the same file, so only one desktop instance can run
  * at a time. Stale locks (dead PID) are taken over automatically.
  */
@@ -21,7 +21,7 @@ export function dshHome() {
 
 /** Path of the single-instance lock file. */
 export function lockFile() {
-  return join(dshHome(), 'mg-dsh-desktop', 'launcher.lock')
+  return join(dshHome(), 'dsh-hub', 'launcher.lock')
 }
 
 /** True when a PID belongs to a live process on this machine. */

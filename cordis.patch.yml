@@ -1,4 +1,4 @@
-# mg-dsh-desktop bundle patch: desktop shell over the web-app layer.
+# dsh-hub bundle patch: desktop shell over the web-app layer.
 #
 # A single row mounts BOTH halves, mirroring the official plugin shape
 # (dsh-pet / dsh-better-sidebar):
@@ -7,15 +7,15 @@
 #     package's `dsh.client` declaration into the web plugin roster.
 #
 # Launch gating: the whole row is `disabled` unless the process was started
-# by this project (the desktop shortcut or the `mg-dsh` command set
-# `MG_DSH_DESKTOP_LAUNCHED=1`). When disabled the plugin is not mounted at
+# by this project (the desktop shortcut or the `dsh-hub` command set
+# `DSH_HUB_LAUNCHED=1`). When disabled the plugin is not mounted at
 # all — no loader entry, no client row in __DSH_BOOT__, nothing injected —
 # so a plain command-line `dsh web` is completely clean. Under this project's
 # launch the row activates and everything is served.
 - insert:
-    - id: mg-dsh-desktop
-      name: 'mg-dsh-desktop'
-      disabled: !!js process.env.MG_DSH_DESKTOP_LAUNCHED !== '1'
+    - id: dsh-hub
+      name: 'dsh-hub'
+      disabled: !!js process.env.DSH_HUB_LAUNCHED !== '1'
       config:
         title: 'DeepSeek Harness Desktop'
         width: 1280

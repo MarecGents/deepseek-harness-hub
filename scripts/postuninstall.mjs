@@ -26,7 +26,7 @@ try {
     const rm = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', `Remove-Item -LiteralPath '${shortcutPath}' -Force`], {
       encoding: 'utf8', timeout: 30000, windowsHide: true,
     })
-    if (rm.status === 0) console.log(`[mg-dsh-desktop] removed desktop shortcut: ${shortcutPath}`)
+    if (rm.status === 0) console.log(`[dsh-hub] removed desktop shortcut: ${shortcutPath}`)
   }
 } catch {
   // Uninstall cleanup is best-effort.

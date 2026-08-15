@@ -1,6 +1,6 @@
 /**
  * tsdown config — builds the browser client bundle that dsh's client-modules
- * serves as `/plugins/mg-dsh-desktop/client.js`. Mirrors the official
+ * serves as `/plugins/dsh-hub/client.js`. Mirrors the official
  * `packages/client/tsdown.client.ts` contract: a CJS closure that calls
  * `window.__ModuleLoader__.load({ id, factory })`, with the dsh platform
  * modules kept external (the frozen module table supplies them).
@@ -8,7 +8,7 @@
 import { defineConfig } from 'tsdown'
 
 /** Plugin id stamped into the __ModuleLoader__.load handoff (== package name). */
-const PLUGIN_ID = 'mg-dsh-desktop'
+const PLUGIN_ID = 'dsh-hub'
 
 /** Specifiers the dsh boot module table shares (must stay external). */
 const PLATFORM_MODULES = [

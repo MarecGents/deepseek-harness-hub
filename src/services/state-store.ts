@@ -1,7 +1,7 @@
 /**
  * Window geometry persistence — a single responsibility behind a tiny
  * interface so the shell can swap the backing store without touching any
- * other module. (Verified implementation carried over from mg-dsh-desktop.)
+ * other module. (Verified implementation carried over from dsh-hub.)
  */
 import { homedir } from 'node:os'
 import { join } from 'node:path'
@@ -37,7 +37,7 @@ export function dshHome(): string {
 
 /** JSON-file implementation of {@link WindowStateStore}. */
 export class JsonWindowStateStore implements WindowStateStore {
-  constructor(private readonly file = join(dshHome(), 'mg-dsh-desktop-window-state.json')) {}
+  constructor(private readonly file = join(dshHome(), 'dsh-hub-window-state.json')) {}
 
   load(): WindowState {
     try {

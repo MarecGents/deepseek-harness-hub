@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * tray-helper.mjs — standalone system-tray owner for mg-dsh-desktop.
+ * tray-helper.mjs — standalone system-tray owner for dsh-hub.
  *
  * It runs in its own Node process/event loop so tray menu clicks are NOT
  * queued behind the WebView2 window's event loop. Commands are sent back to

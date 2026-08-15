@@ -1,11 +1,11 @@
-# mg-dsh-desktop
+# dsh-hub
 
-> DeepSeek Harness（`dsh`）的 Windows 桌面化插件：以原生 WebView2 窗口运行 dsh Web UI，提供托盘、主题同步、窗口记忆、右侧栏与系统通知。
+> **`@marecgents/dsh-hub`** —— DeepSeek Harness（`dsh`）的桌面端框架：以原生 WebView2 窗口运行 dsh Web UI，提供托盘、主题同步、窗口记忆、右侧栏与系统通知。未来将迁移至 Tauri 2.x 实现多端（Windows / macOS / Linux）。
 
-[![npm version](https://img.shields.io/npm/v/mg-dsh-desktop)](https://www.npmjs.com/package/mg-dsh-desktop)
-[![npm rc](https://img.shields.io/npm/v/mg-dsh-desktop/rc)](https://www.npmjs.com/package/mg-dsh-desktop)
-[![license](https://img.shields.io/npm/l/mg-dsh-desktop)](LICENSE)
-[![GitHub stars](https://img.shields.io/github/stars/MarecGents/mg-dsh-desktop?style=social)](https://github.com/MarecGents/mg-dsh-desktop)
+[![npm version](https://img.shields.io/npm/v/@marecgents/dsh-hub)](https://www.npmjs.com/package/@marecgents/dsh-hub)
+[![npm rc](https://img.shields.io/npm/v/@marecgents/dsh-hub/rc)](https://www.npmjs.com/package/@marecgents/dsh-hub)
+[![license](https://img.shields.io/npm/l/@marecgents/dsh-hub)](LICENSE)
+[![GitHub stars](https://img.shields.io/github/stars/MarecGents/deepseek-harness-hub?style=social)](https://github.com/MarecGents/deepseek-harness-hub)
 [![dsh-plugin](https://img.shields.io/badge/dsh-plugin-DeepSeek%20Harness-blue)](https://github.com/topics/dsh-plugin)
 [![platform](https://img.shields.io/badge/platform-Windows%20%7C%20WebView2-0078d4)]()
 
@@ -20,7 +20,7 @@
   - 打开工作区（自动激活并前置 Explorer）
   - 新建任务（走官方 `ctx.workspaces.startSession` 流程，UI 即时刷新）
   - 退出（写 `quit.marker` 后干净退出，避免误判崩溃重启）
-- **窗口状态记忆**：最大化状态、分辨率、主题等持久化到 `$DSH_HOME/mg-dsh-desktop/config.json`。
+- **窗口状态记忆**：最大化状态、分辨率、主题等持久化到 `$DSH_HOME/dsh-hub/config.json`。
 - **主题同步**：MutationObserver 事件驱动，标题栏深浅色实时跟随 dsh 页面主题（koffi FFI 直调 Dwm API，~1ms）。
 - **设置卡片**：dsh 设置 → 插件页提供桌面壳配置（窗口尺寸 / 主题 / 托盘行为 / 会话完成通知）。
 - **右侧栏**：概览（Token 统计）、文件树、Git 变更三页；收起后保留窄栏快捷按钮。
@@ -35,16 +35,16 @@
 
 ```sh
 # 正式版（稳定，推荐）
-npm i -g mg-dsh-desktop
+npm i -g @marecgents/dsh-hub
 
 # 预览版（rc，尝鲜最新功能）
-npm i -g mg-dsh-desktop@rc
+npm i -g @marecgents/dsh-hub@rc
 ```
 
 | 版本 | 安装命令 | 说明 |
 | --- | --- | --- |
-| **正式版**（latest） | `npm i -g mg-dsh-desktop` | 稳定版本，适合日常使用 |
-| **预览版**（rc） | `npm i -g mg-dsh-desktop@rc` | 候选版本（预览版），包含最新功能，可能有未完善之处 |
+| **正式版**（latest） | `npm i -g @marecgents/dsh-hub` | 稳定版本，适合日常使用 |
+| **预览版**（rc） | `npm i -g @marecgents/dsh-hub@rc` | 候选版本（预览版），包含最新功能，可能有未完善之处 |
 
 > 预览版以 npm `rc` 标签发布，不会覆盖正式版；随时可切换到正式版重装。
 
@@ -55,14 +55,14 @@ npm i -g mg-dsh-desktop@rc
 ```sh
 # 方式 A：双击桌面快捷方式（无控制台）
 # 方式 B：终端命令（继承输出）
-mg-dsh
+dsh-hub
 ```
 
 ### 方式二：手动 / 从源码安装
 
 ```sh
-git clone https://github.com/MarecGents/mg-dsh-desktop.git
-cd mg-dsh-desktop
+git clone https://github.com/MarecGents/deepseek-harness-hub.git
+cd deepseek-harness-hub
 npm install
 npm run build
 npm run build:client
@@ -71,7 +71,7 @@ npm run build:client
 开发模式启动：
 
 ```sh
-mg-dsh
+dsh-hub
 ```
 
 > 依赖 dsh 的 Web 端（`dsh web`）已可用。本项目作为 dsh 插件通过 `cordis.patch.yml` 挂载，不修改 dsh 源码。
@@ -92,14 +92,14 @@ dsh web
 ┌──────────────────┐   spawn --port 0   ┌────────────────────────────────────┐
 │ bin/launcher.mjs │ ─────────────────▶ │ dsh web（Cordis 插件树）            │
 │ 桌面快捷方式 →     │  findDsh + junction│  ┌──────────────────────────────┐  │
-│ wscript+VBS 隐藏  │  注册 bundle       │  │ mg-dsh-desktop（host half）    │  │
+│ wscript+VBS 隐藏  │  注册 bundle       │  │ dsh-hub（host half）          │  │
 │ 控制台            │                   │  │ src/index.ts ── src/desktop.ts │  │
 └──────────────────┘                   │  │      │  services/*             │  │
 ┌──────────────────┐                   │  └──────┼───────────────────────┘  │
-│ bin/mg-dsh.mjs   │ ── spawn ────────▶│         │ WebView2 窗口            │
+│ bin/dsh-hub.mjs  │ ── spawn ────────▶│         │ WebView2 窗口            │
 │ 终端命令           │                   │  ┌──────▼───────────────────────┐  │
 └──────────────────┘                   │  │ dsh Web UI（SPA）              │  │
-                                       │  │  + mg-dsh-desktop（client half）│  │
+                                       │  │  + dsh-hub（client half）      │  │
                                        │  │  src/client/*                  │  │
                                        │  └────────────────────────────────┘  │
                                        └────────────────────────────────────┘
@@ -112,7 +112,7 @@ dsh web
 
 | 通道 | 用途 |
 | --- | --- |
-| HTTP 路由 | 配置读写：`/api/mg-dsh-desktop/config`、`/api/mg-dsh-desktop/workspace/*` |
+| HTTP 路由 | 配置读写：`/api/dsh-hub/config`、`/api/dsh-hub/workspace/*` |
 | IPC / evaluateScript 桥 | 托盘命令派发、主题切换、当前工作区查询 |
 | 事件桥 | `session/event` → 会话完成通知 |
 
@@ -127,7 +127,7 @@ dsh web
 ## 目录结构
 
 ```
-mg-dsh-desktop/
+dsh-hub/
 ├── package.json            # dsh.bundle.patch + dsh.client + bin + scripts
 ├── cordis.patch.yml        # 插件行（启动来源门控）
 ├── tsconfig.json
@@ -135,7 +135,7 @@ mg-dsh-desktop/
 ├── bin/
 │   ├── launcher.mjs        # 快捷方式启动器
 │   ├── launcher.vbs        # 隐藏控制台包装
-│   ├── mg-dsh.mjs          # 终端命令入口
+│   ├── dsh-hub.mjs          # 终端命令入口
 │   └── tray-helper.mjs     # 独立托盘进程
 ├── scripts/
 │   ├── postinstall.mjs     # 检测 dsh/pnpm + 创建快捷方式
@@ -175,15 +175,22 @@ npm run build:client
 
 完整依赖见 [`package.json`](package.json)。
 
+## 技术路线
+
+- **当前壳层**：`@webviewjs/webview`（WebView2）+ koffi FFI，Windows 专属。
+- **目标壳层**：**Tauri 2.x** —— 自定义壳层 UI（`decorations: false` 自定义标题栏）、Linux / Windows / macOS 多端一致、包体 ~10MB、官方插件生态（tray / notification / window-state / single-instance / updater）。
+- **正式版前置条件**：迁移至 Tauri 2.x 并达到较好体验后再发布正式版（当前为 rc 预览版）。
+- **dsh 生态适配**：壳层与内容解耦（dsh Web UI 为独立 SPA），Tauri 壳仅负责窗口/托盘/通知/系统集成；client half（React）与 dsh 插件代码零改动。
+- 详细决策见外部文档 `docs/dsh桌面端技术路线-2026-08-16.md`。
+
 ## 发布
 
 ```sh
-# 本机默认 registry 可能是华为云镜像，发布必须显式官方 registry
-npm version patch
-npm publish --registry=https://registry.npmjs.org/
+# scoped 包：发布必须 --access public + 官方 registry
+npm publish --access public --registry=https://registry.npmjs.org/
 
-# 发布候选版（不影响 latest）
-npm publish --tag rc --registry=https://registry.npmjs.org/
+# 发布候选版（rc 标签，不影响 latest）
+npm publish --access public --tag rc --registry=https://registry.npmjs.org/
 ```
 
 ## 致谢

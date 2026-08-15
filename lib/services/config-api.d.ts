@@ -1,5 +1,5 @@
 /**
- * mg-dsh-desktop config API — same-origin JSON endpoints the client
+ * dsh-hub config API — same-origin JSON endpoints the client
  * settings card uses to read and write the shell configuration (window size
  * policy, theme, tray). Deliberately NOT a settings namespace: dsh's RPC
  * settings.describe exposes only a hard-coded allowlist (third-party plugin
@@ -9,13 +9,13 @@
  */
 import type { WebRoute } from '@deepseek-ai/dsh-host-webserver';
 /**
- * One-time migration from the pre-release `marec-dsh-desktop` names (the
- * package was renamed before its first npm publish). Best-effort; called at
- * plugin apply so existing installs keep their window settings.
+ * One-time migration from the pre-release names (`marec-dsh-desktop` and
+ * `mg-dsh-desktop`) to the current `dsh-hub` home directory. Best-effort;
+ * called at plugin apply so existing installs keep their window settings.
  */
 export declare function migrateLegacyPaths(): void;
 /** Browser-facing base path of the shell config API. */
-export declare const CONFIG_API_PREFIX = "/api/mg-dsh-desktop";
+export declare const CONFIG_API_PREFIX = "/api/dsh-hub";
 /** Runtime shell config persisted under the harness home. */
 export interface ShellConfig {
     /** Window open policy: 'auto' (always when launched here) | 'manual'. */

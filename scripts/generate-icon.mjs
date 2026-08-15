@@ -61,4 +61,4 @@ writeFileSync(join(ASSETS, 'dsh-favicon.png'), lightPng)
 const ico = pngToIco(renderPng(svgPath, '#000000', 32), 32)
 writeFileSync(join(ASSETS, 'dsh-favicon.ico'), ico)
 
-console.log('[mg-dsh-desktop] icons generated: dsh-favicon.png (light), dsh-favicon-dark.png (dark), dsh-favicon.ico (shortcut)')
+console.log('[dsh-hub] icons generated: dsh-favicon.png (light), dsh-favicon-dark.png (dark), dsh-favicon.ico (shortcut)')
