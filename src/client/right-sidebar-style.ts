@@ -260,10 +260,8 @@ const STYLE_TEXT = `
 }
 .${c.empty} { padding: 12px 0; font-size: 12px; line-height: 18px; color: var(--dsw-alias-label-secondary, #52525b); }
 .${c.collapsed} {
-  width: 0;
-  height: 0;
-  overflow: visible;
   pointer-events: none;
+  background: transparent;
 }
 .${c.rail} {
   position: fixed;
