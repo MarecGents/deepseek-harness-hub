@@ -74,9 +74,9 @@ const STYLE_TEXT = `
 .${c.header} {
   display: flex;
   flex-direction: row;
-  align-items: center;
+  align-items: flex-end;
   gap: 4px;
-  padding: 6px 8px;
+  padding: 6px 8px 0;
   border-bottom: 1px solid var(--dsw-alias-border-l2, rgb(0 0 0 / 10%));
   background: var(--dsw-alias-bg-layer-1, rgb(0 0 0 / 2%));
 }
@@ -101,6 +101,9 @@ const STYLE_TEXT = `
   width: 28px;
   height: 28px;
   padding: 0;
+  margin-left: auto;
+  margin-right: 6px;
+  margin-bottom: 6px;
   border: none;
   border-radius: 6px;
   background: transparent;
@@ -122,8 +125,9 @@ const STYLE_TEXT = `
   display: flex;
   width: 50%;
   min-width: 0;
+  margin-bottom: -1px;
   border: 1px solid var(--dsw-alias-border-l2, rgb(0 0 0 / 10%));
-  border-radius: 6px;
+  border-radius: 6px 6px 0 0;
   overflow: hidden;
   background: var(--dsw-alias-bg-layer-1, rgb(0 0 0 / 2%));
 }
@@ -281,16 +285,17 @@ const STYLE_TEXT = `
 .${c.rail} {
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: flex-end;
   gap: 8px;
   padding-top: 8px;
+  padding-right: 10px;
   height: 100%;
   box-sizing: border-box;
 }
 .${c.railItems} {
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: flex-end;
   gap: 8px;
   width: 100%;
   margin-top: 4px;
@@ -318,6 +323,34 @@ const STYLE_TEXT = `
 .${c.railItem}:hover {
   background: var(--dsw-alias-interactive-bg-hover, rgb(0 0 0 / 4%));
   color: var(--dsw-alias-label-primary, #0f1115);
+}
+/* Left-side style tooltip: appears to the left of each rail button. */
+.${c.rail} .${c.toggle},
+.${c.railItem} {
+  position: relative;
+}
+.${c.rail} .${c.toggle}::after,
+.${c.railItem}::after {
+  content: attr(data-tip);
+  position: absolute;
+  right: calc(100% + 8px);
+  top: 50%;
+  transform: translateY(-50%);
+  white-space: nowrap;
+  background: #1f2937;
+  color: #ffffff;
+  font-size: 12px;
+  line-height: 16px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+  z-index: 60;
+}
+.${c.rail} .${c.toggle}:hover::after,
+.${c.railItem}:hover::after {
+  opacity: 1;
 }
 /* Reserve the sidebar width in the official AppFrame layout: --mg-sidebar-width
    is 360px while open and 56px while collapsed. The center column gives up
