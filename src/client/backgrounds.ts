@@ -44,19 +44,21 @@ export function findBackground(id: string): DshBackground | undefined {
  * `<style id="mg-dsh-background">` element in the document head.
  *
  * The image must land on the app FRAME layer, not `body`: dsh's AppFrame
- * paints an opaque `var(--dsw-alias-bg-base)` over the whole viewport, so a
- * body-level image is invisible. The frame is the only `#root` descendant
- * carrying an inline `grid-template-columns` (stable structure, no CSS-module
- * hash — see docs/关键踩坑记录.md #32).
+ * paints an opaque base over the whole viewport, so a body-level image is
+ * invisible. The frame is the only `#root` descendant carrying an inline
+ * `grid-template-columns` (stable structure, no CSS-module hash — see
+ * docs/关键踩坑记录.md #32).
  *
- * The frame's own columns then cover the image: the center column's content
- * root (`[data-slot="conversation"] > div` — official slot contract, not a
- * hash) paints an opaque base color. The second rule transparentizes ONLY
- * that content root, so the image shows through the conversation area while
- * the sidebars keep their skin fill. The overlay is a second background layer
- * (`linear-gradient` + image) so it sits under the content with zero
- * stacking-context risk; the frame's token background-color stays as the
- * loading/fallback color.
+ * The frame's columns then cover the image with opaque surfaces, so the
+ * injected rules ALSO give each column's surface a translucent base color:
+ * left bar = `--dsw-specific-sidebar-fill`, center/details content roots
+ * (`[data-slot="conversation"|"details"] > div`, official slot contracts) =
+ * `--dsw-alias-bg-base` — each at 75% opacity (color-mix), letting the frame
+ * background image show through ~25% (user-specified 20-30%) across ALL three
+ * columns while keeping the surfaces readable. The overlay is a second
+ * background layer (`linear-gradient` + image) so it sits under the content
+ * with zero stacking-context risk; the frame's token background-color stays
+ * as the loading/fallback color.
  */
 export function applyBackground(backgroundId: string): void {
   let style = document.getElementById('mg-dsh-background') as HTMLStyleElement | null
@@ -77,8 +79,29 @@ export function applyBackground(backgroundId: string): void {
     `background-repeat:no-repeat !important;` +
     `background-attachment:fixed !important;` +
     `}` +
-    `#root div[style*="grid-template-columns"] [data-slot="conversation"] > div{` +
+    // Left bar: the column itself paints an opaque fill — drop it so the
+    // image shows through, then give the slot content root the single
+    // translucent layer (75% fill + ~25% image). One layer only: a second
+    // 75% layer on the column would stack to ~94% and hide the image.
+    `#root div[style*="grid-template-columns"] > div:first-child{` +
     `background-color:transparent !important;` +
+    `}` +
+    `#root div[style*="grid-template-columns"] [data-slot="sidebar"] > div{` +
+    `background-color:color-mix(in srgb, var(--dsw-specific-sidebar-fill) 75%, transparent) !important;` +
+    `}` +
+    // Center column content root (conversation area).
+    `#root div[style*="grid-template-columns"] [data-slot="conversation"] > div{` +
+    `background-color:color-mix(in srgb, var(--dsw-alias-bg-base) 75%, transparent) !important;` +
+    `}` +
+    // Details column: the column itself is transparent by default (no rule
+    // needed); only its content root gets the translucent layer.
+    `#root div[style*="grid-template-columns"] [data-slot="details"] > div{` +
+    `background-color:color-mix(in srgb, var(--dsw-alias-bg-base) 75%, transparent) !important;` +
+    `}` +
+    // dsh-hub's own right sidebar is a body portal OUTSIDE #root, so it needs
+    // its own rule to let the frame image show through its surface.
+    `#dsh-hub-right-sidebar-root{` +
+    `background-color:color-mix(in srgb, var(--dsw-specific-sidebar-fill) 75%, transparent) !important;` +
     `}`
 }
 

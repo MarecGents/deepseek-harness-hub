@@ -66,6 +66,6 @@ DshSkin {
 
 ## 与背景图的关系（backgrounds.ts）
 
-- 背景图是**独立于皮肤的视觉层**：注入应用 frame 层（`#root div[style*="grid-template-columns"]`）的双层背景（蒙层 + 图片），叠在皮肤 token 背景（`--dsw-alias-bg-base` fallback）之上；皮肤仍驱动全部表面色（侧栏 fill、浮层、气泡）。
-- 启用背景图时：中栏等透明/空隙区域透出图片，两侧栏等不透明 token 表面保持皮肤色——**背景图与皮肤共存**，互不覆盖。
-- 可读性由背景图自带的 `linear-gradient` 蒙层保证（初值 rgba(0,0,0,.25)，深色模式可调高），**皮肤改动不需为背景图做适配**；但换背景图时须按"深浅两模式文字可读"验收。
+- 背景图是**独立于皮肤的视觉层**：注入应用 frame 层（`#root div[style*="grid-template-columns"]`）的双层背景（蒙层 + 图片），并把**左/中/右三栏表面设为 75% 半透明**（`color-mix(原 token 75%, transparent)`，背景图透出 ~25%）——左栏用 `--dsw-specific-sidebar-fill`，中/右栏内容根用 `--dsw-alias-bg-base`；皮肤 token 仍驱动全部表面色（未启用背景图时 100% 不透明）。
+- 启用背景图时：三栏表面半透明，**背景图与皮肤共存**（token 色 75% + 图 25% 混合），内容控件（按钮/卡片/气泡）保持不透明。
+- 可读性由双层保证：frame 自带 `linear-gradient` 蒙层（rgba(0,0,0,.25)）+ 表面 75% 底色；皮肤改动不需为背景图做适配，但换背景图时须按"深浅两模式文字可读"验收。
