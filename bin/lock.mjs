@@ -96,6 +96,14 @@ export function acquireLock(log = () => {}) {
         throw new Error('lock contention not resolved')
       }
     }
+    // Post-claim verification: another launcher may have unlinked and
+    // reclaimed the file between our claim and this read; if it no longer
+    // names this process, we cannot prove ownership — refuse rather than
+    // double-launch alongside the winner.
+    if (readLockPid(file) !== process.pid) {
+      log('lock contested after claim; refusing to start')
+      return false
+    }
     log(`acquired single-instance lock (pid ${process.pid})`)
     return true
   } catch (error) {

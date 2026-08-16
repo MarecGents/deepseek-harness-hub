@@ -57,6 +57,10 @@ export declare function readShellConfig(): ShellConfig;
  * True when the persisted config explicitly stores a window size. A user who
  * saved the settings card's width/height gets that exact size on launch;
  * otherwise the shell sizes the default window to the launch screen.
+ * Exactly-default pairs (1280×720) are ignored: old writeShellConfig builds
+ * merged over DEFAULT_SHELL_CONFIG, so any save (e.g. a checkbox toggle)
+ * wrote the default size into the file — that was never the user's explicit
+ * choice, and honoring it would pin the window to 1280×720 forever (A4).
  */
 export declare function hasStoredWindowSize(): boolean;
 /**

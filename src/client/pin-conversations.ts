@@ -237,12 +237,12 @@ export function installPinnedConversations(ctx: unknown): () => void {
     // text (the official visuallyHidden status label) and small captions
     // (relative-time labels are 12px; the title is 14px) must never count.
     const leafTexts: string[] = []
-    const candidates = new Map<string, { id: string; el: Element }>()
+    const candidates = new Map<string, { id: string; el: Element; title: string }>()
     for (const el of Array.from(row.querySelectorAll('span, div'))) {
       const text = el.childElementCount === 0 ? el.textContent : undefined
       if (text === undefined || text === '') continue
       const raw = text.trim()
-      if (raw !== '') leafTexts.push(raw)
+      if (raw !== '') leafTexts.push(normalizeTitle(raw))
       const style = getComputedStyle(el)
       if (style.position === 'absolute') continue
       const fontSize = parseFloat(style.fontSize)
@@ -253,14 +253,14 @@ export function installPinnedConversations(ctx: unknown): () => void {
       if (ids === undefined || ids.length !== 1) continue
       // First matching element per id wins (title + hoverTitle duplicates
       // collapse to the same candidate; the earlier element is the title).
-      if (!candidates.has(ids[0])) candidates.set(ids[0], { id: ids[0], el })
+      if (!candidates.has(ids[0])) candidates.set(ids[0], { id: ids[0], el, title: key })
     }
     // Longest-match guard: if any leaf text strictly contains the candidate
-    // title, the candidate is a fragment of a longer label — skip it.
+    // TITLE, the candidate is a fragment of a longer label — skip it.
     const entries = [...candidates.values()]
     if (entries.length !== 1) return undefined // ambiguous (or unknown) row
     const entry = entries[0]
-    if (leafTexts.some((t) => t.length > entry.id.length && t.includes(entry.id))) return undefined
+    if (leafTexts.some((t) => t.length > entry.title.length && t.includes(entry.title))) return undefined
     return entry === undefined ? undefined : { id: entry.id, titleEl: entry.el }
   }
 
