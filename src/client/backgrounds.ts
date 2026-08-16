@@ -81,33 +81,33 @@ export function applyBackground(backgroundId: string): void {
     `}` +
     // Left bar: the column itself paints an opaque fill — drop it so the
     // image shows through, then give the slot content root the single
-    // translucent layer (75% fill + ~25% image). One layer only: a second
-    // 75% layer on the column would stack to ~94% and hide the image.
+    // translucent layer (90% fill + ~10% image, user-tuned from 25%). One
+    // layer only: a second layer on the column would stack and hide the image.
     `#root div[style*="grid-template-columns"] > div:first-child{` +
     `background-color:transparent !important;` +
     `}` +
     `#root div[style*="grid-template-columns"] [data-slot="sidebar"] > div{` +
-    `background-color:color-mix(in srgb, var(--dsw-specific-sidebar-fill) 75%, transparent) !important;` +
+    `background-color:color-mix(in srgb, var(--dsw-specific-sidebar-fill) 90%, transparent) !important;` +
     `}` +
-    // Center column content root (conversation area).
+    // Center column content root (conversation area) — keeps 25% show-through.
     `#root div[style*="grid-template-columns"] [data-slot="conversation"] > div{` +
     `background-color:color-mix(in srgb, var(--dsw-alias-bg-base) 75%, transparent) !important;` +
     `}` +
     // Details column: the column itself is transparent by default (no rule
-    // needed); only its content root gets the translucent layer.
+    // needed); only its content root gets the translucent layer (10%).
     `#root div[style*="grid-template-columns"] [data-slot="details"] > div{` +
-    `background-color:color-mix(in srgb, var(--dsw-alias-bg-base) 75%, transparent) !important;` +
+    `background-color:color-mix(in srgb, var(--dsw-alias-bg-base) 90%, transparent) !important;` +
     `}` +
     // dsh-hub's own right sidebar is a body portal OUTSIDE #root. Translucent
     // backgrounds on its fixed panel do NOT sample what is behind it in
     // WebView2/Chromium compositing (pixel-verified: color-mix and opacity
     // both read as solid), so the image is painted ON the panel itself as a
-    // multi-layer background: a 75% sidebar-fill gradient layer on TOP of the
-    // (masked) image yields the same ~25% show-through as the other columns.
+    // multi-layer background: a 90% sidebar-fill gradient layer on TOP of the
+    // (masked) image yields the same ~10% show-through as the left bar.
     // background-attachment: fixed keeps the image aligned with the frame.
     `#dsh-hub-right-sidebar-root .mg-rs-root{` +
     `background-image:` +
-    `linear-gradient(color-mix(in srgb, var(--dsw-specific-sidebar-fill) 75%, transparent), color-mix(in srgb, var(--dsw-specific-sidebar-fill) 75%, transparent)),` +
+    `linear-gradient(color-mix(in srgb, var(--dsw-specific-sidebar-fill) 90%, transparent), color-mix(in srgb, var(--dsw-specific-sidebar-fill) 90%, transparent)),` +
     `linear-gradient(rgba(0,0,0,.25),rgba(0,0,0,.25)),` +
     `url("${background.url}") !important;` +
     `background-size:cover,cover,cover !important;` +
