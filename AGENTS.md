@@ -71,7 +71,7 @@ dsh-hub 是**双 half** 结构，且**套壳代码与插件代码必须严格模
   - **单点豁免（置顶 pin 图标，到期条款）**：官方图标库无 pin/bookmark/star，`src/client/pin-conversations.ts` 自绘 **1 个** 24 视口填充路径 pin glyph（`currentColor`、`aria-hidden`）——限定 1 个 glyph / 1 个模块 / 不扩散；**官方提供 pin 图标后立即切换**（见 src/client/AGENTS.md §UI 铁律 2）。
 - 遵循 dsh 官方组件样式：设置卡片参照 `ui-settings-plugins` 的 `PluginCard.module.css` / `fields.module.css`；tab 参照 `ConversationRoot.module.css`；tooltip 参照 `ui-primitives/Tooltip.module.css`。
 - 右侧栏用 **body portal** 挂载（不占用官方 details slot），自管宽度；收起 rail 与左弹 tooltip 逻辑保持。
-- **背景图（background image）豁免（与皮肤并列的新视觉层）**：`src/client/backgrounds.ts` 通过注入 `<style id="mg-dsh-background">` 给**应用 frame 层**（锚点 `#root div[style*="grid-template-columns"]`，结构契约非 CSS-module hash）叠加 `linear-gradient(蒙层) + url()` 双层背景——允许 `!important` 图片层（类比皮肤豁免），但禁止硬编码 hex 颜色；`'none'` 哨兵清空注入；图片资产放 `assets/backgrounds/`，由 `src/services/backgrounds-api.ts` 静态路由 `/api/dsh-hub/backgrounds/*` 服务（正则白名单防穿越）；蒙层透明度保证深色模式下文字可读。
+- **背景图（background image）豁免（与皮肤并列的新视觉层）**：`src/client/backgrounds.ts` 通过注入 `<style id="mg-dsh-background">` 给**应用 frame 层**（锚点 `#root div[style*="grid-template-columns"]`，结构契约非 CSS-module hash）叠加 `linear-gradient(蒙层) + url()` 双层背景，并**透明化中栏内容根**（`[data-slot="conversation"] > div`，官方 slot 契约）露出图片——允许 `!important` 图片层（类比皮肤豁免），但禁止硬编码 hex 颜色；`'none'` 哨兵清空注入；图片资产放 `assets/backgrounds/`，由 `src/services/backgrounds-api.ts` 静态路由 `/api/dsh-hub/backgrounds/*` 服务（正则白名单防穿越）；蒙层透明度保证深色模式下文字可读；两个锚点均为升级冒烟项（见 docs/关键踩坑记录.md #32）。
 - 产品文案用中文；代码注释用英文（与 dsh 官方一致）。
 
 ### 3.1 皮肤（skins）风格豁免

@@ -47,8 +47,14 @@ export function findBackground(id: string): DshBackground | undefined {
  * paints an opaque `var(--dsw-alias-bg-base)` over the whole viewport, so a
  * body-level image is invisible. The frame is the only `#root` descendant
  * carrying an inline `grid-template-columns` (stable structure, no CSS-module
- * hash — see docs/关键踩坑记录.md #32). The overlay is a second background
- * layer (`linear-gradient` + image) so it sits under the content with zero
+ * hash — see docs/关键踩坑记录.md #32).
+ *
+ * The frame's own columns then cover the image: the center column's content
+ * root (`[data-slot="conversation"] > div` — official slot contract, not a
+ * hash) paints an opaque base color. The second rule transparentizes ONLY
+ * that content root, so the image shows through the conversation area while
+ * the sidebars keep their skin fill. The overlay is a second background layer
+ * (`linear-gradient` + image) so it sits under the content with zero
  * stacking-context risk; the frame's token background-color stays as the
  * loading/fallback color.
  */
@@ -70,6 +76,9 @@ export function applyBackground(backgroundId: string): void {
     `background-position:center !important;` +
     `background-repeat:no-repeat !important;` +
     `background-attachment:fixed !important;` +
+    `}` +
+    `#root div[style*="grid-template-columns"] [data-slot="conversation"] > div{` +
+    `background-color:transparent !important;` +
     `}`
 }
 
