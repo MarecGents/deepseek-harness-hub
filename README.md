@@ -1,6 +1,8 @@
 # dsh-hub
 
-> **`@marecgents/dsh-hub`** —— DeepSeek Harness（`dsh`）的桌面端框架：以原生 WebView2 窗口运行 dsh Web UI，提供托盘、主题同步、窗口记忆、右侧栏与系统通知。未来将迁移至 Tauri 2.x 实现多端（Windows / macOS / Linux）。
+> **`@marecgents/dsh-hub`** —— DeepSeek Harness（`dsh`）的桌面端框架：以原生 WebView2 窗口运行 dsh Web UI，提供托盘、主题同步、窗口记忆、右侧栏与系统通知。
+>
+> **版本状态（2026-08-16）**：`0.0.1-rc.13` 是 **WebView2 壳的最后一个 rc 版本**（`dev-v1` 分支已冻结）。正式版将在 **Tauri 2.x 壳**（`dev-v2`）迁移完成并达到良好体验后发布——多端支持（Windows / macOS / Linux）、~10MB 体积、自定义壳 UI。迁移期间插件层（client + config/workspace API）原样保留，壳层整体重写（见 [docs/dsh桌面端技术路线-2026-08-16.md](docs/dsh桌面端技术路线-2026-08-16.md)）。
 
 [![npm version](https://img.shields.io/npm/v/@marecgents/dsh-hub)](https://www.npmjs.com/package/@marecgents/dsh-hub)
 [![npm rc](https://img.shields.io/npm/v/@marecgents/dsh-hub/rc)](https://www.npmjs.com/package/@marecgents/dsh-hub)
@@ -8,6 +10,16 @@
 [![GitHub stars](https://img.shields.io/github/stars/MarecGents/deepseek-harness-hub?style=social)](https://github.com/MarecGents/deepseek-harness-hub)
 [![dsh-plugin](https://img.shields.io/badge/dsh-plugin-DeepSeek%20Harness-blue)](https://github.com/topics/dsh-plugin)
 [![platform](https://img.shields.io/badge/platform-Windows%20%7C%20WebView2-0078d4)]()
+
+---
+
+## 分支状态
+
+| 分支 | 状态 | 说明 |
+|---|---|---|
+| `main` | 发布分支 | 当前 = `0.0.1-rc.13`（WebView2 最终版） |
+| `dev-v1` | **已冻结**（WebView2 壳） | 不再开发；仅安全/文档性修复可走 PR |
+| `dev-v2` | **当前开发分支**（Tauri 2.x 壳） | 壳层重写中，插件层保留 |
 
 ---
 
