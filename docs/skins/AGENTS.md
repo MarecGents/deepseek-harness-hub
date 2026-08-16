@@ -63,3 +63,9 @@ DshSkin {
 - 每套皮肤维护 `docs/skins/{skin-id}.md`：设计意图 / 浅深色板（显式 hex）/ 覆盖 token / 与默认关系 / 注意事项
 - 改色板必须同步更新对应文档（单一事实来源：`src/client/skins.ts`）
 - 新增皮肤 = `skins.ts` 条目 + 本文件清单 + `{skin-id}.md` 文档三件套
+
+## 与背景图的关系（backgrounds.ts）
+
+- 背景图是**独立于皮肤的视觉层**：注入应用 frame 层（`#root div[style*="grid-template-columns"]`）的双层背景（蒙层 + 图片），叠在皮肤 token 背景（`--dsw-alias-bg-base` fallback）之上；皮肤仍驱动全部表面色（侧栏 fill、浮层、气泡）。
+- 启用背景图时：中栏等透明/空隙区域透出图片，两侧栏等不透明 token 表面保持皮肤色——**背景图与皮肤共存**，互不覆盖。
+- 可读性由背景图自带的 `linear-gradient` 蒙层保证（初值 rgba(0,0,0,.25)，深色模式可调高），**皮肤改动不需为背景图做适配**；但换背景图时须按"深浅两模式文字可读"验收。

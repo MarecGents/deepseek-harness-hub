@@ -27,6 +27,15 @@ export declare function findBackground(id: string): DshBackground | undefined;
 /**
  * Apply (or clear) a background by injecting/updating one
  * `<style id="mg-dsh-background">` element in the document head.
+ *
+ * The image must land on the app FRAME layer, not `body`: dsh's AppFrame
+ * paints an opaque `var(--dsw-alias-bg-base)` over the whole viewport, so a
+ * body-level image is invisible. The frame is the only `#root` descendant
+ * carrying an inline `grid-template-columns` (stable structure, no CSS-module
+ * hash — see docs/关键踩坑记录.md #32). The overlay is a second background
+ * layer (`linear-gradient` + image) so it sits under the content with zero
+ * stacking-context risk; the frame's token background-color stays as the
+ * loading/fallback color.
  */
 export declare function applyBackground(backgroundId: string): void;
 /** Mark that the user explicitly picked a background (settings card). */
