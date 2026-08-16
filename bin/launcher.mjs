@@ -102,6 +102,77 @@ function alert(message) {
   }
 }
 
+/**
+ * Ask a Yes/No Windows question and resolve true only when the user picks Yes.
+ * @param message - the question text (may contain newlines).
+ * @returns true on Yes / OK, false on No / Cancel / any failure.
+ */
+function confirm(message) {
+  try {
+    const ps = `[System.Windows.Forms.MessageBox]::Show('${message.replaceAll("'", "''")}', 'dsh-hub', 'YesNo', 'Warning')`
+    const result = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command',
+      'Add-Type -AssemblyName System.Windows.Forms; ' + ps], { encoding: 'utf8', windowsHide: true })
+    return result.stdout.trim() === 'Yes'
+  } catch {
+    // Fail safe: never auto-continue when the prompt machinery is unavailable.
+    return false
+  }
+}
+
+/**
+ * Find every port a dsh web instance is already LISTENING on. A busy 3080 is
+ * only one possibility — a CLI `dsh web --port N` binds any free port. The
+ * desktop shell itself uses `--port 0` (OS-assigned), so this intentionally
+ * runs BEFORE boot, and the shell's own future socket is never seen here.
+ * @returns array of occupied TCP ports (strings) owned by a dsh/node listener.
+ */
+function detectRunningDshPorts() {
+  try {
+    const result = spawnSync('netstat', ['-ano', '-p', 'tcp'], { encoding: 'utf8', windowsHide: true })
+    const stdout = result.stdout ?? ''
+    // <proto> <local> <foreign> <state> <pid> — collect 127.0.0.1/0.0.0.0/[::]
+    // listeners with their owning PID; empty PID means "system kernel".
+    const rows = stdout.split('\n').map(line => line.trim().split(/\s+/)).filter(cols => cols.length >= 5)
+    const listeners = new Map() // pid -> Set<port>
+    for (const cols of rows) {
+      if (cols[0] !== 'TCP' || !/(127\.0\.0\.1|0\.0\.0\.0|\[::\]):\d+/.test(cols[1])) continue
+      if (cols[3] !== 'LISTENING') continue
+      const port = cols[1].split(':').at(-1)
+      const pid = cols[4]
+      if (port === undefined || !/^\d+$/.test(pid)) continue
+      if (!listeners.has(pid)) listeners.set(pid, new Set())
+      listeners.get(pid).add(port)
+    }
+    // PIDs that belong to a dsh web process (dsh CLI or the desktop shell's
+    // `dsh web` child). Match on the dsh bin.js path — the CLI and desktop
+    // shell both boot `@deepseek-ai/dsh/lib/bin.js web`.
+    const dshPids = new Set()
+    try {
+      const ps = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command',
+        "Get-CimInstance Win32_Process -Filter \"Name='node.exe'\" | Where-Object { $_.CommandLine -match 'dsh.*web' } | Select-Object -ExpandProperty ProcessId"],
+      { encoding: 'utf8', windowsHide: true })
+      for (const pid of (ps.stdout ?? '').split('\n')) {
+        const n = Number.parseInt(pid.trim(), 10)
+        if (Number.isInteger(n) && n > 0) dshPids.add(n)
+      }
+    } catch {
+      // CIM unavailable; fall back to 3080-only detection below.
+    }
+    const occupied = new Set()
+    for (const [pid, ports] of listeners) {
+      if (dshPids.has(Number(pid))) for (const port of ports) occupied.add(port)
+    }
+    return [...occupied]
+  } catch {
+    return []
+  }
+}
+
+/** True when something already listens on dsh's default web port. */
+function port3080InUse() {
+  return detectRunningDshPorts().includes('3080')
+}
+
 /** Decode a child-process error buffer: Windows CLIs write the console code
  * page (GBK on zh-CN), which UTF-8 decoding garbles into unreadable mojibake. */
 function decodeConsoleOutput(buffer) {
@@ -229,19 +300,6 @@ function clearQuitMarker() {
   }
 }
 
-/** True when something already listens on dsh's default web port. */
-function port3080InUse() {
-  try {
-    const result = spawnSync('netstat', ['-ano', '-p', 'tcp'], { encoding: 'utf8', windowsHide: true })
-    const stdout = result.stdout ?? ''
-    // Cover loopback and any-host bindings (0.0.0.0 / [::]) so a server
-    // configured with host 0.0.0.0 is still detected.
-    return /(127\.0\.0\.1|0\.0\.0\.0|\[::\]):3080\s+.*LISTENING/.test(stdout)
-  } catch {
-    return false
-  }
-}
-
 function main() {
   // Fresh log per launch (bounded disk usage).
   resetLog()
@@ -265,11 +323,28 @@ function main() {
   // single owner and must not mistake an old marker for a new intentional quit.
   clearQuitMarker()
 
-  // The desktop shell boots dsh with `--port 0` (OS-assigned random port), so
-  // a busy default 3080 (e.g. a separately launched `dsh web`) never collides
-  // with it — two instances may coexist. Log the situation but do not block.
-  if (port3080InUse()) {
-    log('dsh web already listening on default port 3080; desktop shell will use a random port and coexist')
+  // Concurrent-instance warning. The desktop shell boots dsh with `--port 0`
+  // (OS-assigned random port), so it can technically coexist with an already
+  // running dsh web on any port (3080 default, or `--port N`). But two dsh
+  // processes share the same $DSH_HOME session/storage files, and writing the
+  // same session from both ends risks corruption — so surface the risk and
+  // let the user decide (Yes = continue & coexist, No = abort).
+  const runningPorts = detectRunningDshPorts()
+  if (runningPorts.length > 0) {
+    const portList = runningPorts.join(', ')
+    log(`detected existing dsh web listening on port(s): ${portList}`)
+    const question =
+      `检测到已有 dsh 正在运行（端口：${portList}）。\n\n` +
+      '两个 dsh 实例会共享同一份会话数据（$DSH_HOME），' +
+      '若同时在同一个会话中操作，可能导致数据写入冲突或损坏。\n\n' +
+      '是否仍然启动桌面壳（将使用随机端口，两个实例共存）？\n' +
+      '选择「是」继续启动；选择「否」退出。'
+    if (!confirm(question)) {
+      log('user declined to launch alongside the running dsh; exiting')
+      releaseLock()
+      process.exit(0)
+    }
+    log('user chose to launch alongside the running dsh; continuing')
   }
 
   // Common path: dsh is already installed. findDsh returns only existing
