@@ -37,6 +37,7 @@ import { installSettingsSection, settingsNamespace } from '@deepseek-ai/dsh-sett
 import z from '@deepseek-ai/schemastery'
 import { openDesktopShell, type DesktopShellHandle } from './desktop.ts'
 import { makeConfigRoutes, migrateLegacyPaths, readShellConfig, storedNotifyOnTaskComplete, type ShellConfig } from './services/config-api.js'
+import { setAppUserModelId } from './services/app-id.js'
 import { dshHome } from './services/state-store.js'
 import { openFolderInExplorer } from './services/explorer.js'
 import { makeWorkspaceRoutes } from './services/workspace-api.js'
@@ -195,6 +196,11 @@ export function apply(ctx: Context, config: Config): void {
     return
   }
   console.log('[dsh-hub] launched by shortcut; desktop shell + plugin page active')
+
+  // Windows taskbar identity: without an explicit AppUserModelID the window
+  // is attributed to node.exe (green-hexagon icon, "Node.js JavaScript
+  // Runtime"), and the whale icon set on the window never sticks.
+  setAppUserModelId()
 
   let shell: DesktopShellHandle | undefined
   let opened = false

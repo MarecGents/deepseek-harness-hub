@@ -29,10 +29,14 @@ import { Application, Notification, Theme } from '@webviewjs/webview'
 import type { BrowserWindow, JsWebview } from '@webviewjs/webview'
 import { JsonWindowStateStore, MIN_HEIGHT, MIN_WIDTH } from './services/state-store.js'
 import { setTitleBarDark, setTitleBarDarkPowerShell } from './services/dwm-theme.js'
+import { osThemeIsLight, refreshOsTheme } from './services/os-theme.js'
 import { resolveLaunchScreen } from './services/screen.js'
 import { WebViewThemeDetector } from './services/theme-sync.js'
 import { WebViewTray, type TrayCommand } from './services/tray.js'
 import { dshFaviconBlack, dshFaviconDark, dshFaviconDataUrl, dshFaviconTray } from './services/icons.js'
+import path from 'node:path'
+import os from 'node:os'
+import fs from 'node:fs'
 
 /** Shell options resolved from the dsh plugin Config schema. */
 export interface DesktopOptions {
@@ -113,6 +117,26 @@ const NOTIFY_COOLDOWN_MS = 30_000
 /** Decoded once; the theme flips reuse the same buffers. */
 let iconForDark: ReturnType<typeof dshFaviconDark> | undefined
 let iconForLight: ReturnType<typeof dshFaviconDark> | undefined
+/** Taskbar-glyph variants (also decoded once; OS-theme dependent). */
+let taskbarIconForDark: ReturnType<typeof dshFaviconDark> | undefined
+let taskbarIconForLight: ReturnType<typeof dshFaviconDark> | undefined
+
+/**
+ * Taskbar glyph follows the OS theme (the taskbar surface does not follow
+ * the page theme): white whale on a dark taskbar, black whale on a light
+ * one. Refreshed on window focus so an OS theme change while running is
+ * picked up without a restart.
+ */
+function applyTaskbarIcon(w: BrowserWindow): void {
+  const dark = osThemeIsLight() === false
+  const icon = dark ? (taskbarIconForDark ??= dshFaviconDark()) : (taskbarIconForLight ??= dshFaviconBlack())
+  if (icon === undefined) return
+  try {
+    w.setTaskbarIcon(Array.from(icon.data), icon.width, icon.height)
+  } catch {
+    // Best-effort; icon swaps must never break the shell.
+  }
+}
 
 /**
  * Window title-bar icon follows the theme: white whale on dark chrome,
@@ -179,6 +203,12 @@ export function openDesktopShell(
   const store = new JsonWindowStateStore()
   const state = store.load()
   const app = new Application()
+  // WebView2's default-context data directory fails with E_ACCESSDENIED on
+  // some machines; use a dedicated per-app directory (kept app-scoped so
+  // close-to-tray window recreation reuses the same context).
+  const shellDataDir = path.join(process.env.DSH_HOME || path.join(os.homedir(), '.dsh'), 'mg-dsh-desktop', 'browser-data')
+  fs.mkdirSync(shellDataDir, { recursive: true })
+  const shellContext = app.createWebContext({ dataDirectory: shellDataDir })
   const darkByDefault = options.theme !== 'light'
   const splash = splashHtml(darkByDefault, dshFaviconDataUrl())
   const targetUrl = `${BASE_URL}:${port}`
@@ -276,7 +306,7 @@ export function openDesktopShell(
 
     // Splash first: WebView2 keeps it painted while the SPA parses, so the
     // boot shows a smooth themed surface (no white/dark flash frames).
-    const wv = w.createWebview({ html: splash })
+    const wv = w.createWebview({ html: splash, webContext: shellContext })
     webview = wv
     wv.setBackgroundColor(...DARK_BG, 255)
 
@@ -302,13 +332,16 @@ export function openDesktopShell(
       wv.loadUrl(targetUrl)
     }, SPLASH_MS)
 
-    // Taskbar glyph stays white (the taskbar surface does not follow the
-    // page theme); the title-bar icon is set by applyWindowTheme below and
-    // flips with the theme.
-    const icon = dshFaviconDark()
-    if (icon !== undefined) {
-      w.setTaskbarIcon(Array.from(icon.data), icon.width, icon.height)
-    }
+    // Taskbar glyph follows the OS theme (white whale on dark taskbar,
+    // black whale on light); the title-bar icon is set by applyWindowTheme
+    // below and flips with the page theme.
+    applyTaskbarIcon(w)
+    // Re-read the OS theme when the window gains focus, so a system theme
+    // change while running re-picks the correct taskbar glyph.
+    w.on('focus', () => {
+      refreshOsTheme()
+      applyTaskbarIcon(w)
+    })
 
     // Theme: apply the current setting to this window pair. 'system' follows
     // the page's data-ds-dark-theme (150ms polling) and also drives the
@@ -465,7 +498,10 @@ export function openDesktopShell(
 
   tray = new WebViewTray(app, {
     title: options.title,
-    icon: dshFaviconTray(),
+    // The tray surface follows the OS theme, not the page theme: black
+    // whale on a light tray, white whale on a dark one (the tray icon is
+    // set once at creation — a system theme change applies next launch).
+    icon: dshFaviconTray(osThemeIsLight() === false),
   }, {
     onDoubleClick: showWindow,
     onCommand: (command: TrayCommand) => {

@@ -116,8 +116,13 @@ export function downscaleIcon(icon: Icon, size: number): Icon {
 /** Standard Windows tray glyph size in logical pixels (16px at 96 DPI). */
 export const TRAY_ICON_SIZE = 16
 
-/** Tray-sized version of the dark favicon (falls back to the accent tile). */
-export function dshFaviconTray(): Icon {
-  const icon = dshFaviconDark()
+/**
+ * Tray-sized favicon for the given surface theme: a dark tray (OS dark
+ * mode) wants the white glyph, a light tray wants the black one — a white
+ * whale on a light tray is invisible, exactly like the taskbar glyph.
+ * Falls back to the accent tile when the asset is missing.
+ */
+export function dshFaviconTray(dark: boolean): Icon {
+  const icon = dark ? dshFaviconDark() : dshFaviconBlack()
   return icon === undefined ? accentTile() : downscaleIcon(icon, TRAY_ICON_SIZE)
 }
