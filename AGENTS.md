@@ -132,7 +132,7 @@ npm run build:client   # client（tsdown + SDK junction）
 5. **registry 显式官方**：publish / dist-tag 一律 `--registry=https://registry.npmjs.org/`（本机默认是华为镜像）。
 6. **版本不可覆盖**：`npm version <bump>` 每次升版本，同版本 publish 会被拒绝。
 7. **三分支同步 + tag**：main / dev-v1（ff）/ dev-v2（merge）全部推送，`v0.0.1-rc.<N>` tag 推送。
-8. **发布后真机验证**：测试电脑 `npm i -g @marecgents/dsh-hub` 首启冒烟（含 postinstall 快捷方式）——脚本隔离验证用 `--ignore-scripts`，不覆盖 postinstall 链路。
+8. **发布后真机验证**：测试电脑 `npm i -g @marecgents/dsh-hub --allow-scripts=@marecgents/dsh-hub,koffi` 首启冒烟（含 postinstall 快捷方式；`--allow-scripts` 防 npm 安全机制拦截 postinstall/koffi 构建）——脚本隔离验证用 `--ignore-scripts`，不覆盖 postinstall 链路。
 
 ### 5.3 发布命令（rc 流程，逐步执行）
 
@@ -182,9 +182,9 @@ git checkout dev-v2 && git merge main && git push origin dev-v2   # dev-v2 有�
   - 日常 / 测试：桌面快捷方式（postinstall 生成，指向全局包 `bin/launcher.vbs`）→ 全局包 launcher → junction → 全局包。
   - 开发：仓库代码 + **隔离验证**（`DSH_HOME=<临时目录>` + `DSH_HUB_ASSEMBLE_ONLY=1` 装配冒烟，或 `scripts/verify-release.mjs` P4）。**禁止**用仓库 launcher 直接启动去污染运行 profile（会把 junction relink 回仓库，下次日常启动即"开发状态"）。
 - **发布后升级运行环境**（两步，缺一不可）：
-  1. `npm i -g @marecgents/dsh-hub --registry=https://registry.npmjs.org/`（更新全局包；postinstall 重建桌面快捷方式指向新包）
+  1. `npm i -g @marecgents/dsh-hub --allow-scripts=@marecgents/dsh-hub,koffi --registry=https://registry.npmjs.org/`（更新全局包；`--allow-scripts` 放行 postinstall 重建桌面快捷方式 + koffi 原生构建，防 npm 安全机制拦截导致 `install-scripts blocked` 警告）
   2. 下次打开桌面壳 → launcher 自愈 relink junction → 运行最新版
-- **本地先行验证**（发布前）：`npm i -g <tgz>`（或 `--prefix <临时>` 隔离装）验证通过 → 再 `npm publish` → 最后 `npm i -g @marecgents/dsh-hub` 拉官方版（与测试电脑同链路）。
+- **本地先行验证**（发布前）：`npm i -g --allow-scripts=@marecgents/dsh-hub,koffi <tgz>`（或 `--prefix <临时>` 隔离装）验证通过 → 再 `npm publish` → 最后 `npm i -g @marecgents/dsh-hub --allow-scripts=@marecgents/dsh-hub,koffi` 拉官方版（与测试电脑同链路）。
 - **状态核查**（2026-08-16）：本机运行 profile junction 与快捷方式已从 dev 仓库切换为 npm 全局包（rc.14）。
 
 ## 6. 未来技术路线（约束方向，不立即实施）

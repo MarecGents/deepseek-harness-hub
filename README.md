@@ -48,22 +48,24 @@
 
 ### 方式一：自动安装（推荐）
 
-按需选择版本：
+按需选择版本（`--allow-scripts` 允许 dsh-hub 与其原生依赖 `koffi` 的安装脚本，避免 npm 安全机制拦截导致缺少快捷方式/原生模块的警告）：
 
 ```sh
 # 正式版（稳定，推荐）
-npm i -g @marecgents/dsh-hub
+npm i -g @marecgents/dsh-hub --allow-scripts=@marecgents/dsh-hub,koffi
 
 # 预览版（rc，尝鲜最新功能）
-npm i -g @marecgents/dsh-hub@rc
+npm i -g @marecgents/dsh-hub@rc --allow-scripts=@marecgents/dsh-hub,koffi
 ```
 
 | 版本 | 安装命令 | 说明 |
 | --- | --- | --- |
-| **正式版**（latest） | `npm i -g @marecgents/dsh-hub` | 稳定版本，适合日常使用 |
-| **预览版**（rc） | `npm i -g @marecgents/dsh-hub@rc` | 候选版本（预览版），包含最新功能，可能有未完善之处 |
+| **正式版**（latest） | `npm i -g @marecgents/dsh-hub --allow-scripts=@marecgents/dsh-hub,koffi` | 稳定版本，适合日常使用 |
+| **预览版**（rc） | `npm i -g @marecgents/dsh-hub@rc --allow-scripts=@marecgents/dsh-hub,koffi` | 候选版本（预览版），包含最新功能，可能有未完善之处 |
 
 > 预览版以 npm `rc` 标签发布，不会覆盖正式版；随时可切换到正式版重装。
+>
+> 提示：若忘记加 `--allow-scripts`，npm 会警告 `install-scripts blocked`（postinstall 未执行）。可执行 `npm i -g --allow-scripts=@marecgents/dsh-hub,koffi @marecgents/dsh-hub` 补装，或一次性放行后重装：`npm config set allow-scripts=@marecgents/dsh-hub,koffi --location=user`。
 
 安装脚本会自动检测 `dsh` / `pnpm`（缺失则一并安装），并在 Windows 创建桌面快捷方式「DeepSeek Harness」。
 
