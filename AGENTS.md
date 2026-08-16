@@ -173,6 +173,20 @@ git checkout dev-v2 && git merge main && git push origin dev-v2   # dev-v2 有�
 - **修复**（rc.14）：launcher 统一 scoped 装配 + 每次启动自愈 junction + 幂等清理 bare 遗留 + `DSH_HUB_ASSEMBLE_ONLY=1` 诊断模式。
 - **详细**：[docs/关键踩坑记录.md#33](docs/关键踩坑记录.md)（含升级冒烟项）。
 
+### 5.5 开发与运行隔离（2026-08-16 强制）
+
+**原则**：日常使用与测试电脑**必须运行 npm 发布的包**（latest / rc）；**禁止**把开发仓库 junction 进运行 profile 当日常实例——rc.10–rc.13 事故根因之一正是"开发环境永远测不出 npm 包真实状态"（本机 npm link / 仓库 junction 走 scoped 短路，全新环境走 bare 兜底即崩）。
+
+- **运行环境装配**：`profiles/web/node_modules/@marecgents/dsh-hub` junction 必须指向 **npm 全局包目录**（`npm prefix -g` 下的 `node_modules/@marecgents/dsh-hub`），不得指向开发仓库。launcher 每次启动自愈：junction 指向非当前包根时自动 relink——**桌面壳从全局包入口启动，junction 即指向全局包**。
+- **入口区分**：
+  - 日常 / 测试：桌面快捷方式（postinstall 生成，指向全局包 `bin/launcher.vbs`）→ 全局包 launcher → junction → 全局包。
+  - 开发：仓库代码 + **隔离验证**（`DSH_HOME=<临时目录>` + `DSH_HUB_ASSEMBLE_ONLY=1` 装配冒烟，或 `scripts/verify-release.mjs` P4）。**禁止**用仓库 launcher 直接启动去污染运行 profile（会把 junction relink 回仓库，下次日常启动即"开发状态"）。
+- **发布后升级运行环境**（两步，缺一不可）：
+  1. `npm i -g @marecgents/dsh-hub --registry=https://registry.npmjs.org/`（更新全局包；postinstall 重建桌面快捷方式指向新包）
+  2. 下次打开桌面壳 → launcher 自愈 relink junction → 运行最新版
+- **本地先行验证**（发布前）：`npm i -g <tgz>`（或 `--prefix <临时>` 隔离装）验证通过 → 再 `npm publish` → 最后 `npm i -g @marecgents/dsh-hub` 拉官方版（与测试电脑同链路）。
+- **状态核查**（2026-08-16）：本机运行 profile junction 与快捷方式已从 dev 仓库切换为 npm 全局包（rc.14）。
+
 ## 6. 未来技术路线（约束方向，不立即实施）
 
 - **目标**：Tauri 2.x 壳（自定义壳 UI、Windows/macOS/Linux 三端、~10MB、官方插件生态）。详细决策见 `docs/dsh桌面端技术路线-2026-08-16.md`。
