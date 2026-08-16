@@ -303,10 +303,14 @@ export function installPinnedConversations(ctx: unknown): () => void {
     }
   }
 
-  /** Rebuild the pinned section as the tree's sibling (first child of slot). */
+  /** Rebuild the pinned section as the tree's sibling (outside the scroll
+   * container: the tree element IS the scroll container, and its parent —
+   * the browser body — is where the section lives, so it stays visible
+   * while the list scrolls). */
   function syncPinnedSection(tree: HTMLElement): void {
     const slot = findSlot()
-    if (slot === null) return
+    const treeParent = tree.parentNode as HTMLElement | null
+    if (slot === null || treeParent === null) return
     const byId = sessionSnapshot()?.byId ?? {}
     const archived = new Set(workspaceSnapshot()?.archivedSessionIds ?? [])
     // Render-time filter only: archived pins stay stored, archived entries are
@@ -316,16 +320,18 @@ export function installPinnedConversations(ctx: unknown): () => void {
       return summary !== undefined && summary.blank !== true && !archived.has(id)
     })
 
-    let section = Array.from(slot.children).find((el) => el.classList.contains(c.section)) as HTMLElement | undefined
+    let section = Array.from(treeParent.children).find((el) => el.classList.contains(c.section)) as HTMLElement | undefined
     if (section === undefined) {
       section = document.createElement('div')
       section.className = c.section
       section.setAttribute('role', 'group')
       section.setAttribute('aria-label', '置顶会话')
     }
-    // Re-parent idempotently: section must stay a sibling right before tree.
-    if (section.parentNode !== slot || section.nextSibling !== tree) {
-      slot.insertBefore(section, tree)
+    // Re-parent idempotently: the section must stay a sibling right before
+    // the tree inside the tree's own parent (the tree is the scroll
+    // container, so the section sits OUTSIDE it and stays visible).
+    if (section.parentNode !== treeParent || section.nextSibling !== tree) {
+      treeParent.insertBefore(section, tree)
     }
 
     // Rebuild only when the content actually changed — replaceChildren always
@@ -399,7 +405,11 @@ export function installPinnedConversations(ctx: unknown): () => void {
     const tree = findTree()
     if (tree === null) return
     inSearch = detectSearch(tree)
-    syncPinnedSection(tree)
+    try {
+      syncPinnedSection(tree)
+    } catch {
+      // Section placement must never block row-button injection.
+    }
     if (inSearch) return // search rows are buttons; never inject there
     for (const el of Array.from(tree.querySelectorAll<HTMLElement>(SESSION_ROW_SELECTOR))) {
       const match = mapRowByContent(el)
