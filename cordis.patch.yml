@@ -14,7 +14,7 @@
 # launch the row activates and everything is served.
 - insert:
     - id: dsh-hub
-      name: 'dsh-hub'
+      name: '@marecgents/dsh-hub'
       disabled: !!js process.env.DSH_HUB_LAUNCHED !== '1'
       config:
         title: 'DeepSeek Harness Desktop'

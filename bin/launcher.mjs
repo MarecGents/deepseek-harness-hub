@@ -16,6 +16,12 @@ import { acquireLock, dshHome, releaseLock } from './lock.mjs'
 
 const PACKAGE_ROOT = dirname(dirname(fileURLToPath(import.meta.url)))
 const BUNDLE_NAME = 'dsh-hub'
+// npm-installed scoped package name (matches package.json "name"). When the
+// profile already has this registered, the junction + bare-name flow below
+// must be skipped — otherwise the same bundle layer (cordis.patch.yml, which
+// inserts `dsh-hub`) is applied twice and dsh fails with
+// "duplicate loader entry id: dsh-hub".
+const BUNDLE_SCOPED = '@marecgents/dsh-hub'
 const LOG_FILE = join(PACKAGE_ROOT, 'dsh.log')
 
 /** Max automatic restarts after an unexpected dsh crash (webviewjs SIGSEGV etc). */
@@ -136,6 +142,14 @@ function ensureBundleInstalled() {
     }
   }
   const bundles = manifest.dsh?.profile?.bundles ?? []
+
+  // npm-installed scoped package already registered in the manifest: nothing
+  // to do (dsh resolves `@marecgents/dsh-hub` from the profile's node_modules
+  // directly). Skip junction creation + bare-name registration entirely.
+  if (bundles.includes(BUNDLE_SCOPED)) {
+    log(`${BUNDLE_SCOPED} already registered in the web profile`)
+    return true
+  }
 
   // 2. Junction the package into the profile's node_modules (idempotent).
   const nmDir = join(profileDir, 'node_modules')

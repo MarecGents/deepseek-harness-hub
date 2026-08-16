@@ -42,7 +42,7 @@ import { openFolderInExplorer } from './services/explorer.js'
 import { makeWorkspaceRoutes } from './services/workspace-api.js'
 
 /** Stable Cordis plugin name (referenced by cordis.patch.yml's insert row). */
-export const name = 'dsh-hub'
+export const name = '@marecgents/dsh-hub'
 
 /**
  * Optional services are read via `ctx.get`, never injected: declaring

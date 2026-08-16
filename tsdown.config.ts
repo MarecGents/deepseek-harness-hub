@@ -8,7 +8,7 @@
 import { defineConfig } from 'tsdown'
 
 /** Plugin id stamped into the __ModuleLoader__.load handoff (== package name). */
-const PLUGIN_ID = 'dsh-hub'
+const PLUGIN_ID = '@marecgents/dsh-hub'
 
 /** Specifiers the dsh boot module table shares (must stay external). */
 const PLATFORM_MODULES = [

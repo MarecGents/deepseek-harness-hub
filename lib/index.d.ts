@@ -24,7 +24,7 @@
 import type { Context } from '@deepseek-ai/cordis';
 import z from '@deepseek-ai/schemastery';
 /** Stable Cordis plugin name (referenced by cordis.patch.yml's insert row). */
-export declare const name = "dsh-hub";
+export declare const name = "@marecgents/dsh-hub";
 /**
  * Optional services are read via `ctx.get`, never injected: declaring
  * `webServer` here would leave the plugin pending forever on the headless
