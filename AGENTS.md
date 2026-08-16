@@ -187,6 +187,13 @@ git checkout dev-v2 && git merge main && git push origin dev-v2   # dev-v2 有�
 - **本地先行验证**（发布前）：`npm i -g --allow-scripts=@marecgents/dsh-hub,koffi <tgz>`（或 `--prefix <临时>` 隔离装）验证通过 → 再 `npm publish` → 最后 `npm i -g @marecgents/dsh-hub --allow-scripts=@marecgents/dsh-hub,koffi` 拉官方版（与测试电脑同链路）。
 - **状态核查**（2026-08-16）：本机运行 profile junction 与快捷方式已从 dev 仓库切换为 npm 全局包（rc.14）。
 
+### 5.6 自编译安装（本地构建 → npm 全局，等同发布安装）
+
+- **命令**：`npm run install:local`（=`scripts/install-local.mjs`：`npm pack` → `npm i -g <tgz> --allow-scripts=@marecgents/dsh-hub,koffi` → 校验输出）。分步等价于 `npm pack` + `npm i -g ./dist/marecgents-dsh-hub-<version>.tgz --allow-scripts=@marecgents/dsh-hub,koffi`。
+- **效果**：与 `npm i -g @marecgents/dsh-hub` 发布安装**别无二异**——全局包落 `npm prefix -g`/node_modules/@marecgents/dsh-hub，`dsh-hub` / `dsh-hub.cmd` / `dsh-hub.ps1` 命令 shim 生成，postinstall 运行（dsh/pnpm 检测 + 桌面快捷方式重建）。
+- **用途**：发布前本地验证（含 postinstall 链路，补 verify-release P4 的 `--ignore-scripts` 盲区）、离线安装、开发后一键装到运行环境。
+- **注意**：桌面壳运行中覆盖安装会 `EBUSY`（全局包被加载占用）——先退出桌面壳再执行；装完后 profile junction 由 launcher 下次启动自愈指向全局包。
+
 ## 6. 未来技术路线（约束方向，不立即实施）
 
 - **目标**：Tauri 2.x 壳（自定义壳 UI、Windows/macOS/Linux 三端、~10MB、官方插件生态）。详细决策见 `docs/dsh桌面端技术路线-2026-08-16.md`。

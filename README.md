@@ -95,6 +95,29 @@ dsh-hub
 
 > 依赖 dsh 的 Web 端（`dsh web`）已可用。本项目作为 dsh 插件通过 `cordis.patch.yml` 挂载，不修改 dsh 源码。
 
+### 方式三：自编译安装（本地构建，等同 npm 发布安装）
+
+从源码构建并安装到 **npm 全局包位置**——与 `npm i -g` 发布安装**别无二异**：全局包在 `npm prefix -g` 下、`dsh-hub` 命令可用、桌面快捷方式自动创建（postinstall 运行）。
+
+**一条命令（推荐）**：
+
+```sh
+npm run install:local
+```
+
+**分步执行**（等价于上面一条命令）：
+
+```sh
+# 1. 构建 + 打包（prepack 自动执行 build + build:client，产物即发布 tgz）
+npm pack --pack-destination ./dist
+
+# 2. 安装到 npm 全局（--allow-scripts 放行 postinstall 快捷方式 + koffi 原生构建）
+npm i -g ./dist/marecgents-dsh-hub-<version>.tgz --allow-scripts=@marecgents/dsh-hub,koffi
+```
+
+> ⚠️ 若桌面壳正在运行（托盘驻留），覆盖安装会报 `EBUSY`——先退出桌面壳再执行。
+> 安装完成后可用 `node scripts/install-local.mjs` 自带的校验输出确认：全局包版本、`dsh-hub` 命令 shim、快捷方式指向。
+
 ### 验证门控
 
 ```sh

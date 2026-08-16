@@ -40,7 +40,8 @@
     "generate:icons": "node ./scripts/generate-icon.mjs",
     "prepack": "npm run build && npm run build:client",
     "postinstall": "node ./scripts/postinstall.mjs",
-    "postuninstall": "node ./scripts/postuninstall.mjs"
+    "postuninstall": "node ./scripts/postuninstall.mjs",
+    "install:local": "node ./scripts/install-local.mjs"
   },
   "dsh": {
     "bundle": {
