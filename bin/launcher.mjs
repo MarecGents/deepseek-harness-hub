@@ -265,14 +265,11 @@ function main() {
   // single owner and must not mistake an old marker for a new intentional quit.
   clearQuitMarker()
 
-  // Belt-and-braces: a plain CLI `dsh web` (no lock file) still binds the
-  // default 3080; refuse to start over it so two dsh profiles do not fight.
+  // The desktop shell boots dsh with `--port 0` (OS-assigned random port), so
+  // a busy default 3080 (e.g. a separately launched `dsh web`) never collides
+  // with it — two instances may coexist. Log the situation but do not block.
   if (port3080InUse()) {
-    const message = 'dsh 似乎已在运行（默认端口 3080 被占用）。\n\n请先关闭已打开的 dsh 窗口，再重新启动。'
-    log(message)
-    alert(message)
-    releaseLock()
-    process.exit(0)
+    log('dsh web already listening on default port 3080; desktop shell will use a random port and coexist')
   }
 
   // Common path: dsh is already installed. findDsh returns only existing
