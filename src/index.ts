@@ -82,9 +82,11 @@ export interface Config {
 }
 
 export const Config: z<Config> = z.object({
-  title: z.string().required(),
-  width: z.number().required(),
-  height: z.number().required(),
+  // Defaults make the plugin hot-loadable without an explicit patch config;
+  // the shipped cordis.patch.yml still overrides these when installed normally.
+  title: z.string().default('DeepSeek Harness Desktop'),
+  width: z.number().default(1280),
+  height: z.number().default(720),
   minimizeToTray: z.boolean().default(true),
   closeToTray: z.boolean().default(false),
   theme: z.union([z.const('system'), z.const('light'), z.const('dark')]).default('system'),
