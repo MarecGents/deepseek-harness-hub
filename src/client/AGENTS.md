@@ -1,0 +1,41 @@
+# AGENTS.md — src/client/（插件 UI）开发约束
+
+> 本目录是 dsh-hub 的 **client half**（浏览器内，React），是**插件 UI**，不是壳。改动本目录任何文件前，**必须**先读根 [../../AGENTS.md](../../AGENTS.md) 与本文件。
+
+## 职责
+
+| 文件 | 职责 |
+|---|---|
+| `index.ts` | client 入口：`inject` 声明（slots/workspaces/sessions）、slot 声明合并（`settings.plugin.item`）、设置卡片 + 右侧栏装配、托盘桥 `__mgShellReady` |
+| `settings-card.tsx` | 设置卡片（MG DSH 设置）：窗口尺寸/主题/托盘行为/通知/多实例开关，走 `/api/dsh-hub/config` |
+| `right-sidebar.tsx` | 右侧栏：概览（Token 统计）/ 文件树 / Git 三页，body portal 挂载 |
+| `right-sidebar-style.ts` | 右侧栏样式（CSS 字符串注入，`mg-rs-*` 前缀） |
+| `style.ts` | 设置卡片样式（CSS 字符串注入，`mg-card-*` 前缀） |
+
+## UI 风格铁律（严格遵循 dsh web）
+
+1. **只用官方 token**：`--dsw-alias-*` / `--dsw-specific-*` / `--dsw-static-*`；**禁止硬编码 hex/灰度**（可保留 `var(..., fallback)` 双保险）。
+2. **只用官方图标**：`@deepseek-ai/dsh-client-ui-primitives` 的 `Icon*Outline16` 系列；不自行造图标、不用 emoji 当图标。
+3. **参照官方组件**：设置卡片 → `ui-settings-plugins` 的 `PluginCard.module.css` / `fields.module.css`；tab → `ConversationRoot.module.css`（13px/500、选中蓝 + 2px 蓝条）；tooltip → `ui-primitives/Tooltip.module.css`（tooltip-bg 深灰底 + bluish-00 白字、500ms 延迟）。
+4. **右侧栏 body portal**：React root 挂 `document.body`（参考 DSH-better-sidebar），**不占用官方 details slot**；`--mg-sidebar-width`（360/56px）+ `body #root { margin-right }` 让中间栏让位；可与 better-sidebar 共存。
+5. **文案**：产品文案中文；代码注释英文。
+
+## client 注册规范
+
+1. **inject 声明**：`inject = ['slots', 'workspaces', 'sessions']` —— 缺 `workspaces` 会导致托盘"新建任务"静默失败（真实事故）。
+2. **slot 声明合并**：`declare module '@deepseek-ai/dsh-client-ui-slots'` 声明 `settings.plugin.item`，形状镜像 ui-settings-plugins 契约。
+3. **配置读写走自有 HTTP**：`fetch('/api/dsh-hub/config')`，**不**用 dsh settings 命名空间 RPC（第三方 ns 不被白名单暴露）。
+4. **保存逻辑**：只提交真正变化的字段（width/height 未改不提交）；新增配置字段必须同步 host 三处（接口/默认值/POST 白名单）。
+
+## 数据订阅（body portal 上下文）
+
+- portal 外无 `useProjection` props：通过 `ctx.sessions.binding(id).session.projections.faceOf(key)` + `useSyncExternalStore` 订阅 `sessionStats` / `tokenUsage`。
+- 新对话/无数据时渲染 0（不显示空态闪断）。
+- 本轮对话 Token：`chat.timeline.turnOrder` 检测 turn 变化，tokenUsage 差值计算，下轮清零。
+
+## 代码质量
+
+- 文件头注释：职责、模块类别、对外接口。
+- 每个导出函数/组件前 JSDoc；props 接口写清字段。
+- **Build 前推演**：改完本目录，执行 `npm run build:client` 前先推演——inject 完整、slot 声明正确、token 无硬编码、fetch 路径与 host 路由一致、portal 卸载清理（`ctx.effect` disposer）。推演通过再构建。
+- 样式注入幂等：`injectCardStyle` / `injectRightSidebarStyle` 检查 `document.getElementById` 防重复。
