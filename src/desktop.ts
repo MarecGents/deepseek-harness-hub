@@ -29,10 +29,15 @@ import { Application, Notification, Theme } from '@webviewjs/webview'
 import type { BrowserWindow, JsWebview } from '@webviewjs/webview'
 import { JsonWindowStateStore, MIN_HEIGHT, MIN_WIDTH } from './services/state-store.js'
 import { setTitleBarDark, setTitleBarDarkPowerShell } from './services/dwm-theme.js'
+import { osThemeIsLight, refreshOsTheme } from './services/os-theme.js'
 import { resolveLaunchScreen } from './services/screen.js'
 import { WebViewThemeDetector } from './services/theme-sync.js'
 import { WebViewTray, type TrayCommand } from './services/tray.js'
 import { dshFaviconBlack, dshFaviconDark, dshFaviconDataUrl, dshFaviconTray } from './services/icons.js'
+import { playTaskSound, type TaskSoundKind } from './services/sound.js'
+import path from 'node:path'
+import os from 'node:os'
+import fs from 'node:fs'
 
 /** Shell options resolved from the dsh plugin Config schema. */
 export interface DesktopOptions {
@@ -88,11 +93,24 @@ export interface DesktopShellHandle {
    */
   dispatchEvent(name: string, detail?: Record<string, unknown>): void
   /**
+   * Play one shell event sound (question submitted / task complete / AI
+   * approval / task error). Best-effort: a failed chime never breaks the
+   * session loop.
+   */
+  playSound(kind: TaskSoundKind): void
+  /**
    * Show a native Windows notification (task-complete toast). Clicking it
    * restores the main window, so the user can jump straight back to the
    * finished conversation even when the window is hidden to the tray.
+   *
+   * Toast policy: suppressed only when the window is visible AND the
+   * completed session is the one the user is currently looking at
+   * (`opts.sessionId` matches the host's tracked focused session) — that
+   * case already announces itself in the UI, and the sound alone suffices.
+   * Hidden/minimized windows and background (non-focused) sessions still
+   * toast, subject to the spam cooldown.
    */
-  notifyTaskComplete(body: string): void
+  notifyTaskComplete(body: string, opts?: { sessionId?: string }): void
   /** Dispose the shell (tray, theme polling, event pump). */
   dispose(): void
 }
@@ -113,6 +131,26 @@ const NOTIFY_COOLDOWN_MS = 30_000
 /** Decoded once; the theme flips reuse the same buffers. */
 let iconForDark: ReturnType<typeof dshFaviconDark> | undefined
 let iconForLight: ReturnType<typeof dshFaviconDark> | undefined
+/** Taskbar-glyph variants (also decoded once; OS-theme dependent). */
+let taskbarIconForDark: ReturnType<typeof dshFaviconDark> | undefined
+let taskbarIconForLight: ReturnType<typeof dshFaviconDark> | undefined
+
+/**
+ * Taskbar glyph follows the OS theme (the taskbar surface does not follow
+ * the page theme): white whale on a dark taskbar, black whale on a light
+ * one. Refreshed on window focus so an OS theme change while running is
+ * picked up without a restart.
+ */
+function applyTaskbarIcon(w: BrowserWindow): void {
+  const dark = osThemeIsLight() === false
+  const icon = dark ? (taskbarIconForDark ??= dshFaviconDark()) : (taskbarIconForLight ??= dshFaviconBlack())
+  if (icon === undefined) return
+  try {
+    w.setTaskbarIcon(Array.from(icon.data), icon.width, icon.height)
+  } catch {
+    // Best-effort; icon swaps must never break the shell.
+  }
+}
 
 /**
  * Window title-bar icon follows the theme: white whale on dark chrome,
@@ -179,6 +217,12 @@ export function openDesktopShell(
   const store = new JsonWindowStateStore()
   const state = store.load()
   const app = new Application()
+  // WebView2's default-context data directory fails with E_ACCESSDENIED on
+  // some machines; use a dedicated per-app directory (kept app-scoped so
+  // close-to-tray window recreation reuses the same context).
+  const shellDataDir = path.join(process.env.DSH_HOME || path.join(os.homedir(), '.dsh'), 'dsh-hub', 'browser-data')
+  fs.mkdirSync(shellDataDir, { recursive: true })
+  const shellContext = app.createWebContext({ dataDirectory: shellDataDir })
   const darkByDefault = options.theme !== 'light'
   const splash = splashHtml(darkByDefault, dshFaviconDataUrl())
   const targetUrl = `${BASE_URL}:${port}`
@@ -190,6 +234,16 @@ export function openDesktopShell(
       width: screen === undefined ? 1280 : Math.round((screen.width * 3) / 4),
       height: screen === undefined ? 720 : Math.round((screen.height * 3) / 4),
     }
+  }
+
+  /** Startup/restore size: the persisted saved size when one is stored
+   * (options.width/height from effectiveConfig), else the 3/4 default. Used
+   * by both the initial window and the un-maximize restore, so a maximized
+   * session always returns to the user's saved size (A4). */
+  const restoreSize = (): { width: number; height: number } => {
+    return options.width !== undefined && options.height !== undefined
+      ? { width: options.width, height: options.height }
+      : defaultSize()
   }
 
   // ── Window factory (recreatable for close-to-tray) ────────────────────────
@@ -255,11 +309,11 @@ export function openDesktopShell(
     detector?.stop()
     detector = undefined
 
-    // Startup/restore size is always 3/4 of the launch screen (the plugin
-    // page's width/height only applies immediately while not maximized).
-    const size = defaultSize()
+    // Startup/restore size: the saved size when the user stored one, else
+    // 3/4 of the launch screen (see restoreSize).
+    const size = restoreSize()
     const { width, height } = size
-    console.log(`[dsh-hub] default window ${width}x${height}`)
+    console.log(`[dsh-hub] window ${width}x${height}`)
 
     const w = app.createBrowserWindow({
       title: options.title,
@@ -276,22 +330,33 @@ export function openDesktopShell(
 
     // Splash first: WebView2 keeps it painted while the SPA parses, so the
     // boot shows a smooth themed surface (no white/dark flash frames).
-    const wv = w.createWebview({ html: splash })
+    const wv = w.createWebview({ html: splash, webContext: shellContext })
     webview = wv
     wv.setBackgroundColor(...DARK_BG, 255)
 
-    // Central IPC handler: theme-sync and workspace-path requests share the
-    // single onIpcMessage slot so neither overwrites the other.
+    // Central IPC handler: theme-sync, workspace-path and session-focus
+    // requests share the single onIpcMessage slot so neither overwrites the
+    // other.
     wv.onIpcMessage((message) => {
       detector?.handleIpcMessage(message)
       try {
         const text = message.body.toString()
-        if (!text.startsWith('mg:workspace-path:')) return
-        const raw = text.slice('mg:workspace-path:'.length)
-        const path = raw === '' ? null : decodeURIComponent(raw)
-        const cb = pendingWorkspacePathCb
-        pendingWorkspacePathCb = undefined
-        cb?.(path)
+        if (text.startsWith('mg:workspace-path:')) {
+          const raw = text.slice('mg:workspace-path:'.length)
+          const path = raw === '' ? null : decodeURIComponent(raw)
+          const cb = pendingWorkspacePathCb
+          pendingWorkspacePathCb = undefined
+          cb?.(path)
+          return
+        }
+        // The browser half reports the focused session so the toast policy
+        // can distinguish "watching the finished session" (sound only) from
+        // "watching something else" (toast too).
+        if (text.startsWith('mg:session-focus:')) {
+          const raw = text.slice('mg:session-focus:'.length)
+          focusedSessionId = raw === '' ? undefined : decodeURIComponent(raw)
+          return
+        }
       } catch {
         // Ignore malformed IPC payloads.
       }
@@ -302,13 +367,16 @@ export function openDesktopShell(
       wv.loadUrl(targetUrl)
     }, SPLASH_MS)
 
-    // Taskbar glyph stays white (the taskbar surface does not follow the
-    // page theme); the title-bar icon is set by applyWindowTheme below and
-    // flips with the theme.
-    const icon = dshFaviconDark()
-    if (icon !== undefined) {
-      w.setTaskbarIcon(Array.from(icon.data), icon.width, icon.height)
-    }
+    // Taskbar glyph follows the OS theme (white whale on dark taskbar,
+    // black whale on light); the title-bar icon is set by applyWindowTheme
+    // below and flips with the page theme.
+    applyTaskbarIcon(w)
+    // Re-read the OS theme when the window gains focus, so a system theme
+    // change while running re-picks the correct taskbar glyph.
+    w.on('focus', () => {
+      refreshOsTheme()
+      applyTaskbarIcon(w)
+    })
 
     // Theme: apply the current setting to this window pair. 'system' follows
     // the page's data-ds-dark-theme (150ms polling) and also drives the
@@ -325,8 +393,9 @@ export function openDesktopShell(
       const maximized = w.isMaximized()
       if (wasMaximized && !maximized) {
         // If the user saved a custom size while maximized, restore to that
-        // size; otherwise restore to the default 3/4 of the screen.
-        const restored = pendingCustomSize ?? defaultSize()
+        // size; otherwise restore to the startup/restore size (saved size or
+        // 3/4 of the screen) — one unified restore path.
+        const restored = pendingCustomSize ?? restoreSize()
         pendingCustomSize = undefined
         try {
           w.setSize(restored.width, restored.height, true)
@@ -465,7 +534,10 @@ export function openDesktopShell(
 
   tray = new WebViewTray(app, {
     title: options.title,
-    icon: dshFaviconTray(),
+    // The tray surface follows the OS theme, not the page theme: black
+    // whale on a light tray, white whale on a dark one (the tray icon is
+    // set once at creation — a system theme change applies next launch).
+    icon: dshFaviconTray(osThemeIsLight() === false),
   }, {
     onDoubleClick: showWindow,
     onCommand: (command: TrayCommand) => {
@@ -515,6 +587,8 @@ export function openDesktopShell(
   let activeNotification: Notification | undefined
   /** Timestamp of the last shown task toast (cooldown bookkeeping). */
   let lastNotifiedAt = 0
+  /** The session the web UI reports as currently focused (see IPC handler). */
+  let focusedSessionId: string | undefined
 
   const shell: DesktopShellHandle = {
     app,
@@ -565,17 +639,23 @@ export function openDesktopShell(
       }, 2000)
     },
     dispatchEvent,
-    notifyTaskComplete: (body: string) => {
+    playSound: (kind: TaskSoundKind) => {
+      playTaskSound(kind)
+    },
+    notifyTaskComplete: (body: string, opts?: { sessionId?: string }) => {
       try {
-        // Only remind when the user is NOT looking at the window: a toast
-        // while the shell is visible in the foreground is noise, not a
-        // reminder. Hidden-to-tray and minimized windows still notify.
+        // Only remind when the user is NOT already looking at the finished
+        // session: a toast while the shell is visible AND focused on that
+        // session is noise (the completion is right there). Hidden-to-tray
+        // and minimized windows, and any session the user is not watching,
+        // still toast.
         const watching = win !== undefined
           && !win.isDisposed()
           && win.isVisible()
           && !win.isMinimized()
-        if (watching) {
-          console.log('[dsh-hub] task complete while window visible; skipping toast')
+        const focused = opts?.sessionId !== undefined && opts.sessionId === focusedSessionId
+        if (watching && focused) {
+          console.log('[dsh-hub] task complete for the focused session; sound only (no toast)')
           return
         }
         // Spam guard: at most one toast per cooldown window, so a burst of

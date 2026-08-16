@@ -54,6 +54,20 @@ export interface ShellConfig {
   closeToTray: boolean
   /** Show a Windows toast when a top-level user task completes. */
   notifyOnTaskComplete: boolean
+  /**
+   * Play the shell's event sounds (question submitted / task complete / AI
+   * approval / task error). Independent of `notifyOnTaskComplete`: sounds
+   * are the always-on channel, toasts are the focused-window-aware one.
+   */
+  soundEnabled: boolean
+  /**
+   * Allow launching this desktop shell while another dsh instance is already
+   * running (they share $DSH_HOME; writing the same session from both ends
+   * can corrupt it). Default false = strictly refuse to coexist.
+   */
+  allowMultipleInstances: boolean
+  /** Active web-UI skin id ('default' = native look). */
+  skin: string
 }
 
 /** Defaults (mirror the plugin Config composition values). */
@@ -65,6 +79,9 @@ export const DEFAULT_SHELL_CONFIG: ShellConfig = {
   minimizeToTray: true,
   closeToTray: false,
   notifyOnTaskComplete: true,
+  soundEnabled: true,
+  allowMultipleInstances: false,
+  skin: 'default',
 }
 
 /** Config document path under the harness home. */
@@ -86,23 +103,42 @@ export function readShellConfig(): ShellConfig {
  * True when the persisted config explicitly stores a window size. A user who
  * saved the settings card's width/height gets that exact size on launch;
  * otherwise the shell sizes the default window to the launch screen.
+ * Exactly-default pairs (1280×720) are ignored: old writeShellConfig builds
+ * merged over DEFAULT_SHELL_CONFIG, so any save (e.g. a checkbox toggle)
+ * wrote the default size into the file — that was never the user's explicit
+ * choice, and honoring it would pin the window to 1280×720 forever (A4).
  */
 export function hasStoredWindowSize(): boolean {
   try {
     const raw = JSON.parse(readFileSync(configFile(), 'utf8')) as Partial<ShellConfig>
-    return typeof raw.width === 'number' && typeof raw.height === 'number'
+    if (typeof raw.width !== 'number' || typeof raw.height !== 'number') return false
+    if (raw.width === DEFAULT_SHELL_CONFIG.width && raw.height === DEFAULT_SHELL_CONFIG.height) return false
+    return true
   } catch {
     return false
   }
 }
 
-/** Persist the config (best-effort, atomic write). */
+/**
+ * Persist the config (best-effort, atomic write). Merges over the RAW stored
+ * document — never over DEFAULT_SHELL_CONFIG — so a partial save (e.g. skin
+ * only) cannot seed default width/height into the file, which would flip
+ * hasStoredWindowSize() and pin the window to the defaults (A4).
+ * @param patch - the narrowed fields from the POST body.
+ * @returns the full effective config (defaults merged) for the response.
+ */
 export function writeShellConfig(patch: Partial<ShellConfig>): ShellConfig {
-  const next = { ...readShellConfig(), ...patch }
+  const file = configFile()
+  const dir = join(dshHome(), 'dsh-hub')
+  let raw: Partial<ShellConfig> = {}
   try {
-    const dir = join(dshHome(), 'dsh-hub')
+    raw = JSON.parse(readFileSync(file, 'utf8')) as Partial<ShellConfig>
+  } catch {
+    // No config yet — the patch alone becomes the document.
+  }
+  const next = { ...raw, ...patch }
+  try {
     mkdirSync(dir, { recursive: true })
-    const file = configFile()
     const tmp = `${file}.tmp`
     writeFileSync(tmp, JSON.stringify(next, null, 2), 'utf8')
     writeFileSync(file, JSON.stringify(next, null, 2), 'utf8')
@@ -110,7 +146,7 @@ export function writeShellConfig(patch: Partial<ShellConfig>): ShellConfig {
   } catch {
     // Persisting must not crash the request.
   }
-  return next
+  return { ...DEFAULT_SHELL_CONFIG, ...next }
 }
 
 /**
@@ -122,6 +158,19 @@ export function storedNotifyOnTaskComplete(): boolean | undefined {
   try {
     const raw = JSON.parse(readFileSync(configFile(), 'utf8')) as Partial<ShellConfig>
     return typeof raw.notifyOnTaskComplete === 'boolean' ? raw.notifyOnTaskComplete : undefined
+  } catch {
+    return undefined
+  }
+}
+
+/**
+ * The persisted sound flag only — `undefined` when the user never saved it,
+ * so callers can fall back to the composition Config value.
+ */
+export function storedSoundEnabled(): boolean | undefined {
+  try {
+    const raw = JSON.parse(readFileSync(configFile(), 'utf8')) as Partial<ShellConfig>
+    return typeof raw.soundEnabled === 'boolean' ? raw.soundEnabled : undefined
   } catch {
     return undefined
   }
@@ -199,6 +248,11 @@ export function makeConfigRoutes(onChange?: (value: ShellConfig, changed?: { siz
               if (typeof record.minimizeToTray === 'boolean') patch.minimizeToTray = record.minimizeToTray
               if (typeof record.closeToTray === 'boolean') patch.closeToTray = record.closeToTray
               if (typeof record.notifyOnTaskComplete === 'boolean') patch.notifyOnTaskComplete = record.notifyOnTaskComplete
+              if (typeof record.soundEnabled === 'boolean') patch.soundEnabled = record.soundEnabled
+              if (typeof record.allowMultipleInstances === 'boolean') patch.allowMultipleInstances = record.allowMultipleInstances
+              // Skin id is an opaque short string; the client validates against
+              // its own registry and falls back to 'default' for unknown ids.
+              if (typeof record.skin === 'string' && record.skin.length > 0 && record.skin.length <= 64) patch.skin = record.skin
 
               const value = writeShellConfig(patch)
               onChange?.(value, { size: sizeChanged })

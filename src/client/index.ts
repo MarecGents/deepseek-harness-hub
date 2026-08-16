@@ -30,6 +30,8 @@ import { DesktopSettingsCard, type DesktopSettingsCardProps } from './settings-c
 import { injectCardStyle } from './style.ts'
 import { RightSidebar } from './right-sidebar.tsx'
 import { injectRightSidebarStyle } from './right-sidebar-style.ts'
+import { applySkin, fetchStoredSkin, hasUserPickedSkin } from './skins.ts'
+import { installPinnedConversations } from './pin-conversations.ts'
 
 /**
  * Tray-bridge ready flag, set at module scope — the very first thing that
@@ -135,7 +137,20 @@ export function apply(ctx: ClientContext): void {
   // Tray → page bridge listener, registered before anything fallible: the
   // shell retries its dispatch until __mgShellReady, so a listener that
   // never registers (card injection failure) would look like a dead button.
-  window.addEventListener('mg:shell-command', (event) => handleShellCommand(ctx, event))
+  // The effect disposer removes it on reload (HMR / include.refresh), so a
+  // re-install never stacks duplicate handlers.
+  try {
+    ctx.effect(() => {
+      const listener = (event: Event): void => handleShellCommand(ctx, event)
+      window.addEventListener('mg:shell-command', listener)
+      return () => window.removeEventListener('mg:shell-command', listener)
+    }, 'dsh-hub: tray shell-command bridge')
+  } catch (error) {
+    // ctx.effect unusable (unexpected) — fall back to an unmanaged listener
+    // so the tray button still works; this path is not expected in practice.
+    console.warn('[dsh-hub] shell-command effect failed, using unmanaged listener:', error)
+    window.addEventListener('mg:shell-command', (event) => handleShellCommand(ctx, event))
+  }
 
   // Expose page functions for the current workspace: one sends the path over
   // IPC to the desktop host (tray "Open workspace"), one returns it directly
@@ -145,12 +160,52 @@ export function apply(ctx: ClientContext): void {
   ;(window as unknown as { __mgGetCurrentWorkspace?: () => string | null }).__mgGetCurrentWorkspace
     = () => currentWorkspace(ctx)?.path ?? null
 
+  // Report the focused session to the desktop host over IPC so its toast
+  // policy can tell "watching the finished session" (sound only) apart from
+  // "watching another session" (toast too). `ctx.sessions.list.current` is
+  // the persisted current selection — the session the UI is showing. The
+  // list store republishes on any summary change, so a last-sent cache keeps
+  // the channel quiet unless the focus actually moved.
+  let lastSentFocus: string | undefined
+  const reportFocus = (): void => {
+    try {
+      const client = ctx as unknown as {
+        sessions?: { list?: { getSnapshot?: () => { current?: string } } }
+      }
+      const current = client.sessions?.list?.getSnapshot?.()?.current
+      if (current === lastSentFocus) return
+      lastSentFocus = current
+      const ipc = (window as unknown as { ipc?: { postMessage(message: string): void } }).ipc
+      ipc?.postMessage(`mg:session-focus:${current === undefined ? '' : encodeURIComponent(current)}`)
+    } catch {
+      // Best-effort; the host falls back to always-toast when focus is unknown.
+    }
+  }
+  reportFocus()
+  try {
+    const list = (ctx as unknown as {
+      sessions?: { list?: { subscribe?: (callback: () => void) => () => void } }
+    }).sessions?.list
+    const unsubscribe = list?.subscribe?.(reportFocus)
+    ctx.effect(() => () => unsubscribe?.(), 'dsh-hub: session focus reporter')
+  } catch (error) {
+    console.warn('[dsh-hub] session focus reporter failed:', error)
+  }
+
   const slots = ctx.get('slots')
   if (slots === undefined) return
 
   // Inject the card + right-sidebar stylesheets (idempotent).
   injectCardStyle()
   injectRightSidebarStyle()
+
+  // Restore the persisted skin once the config API is reachable. If the user
+  // already picked a skin in this page lifetime (settings card), the restore
+  // must not clobber it — the flag makes the race harmless.
+  void fetchStoredSkin().then((skinId) => {
+    if (hasUserPickedSkin()) return
+    applySkin(skinId)
+  })
 
   try {
     slots.inject('settings.plugin.item', function* () {
@@ -184,5 +239,14 @@ export function apply(ctx: ClientContext): void {
     }, 'dsh-hub: right sidebar mount')
   } catch (error) {
     console.warn('[dsh-hub] right sidebar mount failed:', error)
+  }
+
+  // Pinned conversations (置顶会话): augment the official session list with
+  // stable anchors (no CSS-module hashes). The effect disposer tears down all
+  // injected DOM on reload, so HMR / include.refresh rebuild cleanly.
+  try {
+    ctx.effect(() => installPinnedConversations(ctx), 'dsh-hub: pinned conversations')
+  } catch (error) {
+    console.warn('[dsh-hub] pinned conversations install failed:', error)
   }
 }

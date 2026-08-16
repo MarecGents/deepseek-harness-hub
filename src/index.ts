@@ -36,10 +36,12 @@ import type {} from '@deepseek-ai/dsh-agent'
 import { installSettingsSection, settingsNamespace } from '@deepseek-ai/dsh-settings'
 import z from '@deepseek-ai/schemastery'
 import { openDesktopShell, type DesktopShellHandle } from './desktop.ts'
-import { makeConfigRoutes, migrateLegacyPaths, readShellConfig, storedNotifyOnTaskComplete, type ShellConfig } from './services/config-api.js'
+import { makeConfigRoutes, hasStoredWindowSize, migrateLegacyPaths, readShellConfig, storedNotifyOnTaskComplete, storedSoundEnabled, type ShellConfig } from './services/config-api.js'
+import { setAppUserModelId } from './services/app-id.js'
 import { dshHome } from './services/state-store.js'
 import { openFolderInExplorer } from './services/explorer.js'
 import { makeWorkspaceRoutes } from './services/workspace-api.js'
+import { makePinsRoutes } from './services/pins-api.js'
 
 /** Stable Cordis plugin name (referenced by cordis.patch.yml's insert row). */
 export const name = '@marecgents/dsh-hub'
@@ -71,6 +73,12 @@ export interface Config {
    * toast restores the main window. Defaults to on.
    */
   notifyOnTaskComplete: boolean
+  /**
+   * Play the shell's event sounds (question submitted / task complete / AI
+   * approval / task error). Independent of `notifyOnTaskComplete`. Defaults
+   * to on.
+   */
+  soundEnabled: boolean
 }
 
 export const Config: z<Config> = z.object({
@@ -81,6 +89,7 @@ export const Config: z<Config> = z.object({
   closeToTray: z.boolean().default(false),
   theme: z.union([z.const('system'), z.const('light'), z.const('dark')]).default('system'),
   notifyOnTaskComplete: z.boolean().default(true),
+  soundEnabled: z.boolean().default(true),
 })
 
 /** Settings namespace owned by this plugin (spelled like the package). */
@@ -168,17 +177,19 @@ function newTaskInWeb(_ctx: Context, dispatch: (name: string, detail?: Record<st
 
 /**
  * Merge the persisted shell config over the composition entry (persisted
- * wins). Startup width/height intentionally stay `undefined`: the desktop
- * shell always opens non-maximized at 3/4 of the launch screen. The plugin
- * page's saved resolution only applies immediately while the window is not
- * maximized (see DesktopShellHandle.applySize).
+ * wins). Startup width/height come from the persisted document ONLY when the
+ * user explicitly saved them (hasStoredWindowSize) — otherwise `undefined`
+ * lets the desktop shell size the default window to 3/4 of the launch
+ * screen. (A4: previously the saved size was never applied on boot, and the
+ * old writeShellConfig seeded default width/height into the file.)
  */
 function effectiveConfig(config: Config): Config {
   const stored = readShellConfig()
+  const hasSize = hasStoredWindowSize()
   return {
     ...config,
-    width: undefined as unknown as number,
-    height: undefined as unknown as number,
+    width: hasSize ? stored.width : (undefined as unknown as number),
+    height: hasSize ? stored.height : (undefined as unknown as number),
     theme: stored.theme ?? config.theme,
     minimizeToTray: stored.minimizeToTray ?? config.minimizeToTray,
     closeToTray: stored.closeToTray ?? config.closeToTray,
@@ -196,6 +207,11 @@ export function apply(ctx: Context, config: Config): void {
   }
   console.log('[dsh-hub] launched by shortcut; desktop shell + plugin page active')
 
+  // Windows taskbar identity: without an explicit AppUserModelID the window
+  // is attributed to node.exe (green-hexagon icon, "Node.js JavaScript
+  // Runtime"), and the whale icon set on the window never sticks.
+  setAppUserModelId()
+
   let shell: DesktopShellHandle | undefined
   let opened = false
   let routesDisposed: (() => void) | undefined
@@ -211,23 +227,43 @@ export function apply(ctx: Context, config: Config): void {
   // session/event fires for every session activity and carries the Session as
   // its first argument, so it reliably reflects the session the user is
   // looking at — unlike agent/created, which only fires when a session runs.
-  ctx.on('session/event', (session: { header?: { cwd?: string; delegationDepth?: number } }, event: unknown) => {
+  ctx.on('session/event', (session: { id?: string; header?: { cwd?: string; delegationDepth?: number } }, event: unknown) => {
     const cwd = session.header?.cwd
     if (cwd !== undefined) activeCwd = cwd
+    const depth = session.header?.delegationDepth ?? 0
+    // Event sounds: question submitted (turn/start), AI approval requested
+    // (approval/asked), task complete (turn/end → completed), task error
+    // (turn/end → error). Only depth-0 user sessions; subagent turns are
+    // invisible busy work and stay silent. A value saved in the settings
+    // card (persisted) wins over the composition Config and applies live.
+    const soundEnabled = storedSoundEnabled() ?? config.soundEnabled
+    if (soundEnabled && depth === 0) {
+      const e = event as { type?: string; data?: { reason?: { kind?: string } } } | undefined
+      if (e?.type === 'turn/start') {
+        shell?.playSound('start')
+      } else if (e?.type === 'approval/asked') {
+        shell?.playSound('attention')
+      } else if (e?.type === 'turn/end') {
+        const kind = e.data?.reason?.kind
+        if (kind === 'completed') shell?.playSound('success')
+        else if (kind === 'error') shell?.playSound('error')
+      }
+    }
     // Task-complete notification: fire for top-level user sessions only
     // (depth 0 — subagent turns are invisible busy work), and only when a
-    // turn actually finished with reason `completed`. A value saved in the
-    // settings card (persisted) wins over the composition Config and applies
-    // live without a restart.
+    // turn actually finished (`completed` or `error`). The desktop shell
+    // suppresses the toast when the finished session is the one the user is
+    // currently looking at (the sound alone already announced it).
     const notifyEnabled = storedNotifyOnTaskComplete() ?? config.notifyOnTaskComplete
     if (!notifyEnabled) return
-    if ((session.header?.delegationDepth ?? 0) !== 0) return
+    if (depth !== 0) return
     const e = event as { type?: string; data?: { reason?: { kind?: string } } } | undefined
-    if (e?.type !== 'turn/end' || e.data?.reason?.kind !== 'completed') return
-    try {
-      shell?.notifyTaskComplete('任务完成，点击回到窗口')
-    } catch {
-      // Best-effort; a failed toast must never break the session loop.
+    if (e?.type !== 'turn/end') return
+    const kind = e.data?.reason?.kind
+    if (kind === 'completed') {
+      shell?.notifyTaskComplete('任务完成，点击回到窗口', { sessionId: session.id })
+    } else if (kind === 'error') {
+      shell?.notifyTaskComplete('任务出错，点击回到窗口', { sessionId: session.id })
     }
   })
   ctx.on('agent/created', (payload: { agent: unknown }) => {
@@ -253,6 +289,7 @@ export function apply(ctx: Context, config: Config): void {
         if (changed?.size === true) shell?.applySize(saved.width, saved.height)
       }),
       ...makeWorkspaceRoutes(),
+      ...makePinsRoutes(),
     ].map((route) => server.register(route))
     routesDisposed = () => {
       for (const dispose of disposers) void dispose()

@@ -93,3 +93,8 @@ rl.on('line', (line) => {
 
 process.on('SIGTERM', () => process.exit(0))
 process.on('SIGINT', () => process.exit(0))
+// The parent (launcher) owns this helper's lifecycle; when it dies or closes
+// the pipe, stdin ends and this process must follow — a stdin 'close' with no
+// exit message means the parent is gone, and lingering would leave an orphan
+// tray that fights the next launch for the icon slot.
+rl.on('close', () => process.exit(0))
