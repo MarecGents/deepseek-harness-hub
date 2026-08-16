@@ -10,11 +10,11 @@
  * `dsh-hub`); a plain command-line `dsh web` never mounts the bundle at all.
  */
 
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import clsx from 'clsx'
 import { IconChevronDownOutline14, Menu } from '@deepseek-ai/dsh-client-ui-primitives'
 import { CARD_CSS_CLASSES as c } from './style.ts'
-import { SKINS, DEFAULT_SKIN_ID, applySkin } from './skins.ts'
+import { SKINS, DEFAULT_SKIN_ID, applySkin, markSkinUserPicked } from './skins.ts'
 
 /** Owner share of a plugin card (the section supplies nothing). */
 export interface DesktopSettingsCardProps {
@@ -114,6 +114,10 @@ export function DesktopSettingsCard(_props: DesktopSettingsCardProps): ReactNode
   const [skinId, setSkinId] = useState<string>(DEFAULT_SKIN_ID)
   const [skinFailed, setSkinFailed] = useState(false)
   const [skinMenuOpen, setSkinMenuOpen] = useState(false)
+  // B7: monotonic request sequence — only the LATEST config write's response
+  // may commit state; a slow older response must not clobber a newer one
+  // (overlapping onSave + skin pick, or two quick skin picks).
+  const saveSeq = useRef(0)
 
   // Load the config once on mount. The width/height fields seed from the
   // window's ACTUAL current size (the SPA viewport ≈ the native client area),
@@ -167,10 +171,12 @@ export function DesktopSettingsCard(_props: DesktopSettingsCardProps): ReactNode
     if (draft.soundEnabled !== config.soundEnabled) patch.soundEnabled = draft.soundEnabled
     if (draft.allowMultipleInstances !== config.allowMultipleInstances) patch.allowMultipleInstances = draft.allowMultipleInstances
     if (Object.keys(patch).length === 0) return
+    const seq = ++saveSeq.current
     setSaving(true)
     setFailed(false)
     setSaved(false)
     void saveConfig(patch).then((saved) => {
+      if (seq !== saveSeq.current) return // superseded by a newer write
       setSaving(false)
       if (saved !== null) {
         setConfig(saved)
@@ -196,18 +202,25 @@ export function DesktopSettingsCard(_props: DesktopSettingsCardProps): ReactNode
   /** Apply a skin immediately: persist, then restyle the page live. */
   const onPickSkin = (id: string): void => {
     if (id === skinId) return
+    // A user pick must never be clobbered by the boot skin restore (B8).
+    markSkinUserPicked()
     setSkinFailed(false)
     setSkinId(id)
     applySkin(id)
+    const seq = ++saveSeq.current
     void saveConfig({ skin: id }).then((value) => {
+      // Superseded by a newer pick/save — never roll back a newer pick (B7).
+      if (seq !== saveSeq.current) return
       if (value !== null) {
         setConfig((prev) => prev === null ? prev : { ...prev, skin: id })
         setDraft((prev) => prev === null ? prev : { ...prev, skin: id })
+        setSaving(false)
       } else {
         // Roll back the live style if the persistence failed.
         applySkin(DEFAULT_SKIN_ID)
         setSkinId(DEFAULT_SKIN_ID)
         setSkinFailed(true)
+        setSaving(false)
       }
     })
   }

@@ -37,6 +37,7 @@
 | sidebar-nav-item-active | `#d9edf9` |
 | sidebar-nav-item-hover | `#e0e0e2` |
 | menu | `#f8f8f8` |
+| bubble / bubble-highlight | `#f4f4f6` / `#d9edf9` |
 
 ### 深色（`body[data-ds-dark-theme]`）
 
@@ -65,10 +66,11 @@
 | sidebar-nav-item-active | `#1d3a47` |
 | sidebar-nav-item-hover | `#3a3a3a` |
 | menu | `#161616` |
+| bubble / bubble-highlight | `#363636` / `#1d3a47` |
 
 ## 覆盖的 token
 
-`bg-*`、`label-*`、`border-*`、`brand-*`（含 invert/text）、`button-*`、`interactive-*`、`markdown-*`、`scrollbar-*`、`tooltip-bg`、`toast-bg`、`bg-module-platform`，全套 `state-*`（success/error/warn/business）——是目前**唯一覆盖状态色**的皮肤；以及 `--dsw-specific-*` 的 `sidebar-fill` / `sidebar-nav-item-*` / `menu`（左导航与浮层，见上表）。
+`bg-*`、`label-*`、`border-*`、`brand-*`（含 invert/text）、`button-*`、`interactive-*`、`markdown-*`、`scrollbar-*`、`tooltip-bg`、`toast-bg`、`bg-module-platform`，全套 `state-*`（success/error/warn/business）——是目前**唯一覆盖状态色**的皮肤；以及 `--dsw-specific-*` 的 `sidebar-fill` / `sidebar-nav-item-*` / `menu` / `bubble` / `bubble-highlight`（左导航、会话气泡与浮层，见上表）。
 
 ## 与默认风格的关系
 

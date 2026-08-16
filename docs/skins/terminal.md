@@ -36,6 +36,7 @@
 | sidebar-nav-item-active | `#d8ecd5` |
 | sidebar-nav-item-hover | `#dcebda` |
 | menu | `#cce3c9` |
+| bubble / bubble-highlight | `#e8f3e6` / `#d8ecd5` |
 
 ### 深色（`body[data-ds-dark-theme]`）
 
@@ -51,7 +52,7 @@
 | interactive-bg-hover / active | `#11241a` / `#162b1e` |
 | markdown-code-block / inline-code | `#0c180e` / `#102215` |
 | scrollbar-bg-l1 / hover-l1 | `#1c3a20` / `#2a5230` |
-| tooltip-bg / toast-bg | `#a9f0a9`（磷光绿浮层） |
+| tooltip-bg / toast-bg | `#0e1c10` | 深绿黑浮层 |
 | bg-module-platform | `#17301a` |
 
 ### 导航与浮层（`--dsw-specific-*`，深色）
@@ -63,10 +64,11 @@
 | sidebar-nav-item-active | `#14301c` |
 | sidebar-nav-item-hover | `#11241a` |
 | menu | `#17301a` |
+| bubble / bubble-highlight | `#132614` / `#14301c` |
 
 ## 覆盖的 token
 
-`bg-*`、`label-*`、`border-*`、`brand-*`（含 `brand-primary-invert` / `brand-text`）、`button-*`、`interactive-*`、`markdown-*`、`scrollbar-*`（`scrollbar-bg-l1` / `scrollbar-hover-l1`）、`tooltip-bg`、`toast-bg`、`bg-module-platform`，以及 `--dsw-specific-*` 的 `sidebar-fill` / `sidebar-nav-item-*` / `menu`（左导航与浮层，见上表）。
+`bg-*`、`label-*`、`border-*`、`brand-*`（含 `brand-primary-invert` / `brand-text`）、`button-*`、`interactive-*`、`markdown-*`、`scrollbar-*`（`scrollbar-bg-l1` / `scrollbar-hover-l1`）、`tooltip-bg`、`toast-bg`、`bg-module-platform`，以及 `--dsw-specific-*` 的 `sidebar-fill` / `sidebar-nav-item-*` / `menu` / `bubble` / `bubble-highlight`（左导航、会话气泡与浮层，见上表）。
 
 ## 与默认风格的关系
 
@@ -76,6 +78,6 @@
 
 ## 注意事项
 
-- 深色下 `tooltip-bg` / `toast-bg` 用亮磷光绿（`#a9f0a9`）+ 深色文字，与其它皮肤"深底浅字"相反——这是有意为之（终端反色提示），开发时勿按惯性改回深底。
+- 深色下 `tooltip-bg` / `toast-bg` 用深绿黑（`#0e1c10`），浮层文字（官方白）可读——与其它皮肤"深底浅字"一致；早期版本曾用亮磷光绿（`#a9f0a9`）导致官方白字不可读，2026-08-16 修复为深底。
 - 磷光绿高饱和，注意大块面积（按钮/浮层）下的对比度。
 - 修改色板时同步更新本文件的色值表（单一事实来源：`src/client/skins.ts`）。

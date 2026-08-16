@@ -30,7 +30,7 @@ import { DesktopSettingsCard, type DesktopSettingsCardProps } from './settings-c
 import { injectCardStyle } from './style.ts'
 import { RightSidebar } from './right-sidebar.tsx'
 import { injectRightSidebarStyle } from './right-sidebar-style.ts'
-import { applySkin, fetchStoredSkin } from './skins.ts'
+import { applySkin, fetchStoredSkin, hasUserPickedSkin } from './skins.ts'
 import { installPinnedConversations } from './pin-conversations.ts'
 
 /**
@@ -137,7 +137,20 @@ export function apply(ctx: ClientContext): void {
   // Tray → page bridge listener, registered before anything fallible: the
   // shell retries its dispatch until __mgShellReady, so a listener that
   // never registers (card injection failure) would look like a dead button.
-  window.addEventListener('mg:shell-command', (event) => handleShellCommand(ctx, event))
+  // The effect disposer removes it on reload (HMR / include.refresh), so a
+  // re-install never stacks duplicate handlers.
+  try {
+    ctx.effect(() => {
+      const listener = (event: Event): void => handleShellCommand(ctx, event)
+      window.addEventListener('mg:shell-command', listener)
+      return () => window.removeEventListener('mg:shell-command', listener)
+    }, 'dsh-hub: tray shell-command bridge')
+  } catch (error) {
+    // ctx.effect unusable (unexpected) — fall back to an unmanaged listener
+    // so the tray button still works; this path is not expected in practice.
+    console.warn('[dsh-hub] shell-command effect failed, using unmanaged listener:', error)
+    window.addEventListener('mg:shell-command', (event) => handleShellCommand(ctx, event))
+  }
 
   // Expose page functions for the current workspace: one sends the path over
   // IPC to the desktop host (tray "Open workspace"), one returns it directly
@@ -186,8 +199,13 @@ export function apply(ctx: ClientContext): void {
   injectCardStyle()
   injectRightSidebarStyle()
 
-  // Restore the persisted skin once the config API is reachable.
-  void fetchStoredSkin().then((skinId) => applySkin(skinId))
+  // Restore the persisted skin once the config API is reachable. If the user
+  // already picked a skin in this page lifetime (settings card), the restore
+  // must not clobber it — the flag makes the race harmless.
+  void fetchStoredSkin().then((skinId) => {
+    if (hasUserPickedSkin()) return
+    applySkin(skinId)
+  })
 
   try {
     slots.inject('settings.plugin.item', function* () {

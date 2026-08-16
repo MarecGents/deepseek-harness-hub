@@ -124,6 +124,8 @@ export const SKINS: DshSkin[] = [
         'sidebar-nav-item-active': '#dbe4fa',
         'sidebar-nav-item-hover': '#dce4f2',
         menu: '#d3dcec',
+        bubble: '#e8edf8',
+        'bubble-highlight': '#dbe4fa',
       },
       dark: {
         'sidebar-fill': '#0f1a30',
@@ -131,6 +133,8 @@ export const SKINS: DshSkin[] = [
         'sidebar-nav-item-active': '#1d3050',
         'sidebar-nav-item-hover': '#182742',
         menu: '#192a48',
+        bubble: '#14223c',
+        'bubble-highlight': '#1d3050',
       },
     },
   },
@@ -203,6 +207,8 @@ export const SKINS: DshSkin[] = [
         'sidebar-nav-item-active': '#e9dfc8',
         'sidebar-nav-item-hover': '#e8ddc6',
         menu: '#e0d3ba',
+        bubble: '#f0e9d8',
+        'bubble-highlight': '#e9dfc8',
       },
       dark: {
         'sidebar-fill': '#2a2419',
@@ -210,6 +216,8 @@ export const SKINS: DshSkin[] = [
         'sidebar-nav-item-active': '#37301f',
         'sidebar-nav-item-hover': '#322a1c',
         menu: '#3c3222',
+        bubble: '#332b1d',
+        'bubble-highlight': '#37301f',
       },
     },
   },
@@ -271,8 +279,8 @@ export const SKINS: DshSkin[] = [
       'markdown-inline-code': '#102215',
       'scrollbar-bg-l1': '#1c3a20',
       'scrollbar-hover-l1': '#2a5230',
-      'tooltip-bg': '#a9f0a9',
-      'toast-bg': '#a9f0a9',
+      'tooltip-bg': '#0e1c10',
+      'toast-bg': '#0e1c10',
       'bg-module-platform': '#17301a',
     },
     specific: {
@@ -282,6 +290,8 @@ export const SKINS: DshSkin[] = [
         'sidebar-nav-item-active': '#d8ecd5',
         'sidebar-nav-item-hover': '#dcebda',
         menu: '#cce3c9',
+        bubble: '#e8f3e6',
+        'bubble-highlight': '#d8ecd5',
       },
       dark: {
         'sidebar-fill': '#0e1c10',
@@ -289,6 +299,8 @@ export const SKINS: DshSkin[] = [
         'sidebar-nav-item-active': '#14301c',
         'sidebar-nav-item-hover': '#11241a',
         menu: '#17301a',
+        bubble: '#132614',
+        'bubble-highlight': '#14301c',
       },
     },
   },
@@ -371,6 +383,8 @@ export const SKINS: DshSkin[] = [
         'sidebar-nav-item-active': '#d9edf9',
         'sidebar-nav-item-hover': '#e0e0e2',
         menu: '#f8f8f8',
+        bubble: '#f4f4f6',
+        'bubble-highlight': '#d9edf9',
       },
       dark: {
         // ZCode 深色实测：侧栏 #363636（比内容 #2b2b2b 亮一步），标题栏 #161616 更暗
@@ -379,6 +393,8 @@ export const SKINS: DshSkin[] = [
         'sidebar-nav-item-active': '#1d3a47',
         'sidebar-nav-item-hover': '#3a3a3a',
         menu: '#161616',
+        bubble: '#363636',
+        'bubble-highlight': '#1d3a47',
       },
     },
   },
@@ -440,8 +456,8 @@ export const SKINS: DshSkin[] = [
       'markdown-inline-code': '#191632',
       'scrollbar-bg-l1': '#2b2760',
       'scrollbar-hover-l1': '#3a3480',
-      'tooltip-bg': '#e2dcff',
-      'toast-bg': '#e2dcff',
+      'tooltip-bg': '#151331',
+      'toast-bg': '#151331',
       'bg-module-platform': '#24214e',
     },
     specific: {
@@ -451,6 +467,8 @@ export const SKINS: DshSkin[] = [
         'sidebar-nav-item-active': '#e0d8fb',
         'sidebar-nav-item-hover': '#e6e0f8',
         menu: '#d8d0f0',
+        bubble: '#ece7fa',
+        'bubble-highlight': '#e0d8fb',
       },
       dark: {
         'sidebar-fill': '#151331',
@@ -458,6 +476,8 @@ export const SKINS: DshSkin[] = [
         'sidebar-nav-item-active': '#241f4d',
         'sidebar-nav-item-hover': '#1c1940',
         menu: '#24214e',
+        bubble: '#1c1a40',
+        'bubble-highlight': '#241f4d',
       },
     },
   },
@@ -485,6 +505,20 @@ export function applySkin(skinId: string): void {
   }
   const skin = findSkin(skinId)
   style.textContent = skin === undefined ? '' : buildCss(skin)
+}
+
+/** True once the user explicitly picked a skin in this page lifetime. The
+ * boot skin restore must not clobber a user pick that raced it (B8). */
+let userPickedSkin = false
+
+/** Mark that the user explicitly picked a skin (settings card onPickSkin). */
+export function markSkinUserPicked(): void {
+  userPickedSkin = true
+}
+
+/** Whether the user already picked a skin in this page lifetime. */
+export function hasUserPickedSkin(): boolean {
+  return userPickedSkin
 }
 
 /** Read the persisted skin id through the plugin's config API. */

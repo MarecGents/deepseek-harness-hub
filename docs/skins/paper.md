@@ -35,6 +35,7 @@
 | sidebar-nav-item-active | `#e9dfc8` |
 | sidebar-nav-item-hover | `#e8ddc6` |
 | menu | `#e0d3ba` |
+| bubble / bubble-highlight | `#f0e9d8` / `#e9dfc8` |
 
 ### 深色（`body[data-ds-dark-theme]`）
 
@@ -61,10 +62,11 @@
 | sidebar-nav-item-active | `#37301f` |
 | sidebar-nav-item-hover | `#322a1c` |
 | menu | `#3c3222` |
+| bubble / bubble-highlight | `#332b1d` / `#37301f` |
 
 ## 覆盖的 token
 
-`bg-*`、`label-*`、`border-*`、`brand-*`、`button-*`、`interactive-*`、`markdown-*`、`scrollbar-*`、`tooltip-bg`、`toast-bg`、`bg-module-platform`（语义色别名层），以及 `--dsw-specific-*` 的 `sidebar-fill` / `sidebar-nav-item-*` / `menu`（左导航与浮层，见上表）。
+`bg-*`、`label-*`、`border-*`、`brand-*`、`button-*`、`interactive-*`、`markdown-*`、`scrollbar-*`、`tooltip-bg`、`toast-bg`、`bg-module-platform`（语义色别名层），以及 `--dsw-specific-*` 的 `sidebar-fill` / `sidebar-nav-item-*` / `menu` / `bubble` / `bubble-highlight`（左导航、会话气泡与浮层，见上表）。
 
 ## 与默认风格的关系
 

@@ -26,6 +26,7 @@
 | alias 浮层 | `tooltip-bg` / `toast-bg` | 提示 / 通知 |
 | specific 导航 | `sidebar-fill` / `sidebar-nav-item-active-accent` / `sidebar-nav-item-active` / `sidebar-nav-item-hover` | 左导航栏背景与状态 |
 | specific 菜单 | `menu` | 下拉 / 右键浮层 |
+| specific 会话 | `bubble` / `bubble-highlight` | 对话消息气泡 / 高亮气泡 |
 
 > 背景：dsh 左导航用 `--dsw-specific-sidebar-fill`（alias token 覆盖不到它），右详情继承 `bg-base`，卡片徽章用 `bg-module-platform`，浮层菜单用 `--dsw-specific-menu`。只覆盖 alias bg 会导致浅色下左右侧边栏停留在官方白（真实事故）。
 

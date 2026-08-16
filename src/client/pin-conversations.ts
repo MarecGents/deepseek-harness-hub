@@ -46,10 +46,10 @@ const TREE_SELECTOR = '[role="tree"]'
  * search-result rows (`<button role="treeitem">`). */
 const SESSION_ROW_SELECTOR = 'div[role="treeitem"]:not([aria-expanded])'
 
-/** 16-viewBox pin glyph, pre-expanded fill path (official icon style). */
+/** 24-viewBox pin glyph (Material push_pin grid), pre-expanded fill path. */
 const PIN_PATH = 'M16 9V4h1c.55 0 1-.45 1-1s-.45-1-1-1H7c-.55 0-1 .45-1 1s.45 1 1 1h1v5c0 1.66-1.34 3-3 3v2h5.97v7l1 1 1-1v-7H19v-2c-1.66 0-3-1.34-3-3z'
-const PIN_FILLED_SVG = `<svg class="${c.pinSvg}" width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="${PIN_PATH}"/></svg>`
-const PIN_OUTLINE_SVG = `<svg class="${c.pinSvg}" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="${PIN_PATH}"/></svg>`
+const PIN_FILLED_SVG = `<svg class="${c.pinSvg}" width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="${PIN_PATH}"/></svg>`
+const PIN_OUTLINE_SVG = `<svg class="${c.pinSvg}" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="${PIN_PATH}"/></svg>`
 
 /** Loose runtime service views (matches the project's client/index.ts style). */
 interface SessionSummaryLike {
@@ -128,26 +128,41 @@ export function installPinnedConversations(ctx: unknown): () => void {
     }
   }
 
+  /** Serialized PUTs: concurrent fetches can hit different connections and
+   * arrive out of order (a slow old PUT would clobber a newer state), so the
+   * write path is a promise chain — the last queued state wins. */
+  let writeQueue: Promise<void> = Promise.resolve()
   function apiPutPins(ids: string[]): void {
-    void fetch(PINS_API, {
-      method: 'PUT',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ ids }),
-    }).catch(() => {
-      // Best-effort; localStorage keeps the fallback copy.
-    })
+    writeQueue = writeQueue
+      .then(() => fetch(PINS_API, {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ ids }),
+      }))
+      .catch(() => {
+        // Best-effort; localStorage keeps the fallback copy.
+      })
   }
 
-  function lsRead(): string[] {
+  /** Parse a stored pins JSON string into ids; null/corrupt → nothing. */
+  function parseIds(raw: string | null): string[] {
+    if (raw === null) return []
     try {
-      const raw = localStorage.getItem(LS_KEY)
-      if (raw === null) return []
       const parsed = JSON.parse(raw) as unknown
       return Array.isArray(parsed)
         ? parsed.filter((id): id is string => typeof id === 'string' && id !== '')
         : []
     } catch {
       // Corrupt or unavailable storage — treat as nothing pinned.
+      return []
+    }
+  }
+
+  function lsRead(): string[] {
+    try {
+      return parseIds(localStorage.getItem(LS_KEY))
+    } catch {
+      // Private mode etc. — persistence is best-effort.
       return []
     }
   }
@@ -216,10 +231,20 @@ export function installPinnedConversations(ctx: unknown): () => void {
       else list.push(summary.id ?? '')
     }
     // Collect every descendant element whose text equals a unique title.
+    // Candidates are filtered against false positives: absolutely-positioned
+    // text (the official visuallyHidden status label) and small captions
+    // (relative-time labels are 12px; the title is 14px) must never count.
+    const leafTexts: string[] = []
     const candidates = new Map<string, { id: string; el: Element }>()
     for (const el of Array.from(row.querySelectorAll('span, div'))) {
       const text = el.childElementCount === 0 ? el.textContent : undefined
       if (text === undefined || text === '') continue
+      const raw = text.trim()
+      if (raw !== '') leafTexts.push(raw)
+      const style = getComputedStyle(el)
+      if (style.position === 'absolute') continue
+      const fontSize = parseFloat(style.fontSize)
+      if (Number.isFinite(fontSize) && fontSize < 13) continue
       const key = normalizeTitle(text)
       if (key === '') continue
       const ids = titleToIds.get(key)
@@ -228,9 +253,12 @@ export function installPinnedConversations(ctx: unknown): () => void {
       // collapse to the same candidate; the earlier element is the title).
       if (!candidates.has(ids[0])) candidates.set(ids[0], { id: ids[0], el })
     }
+    // Longest-match guard: if any leaf text strictly contains the candidate
+    // title, the candidate is a fragment of a longer label — skip it.
     const entries = [...candidates.values()]
     if (entries.length !== 1) return undefined // ambiguous (or unknown) row
     const entry = entries[0]
+    if (leafTexts.some((t) => t.length > entry.id.length && t.includes(entry.id))) return undefined
     return entry === undefined ? undefined : { id: entry.id, titleEl: entry.el }
   }
 
@@ -247,10 +275,16 @@ export function installPinnedConversations(ctx: unknown): () => void {
     return slot.querySelector<HTMLElement>(TREE_SELECTOR)
   }
 
-  /** True while the visible tree is the search tree (all rows are buttons). */
-  function detectSearch(tree: HTMLElement): boolean {
+  /** True while the visible tree is the search tree. A non-empty search tree
+   * has button rows only; an EMPTY search tree has zero rows but an active
+   * search input with a query — the wide-mode input is always rendered
+   * (opacity-hidden), so visibility must be judged by its value, never by
+   * geometry. */
+  function detectSearch(tree: HTMLElement, slot: HTMLElement): boolean {
     const rows = tree.querySelectorAll('[role="treeitem"]')
-    return rows.length > 0 && Array.from(rows).every((row) => row.tagName === 'BUTTON')
+    if (rows.length > 0) return Array.from(rows).every((row) => row.tagName === 'BUTTON')
+    const input = slot.querySelector('input')
+    return input !== null && input.value.trim() !== ''
   }
 
   /** Ensure one pin-toggle button on a row (after the matched title element). */
@@ -402,9 +436,10 @@ export function installPinnedConversations(ctx: unknown): () => void {
   /** Full idempotent pass over the current list DOM. */
   function sync(): void {
     if (!alive) return
+    const slot = findSlot()
     const tree = findTree()
-    if (tree === null) return
-    inSearch = detectSearch(tree)
+    if (slot === null || tree === null) return
+    inSearch = detectSearch(tree, slot)
     try {
       syncPinnedSection(tree)
     } catch {
@@ -423,13 +458,20 @@ export function installPinnedConversations(ctx: unknown): () => void {
   }
 
   // ── Pruning (write path, gated on a landed ready baseline) ─────────────
-  /** Fold one ready snapshot: count consecutive misses, prune confirmed-gone. */
+  /** Fold one ready snapshot: count consecutive misses, prune confirmed-gone.
+   * Empty/blank snapshots never prune — an all-blank mid-boot (or
+   * fully-deleted) list must never wipe pins; the baseline lands only on the
+   * first NON-empty ready snapshot, so pre-data snapshots can't gate writes. */
   function foldReadySnapshot(): void {
+    const snapshot = sessionSnapshot()
+    const byId = snapshot?.byId ?? {}
+    const isEmpty = snapshot === undefined
+      || Object.values(byId).every((s) => s?.blank === true)
+    if (isEmpty) return
     if (!readyBaselineLanded) {
       readyBaselineLanded = true
       return
     }
-    const byId = sessionSnapshot()?.byId ?? {}
     let changed = false
     const next = pinned.filter((id) => {
       if (byId[id] !== undefined && byId[id]?.blank !== true) {
@@ -459,6 +501,21 @@ export function installPinnedConversations(ctx: unknown): () => void {
     debouncedSync()
   }) ?? (() => {})
 
+  // Multi-tab sync: storage events fire only in OTHER tabs of this origin
+  // (never the writer), so adopting the incoming list cannot echo back into
+  // a loop. The tab that wins re-pushes the canonical list to the host.
+  const onStorage = (event: StorageEvent): void => {
+    if (event.key !== LS_KEY || !alive) return
+    const raw = event.newValue
+    if (raw === null) return // key cleared externally — never treat as unpin-all
+    const incoming = parseIds(raw)
+    if (incoming.length === pinned.length && incoming.every((id, i) => id === pinned[i])) return
+    setPinned(incoming)
+    sync()
+    apiPutPins(incoming)
+  }
+  window.addEventListener('storage', onStorage)
+
   // ── Boot ────────────────────────────────────────────────────────────────
   injectPinStyle()
   // Render immediately from local state (render path is NOT phase-gated);
@@ -470,9 +527,12 @@ export function installPinnedConversations(ctx: unknown): () => void {
     const bootPinned = ids
     const merged = [
       ...bootPinned.filter((id) => !dirtyDelta.removed.has(id)),
-      ...dirtyDelta.added,
+      ...Array.from(dirtyDelta.added).filter((id) => !dirtyDelta.removed.has(id)),
       ...pinned.filter((id) => !bootPinned.includes(id) && !dirtyDelta.removed.has(id)),
     ]
+    // The delta has been folded in — clear it so later toggles start fresh.
+    dirtyDelta.added.clear()
+    dirtyDelta.removed.clear()
     // Dedupe + cap, preserving order (boot first, then user additions).
     const seen = new Set<string>()
     const next: string[] = []
@@ -519,6 +579,7 @@ export function installPinnedConversations(ctx: unknown): () => void {
     bootObserver.disconnect()
     unsubSessions()
     unsubWorkspaces()
+    window.removeEventListener('storage', onStorage)
     // Remove every injected node so a re-install (HMR / include.refresh)
     // rebuilds from scratch instead of stacking stale closures.
     for (const el of Array.from(document.querySelectorAll<HTMLElement>(`[data-mg-pin], [data-mg-pin-item], .${c.section}`))) {
