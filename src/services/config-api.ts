@@ -206,6 +206,7 @@ export function makeConfigRoutes(onChange?: (value: ShellConfig, changed?: { siz
               if (typeof record.minimizeToTray === 'boolean') patch.minimizeToTray = record.minimizeToTray
               if (typeof record.closeToTray === 'boolean') patch.closeToTray = record.closeToTray
               if (typeof record.notifyOnTaskComplete === 'boolean') patch.notifyOnTaskComplete = record.notifyOnTaskComplete
+              if (typeof record.allowMultipleInstances === 'boolean') patch.allowMultipleInstances = record.allowMultipleInstances
 
               const value = writeShellConfig(patch)
               onChange?.(value, { size: sizeChanged })
