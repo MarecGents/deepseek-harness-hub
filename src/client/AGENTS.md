@@ -7,7 +7,8 @@
 | 文件 | 职责 |
 |---|---|
 | `index.ts` | client 入口：`inject` 声明（slots/workspaces/sessions）、slot 声明合并（`settings.plugin.item`）、设置卡片 + 右侧栏装配、托盘桥 `__mgShellReady` |
-| `settings-card.tsx` | 设置卡片（MG DSH 设置）：窗口尺寸/主题/托盘行为/通知/多实例开关，走 `/api/dsh-hub/config` |
+| `settings-card.tsx` | 设置卡片（MG DSH 设置）：窗口尺寸/主题/托盘行为/通知/多实例开关/皮肤选择，走 `/api/dsh-hub/config` |
+| `skins.ts` | 皮肤注册表：`DshSkin` 定义 + 5 套皮肤（午夜蓝/旧纸张/终端绿/ZCode/极光紫）+ `findSkin`/`applySkin` |
 | `right-sidebar.tsx` | 右侧栏：概览（Token 统计）/ 文件树 / Git 三页，body portal 挂载 |
 | `right-sidebar-style.ts` | 右侧栏样式（CSS 字符串注入，`mg-rs-*` 前缀） |
 | `style.ts` | 设置卡片样式（CSS 字符串注入，`mg-card-*` 前缀） |
@@ -19,6 +20,13 @@
 3. **参照官方组件**：设置卡片 → `ui-settings-plugins` 的 `PluginCard.module.css` / `fields.module.css`；tab → `ConversationRoot.module.css`（13px/500、选中蓝 + 2px 蓝条）；tooltip → `ui-primitives/Tooltip.module.css`（tooltip-bg 深灰底 + bluish-00 白字、500ms 延迟）。
 4. **右侧栏 body portal**：React root 挂 `document.body`（参考 DSH-better-sidebar），**不占用官方 details slot**；`--mg-sidebar-width`（360/56px）+ `body #root { margin-right }` 让中间栏让位；可与 better-sidebar 共存。
 5. **文案**：产品文案中文；代码注释英文。
+
+### 皮肤（skins）豁免（见根 AGENTS.md 3.1）
+
+- **`skins.ts` 中的自定义皮肤不受上述 UI 风格铁律约束**：允许硬编码色值、自定义配色，是新的视觉风格。
+- **默认皮肤（default）严格受约束**；设置卡片/右侧栏等非皮肤代码**一律遵守铁律**（token/图标/官方组件）。
+- 每套皮肤开发前先读 `docs/skins/{skin-id}.md` 风格文档；新增皮肤必须同步建文档。
+- 皮肤技术约束：覆盖选择器 `body`（浅）/ `body[data-ds-dark-theme]`（深）；样式 append `<head>`；`default` 移除注入样式表；id ≤64 字符、未知回退 default。
 
 ## client 注册规范
 
