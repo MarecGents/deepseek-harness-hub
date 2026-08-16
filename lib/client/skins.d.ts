@@ -44,5 +44,9 @@ export declare function findSkin(id: string): DshSkin | undefined;
  * element in the document head. Removing is a no-op when nothing was injected.
  */
 export declare function applySkin(skinId: string): void;
+/** Mark that the user explicitly picked a skin (settings card onPickSkin). */
+export declare function markSkinUserPicked(): void;
+/** Whether the user already picked a skin in this page lifetime. */
+export declare function hasUserPickedSkin(): boolean;
 /** Read the persisted skin id through the plugin's config API. */
 export declare function fetchStoredSkin(): Promise<string>;

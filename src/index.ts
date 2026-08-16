@@ -36,7 +36,7 @@ import type {} from '@deepseek-ai/dsh-agent'
 import { installSettingsSection, settingsNamespace } from '@deepseek-ai/dsh-settings'
 import z from '@deepseek-ai/schemastery'
 import { openDesktopShell, type DesktopShellHandle } from './desktop.ts'
-import { makeConfigRoutes, migrateLegacyPaths, readShellConfig, storedNotifyOnTaskComplete, storedSoundEnabled, type ShellConfig } from './services/config-api.js'
+import { makeConfigRoutes, hasStoredWindowSize, migrateLegacyPaths, readShellConfig, storedNotifyOnTaskComplete, storedSoundEnabled, type ShellConfig } from './services/config-api.js'
 import { setAppUserModelId } from './services/app-id.js'
 import { dshHome } from './services/state-store.js'
 import { openFolderInExplorer } from './services/explorer.js'
@@ -177,17 +177,19 @@ function newTaskInWeb(_ctx: Context, dispatch: (name: string, detail?: Record<st
 
 /**
  * Merge the persisted shell config over the composition entry (persisted
- * wins). Startup width/height intentionally stay `undefined`: the desktop
- * shell always opens non-maximized at 3/4 of the launch screen. The plugin
- * page's saved resolution only applies immediately while the window is not
- * maximized (see DesktopShellHandle.applySize).
+ * wins). Startup width/height come from the persisted document ONLY when the
+ * user explicitly saved them (hasStoredWindowSize) — otherwise `undefined`
+ * lets the desktop shell size the default window to 3/4 of the launch
+ * screen. (A4: previously the saved size was never applied on boot, and the
+ * old writeShellConfig seeded default width/height into the file.)
  */
 function effectiveConfig(config: Config): Config {
   const stored = readShellConfig()
+  const hasSize = hasStoredWindowSize()
   return {
     ...config,
-    width: undefined as unknown as number,
-    height: undefined as unknown as number,
+    width: hasSize ? stored.width : (undefined as unknown as number),
+    height: hasSize ? stored.height : (undefined as unknown as number),
     theme: stored.theme ?? config.theme,
     minimizeToTray: stored.minimizeToTray ?? config.minimizeToTray,
     closeToTray: stored.closeToTray ?? config.closeToTray,

@@ -38,7 +38,7 @@ const css = PIN_CSS_CLASSES
 /** The stylesheet text (token fallbacks mirror the SPA boot palette). */
 const STYLE_TEXT = `
 /* Pinned section — flow sibling of role="tree" inside the sidebar slot.
-   Box model mirrors the official `.list` (ui-workspace/WorkspaceBrowser):
+   Box model mirrors the official .list (ui-workspace/WorkspaceBrowser):
    left bleed via -4px/4px, right side = scrollbar-offset margin + padding
    (edge-inset − scrollbar-width − scrollbar-offset), driven by the official
    session-list tokens with hardcoded fallbacks in case dsh renames them. */

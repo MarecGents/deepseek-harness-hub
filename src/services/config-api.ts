@@ -113,13 +113,26 @@ export function hasStoredWindowSize(): boolean {
   }
 }
 
-/** Persist the config (best-effort, atomic write). */
+/**
+ * Persist the config (best-effort, atomic write). Merges over the RAW stored
+ * document — never over DEFAULT_SHELL_CONFIG — so a partial save (e.g. skin
+ * only) cannot seed default width/height into the file, which would flip
+ * hasStoredWindowSize() and pin the window to the defaults (A4).
+ * @param patch - the narrowed fields from the POST body.
+ * @returns the full effective config (defaults merged) for the response.
+ */
 export function writeShellConfig(patch: Partial<ShellConfig>): ShellConfig {
-  const next = { ...readShellConfig(), ...patch }
+  const file = configFile()
+  const dir = join(dshHome(), 'dsh-hub')
+  let raw: Partial<ShellConfig> = {}
   try {
-    const dir = join(dshHome(), 'dsh-hub')
+    raw = JSON.parse(readFileSync(file, 'utf8')) as Partial<ShellConfig>
+  } catch {
+    // No config yet — the patch alone becomes the document.
+  }
+  const next = { ...raw, ...patch }
+  try {
     mkdirSync(dir, { recursive: true })
-    const file = configFile()
     const tmp = `${file}.tmp`
     writeFileSync(tmp, JSON.stringify(next, null, 2), 'utf8')
     writeFileSync(file, JSON.stringify(next, null, 2), 'utf8')
@@ -127,7 +140,7 @@ export function writeShellConfig(patch: Partial<ShellConfig>): ShellConfig {
   } catch {
     // Persisting must not crash the request.
   }
-  return next
+  return { ...DEFAULT_SHELL_CONFIG, ...next }
 }
 
 /**

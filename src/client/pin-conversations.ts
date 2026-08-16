@@ -134,11 +134,13 @@ export function installPinnedConversations(ctx: unknown): () => void {
   let writeQueue: Promise<void> = Promise.resolve()
   function apiPutPins(ids: string[]): void {
     writeQueue = writeQueue
-      .then(() => fetch(PINS_API, {
-        method: 'PUT',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ ids }),
-      }))
+      .then(async () => {
+        await fetch(PINS_API, {
+          method: 'PUT',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ ids }),
+        })
+      })
       .catch(() => {
         // Best-effort; localStorage keeps the fallback copy.
       })

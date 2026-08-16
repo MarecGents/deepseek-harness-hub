@@ -59,7 +59,14 @@ export declare function readShellConfig(): ShellConfig;
  * otherwise the shell sizes the default window to the launch screen.
  */
 export declare function hasStoredWindowSize(): boolean;
-/** Persist the config (best-effort, atomic write). */
+/**
+ * Persist the config (best-effort, atomic write). Merges over the RAW stored
+ * document — never over DEFAULT_SHELL_CONFIG — so a partial save (e.g. skin
+ * only) cannot seed default width/height into the file, which would flip
+ * hasStoredWindowSize() and pin the window to the defaults (A4).
+ * @param patch - the narrowed fields from the POST body.
+ * @returns the full effective config (defaults merged) for the response.
+ */
 export declare function writeShellConfig(patch: Partial<ShellConfig>): ShellConfig;
 /**
  * The persisted notify flag only — `undefined` when the user never saved it,

@@ -68,7 +68,7 @@ dsh-hub 是**双 half** 结构，且**套壳代码与插件代码必须严格模
 
 - 颜色/字体/圆角/间距一律用官方 `--dsw-*` token（`--dsw-alias-*` / `--dsw-specific-*` / `--dsw-static-*`），**禁止硬编码 hex/灰度**（可保留 `var(..., fallback)` 双保险）。
 - 图标用官方图标库 `@deepseek-ai/dsh-client-ui-primitives`（`Icon*Outline16` 系列），不自行造图标。
-  - **单点豁免（置顶 pin 图标，到期条款）**：官方图标库无 pin/bookmark/star，`src/client/pin-conversations.ts` 自绘 **1 个** 16 视口填充路径 pin glyph（`currentColor`、`aria-hidden`）——限定 1 个 glyph / 1 个模块 / 不扩散；**官方提供 pin 图标后立即切换**（见 src/client/AGENTS.md §UI 铁律 2）。
+  - **单点豁免（置顶 pin 图标，到期条款）**：官方图标库无 pin/bookmark/star，`src/client/pin-conversations.ts` 自绘 **1 个** 24 视口填充路径 pin glyph（`currentColor`、`aria-hidden`）——限定 1 个 glyph / 1 个模块 / 不扩散；**官方提供 pin 图标后立即切换**（见 src/client/AGENTS.md §UI 铁律 2）。
 - 遵循 dsh 官方组件样式：设置卡片参照 `ui-settings-plugins` 的 `PluginCard.module.css` / `fields.module.css`；tab 参照 `ConversationRoot.module.css`；tooltip 参照 `ui-primitives/Tooltip.module.css`。
 - 右侧栏用 **body portal** 挂载（不占用官方 details slot），自管宽度；收起 rail 与左弹 tooltip 逻辑保持。
 - 产品文案用中文；代码注释用英文（与 dsh 官方一致）。
@@ -80,7 +80,7 @@ dsh-hub 是**双 half** 结构，且**套壳代码与插件代码必须严格模
 - **每套皮肤必须自建风格 harness 文档**，存放于 `docs/skins/{skin-id}.md`，写明：设计意图、浅色/深色调色板（明确列出色值）、覆盖了哪些 token、与默认风格的关系、注意事项。开发该皮肤相关改动前先读对应文档与 `docs/skins/AGENTS.md`（皮肤公共 harness）。
 - **皮肤覆盖范围（强制，缺 = 覆盖不全 bug）**：皮肤必须同时覆盖
   - `--dsw-alias-*` 语义 token（`bg-*`/`label-*`/`border-*`/`brand-*`/`button-*`/`interactive-*`/`markdown-*`/`scrollbar-*`/`tooltip-bg`/`toast-bg`/**`bg-module-platform`**）；
-  - `--dsw-specific-*` 表面 token（`sidebar-fill`/`sidebar-nav-item-active-accent`/`sidebar-nav-item-active`/`sidebar-nav-item-hover`/`menu`）——左导航、右详情、卡片、浮层才与中栏一致跟随皮肤。
+  - `--dsw-specific-*` 表面 token（`sidebar-fill`/`sidebar-nav-item-active-accent`/`sidebar-nav-item-active`/`sidebar-nav-item-hover`/`menu`/`bubble`/`bubble-highlight`）——左导航、右详情、卡片、浮层、会话气泡才与中栏一致跟随皮肤。
   - 文字对比度由各皮肤自己的 `label-*` 色系保证：深色模式亮字、浅色模式暗字，任一模式下文字/背景对比不得低于可读阈值。
 - 皮肤实现约束（技术层面仍强制）：
   - 覆盖选择器必须与 app 声明一致：浅色 `body`、深色 `body[data-ds-dark-theme]`（`:root` 覆盖会输给 body 级联）。

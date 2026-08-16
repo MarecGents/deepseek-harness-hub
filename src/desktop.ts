@@ -236,6 +236,16 @@ export function openDesktopShell(
     }
   }
 
+  /** Startup/restore size: the persisted saved size when one is stored
+   * (options.width/height from effectiveConfig), else the 3/4 default. Used
+   * by both the initial window and the un-maximize restore, so a maximized
+   * session always returns to the user's saved size (A4). */
+  const restoreSize = (): { width: number; height: number } => {
+    return options.width !== undefined && options.height !== undefined
+      ? { width: options.width, height: options.height }
+      : defaultSize()
+  }
+
   // ── Window factory (recreatable for close-to-tray) ────────────────────────
   let win: BrowserWindow | undefined
   let webview: JsWebview | undefined
@@ -299,11 +309,11 @@ export function openDesktopShell(
     detector?.stop()
     detector = undefined
 
-    // Startup/restore size is always 3/4 of the launch screen (the plugin
-    // page's width/height only applies immediately while not maximized).
-    const size = defaultSize()
+    // Startup/restore size: the saved size when the user stored one, else
+    // 3/4 of the launch screen (see restoreSize).
+    const size = restoreSize()
     const { width, height } = size
-    console.log(`[dsh-hub] default window ${width}x${height}`)
+    console.log(`[dsh-hub] window ${width}x${height}`)
 
     const w = app.createBrowserWindow({
       title: options.title,
@@ -383,8 +393,9 @@ export function openDesktopShell(
       const maximized = w.isMaximized()
       if (wasMaximized && !maximized) {
         // If the user saved a custom size while maximized, restore to that
-        // size; otherwise restore to the default 3/4 of the screen.
-        const restored = pendingCustomSize ?? defaultSize()
+        // size; otherwise restore to the startup/restore size (saved size or
+        // 3/4 of the screen) — one unified restore path.
+        const restored = pendingCustomSize ?? restoreSize()
         pendingCustomSize = undefined
         try {
           w.setSize(restored.width, restored.height, true)
