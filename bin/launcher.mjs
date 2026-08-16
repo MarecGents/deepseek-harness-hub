@@ -14,6 +14,7 @@ import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { acquireLock, dshHome, releaseLock } from './lock.mjs'
 import { ensureHubBinaries, relaunchAsGuard, resolveDshEntry } from './hub-exe.mjs'
+import { alert, enforceSingleInstance } from './multi-instance.mjs'
 
 const PACKAGE_ROOT = dirname(dirname(fileURLToPath(import.meta.url)))
 const BUNDLE_NAME = 'dsh-hub'
@@ -24,28 +25,11 @@ const BUNDLE_NAME = 'dsh-hub'
 // "duplicate loader entry id: dsh-hub".
 const BUNDLE_SCOPED = '@marecgents/dsh-hub'
 const LOG_FILE = join(PACKAGE_ROOT, 'dsh.log')
-/** Persisted shell config shared with the plugin's settings card. */
-const SHELL_CONFIG_FILE = join(dshHome(), 'dsh-hub', 'config.json')
 
 /** Max automatic restarts after an unexpected dsh crash (webviewjs SIGSEGV etc). */
 const MAX_RESTARTS = 3
 /** Delay before each restart, giving the OS/WebView2 a moment to release handles. */
 const RESTART_DELAY_MS = 1200
-
-/**
- * Read the persisted shell config (written by the plugin's settings card).
- * Missing/malformed config falls back to strict defaults: multiple instances
- * are NOT allowed, so an already-running dsh blocks this launch.
- * @returns {{ allowMultipleInstances: boolean }}
- */
-function readShellConfig() {
-  try {
-    const raw = JSON.parse(readFileSync(SHELL_CONFIG_FILE, 'utf8'))
-    return { allowMultipleInstances: raw?.allowMultipleInstances === true }
-  } catch {
-    return { allowMultipleInstances: false }
-  }
-}
 
 function log(message) {
   const line = `[${new Date().toISOString()}] ${message}\n`
@@ -109,103 +93,6 @@ function findDsh() {
   return null
 }
 
-/** Show a Windows message box (the launcher runs hidden, so stderr is invisible). */
-function alert(message) {
-  try {
-    const ps = `[System.Windows.Forms.MessageBox]::Show('${message.replaceAll("'", "''")}', 'dsh-hub')`
-    spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command',
-      'Add-Type -AssemblyName System.Windows.Forms; ' + ps], { windowsHide: true })
-  } catch {
-    // Best-effort.
-  }
-}
-
-/**
- * Ask a Yes/No Windows question and resolve true only when the user picks Yes.
- * @param message - the question text (may contain newlines).
- * @returns true on Yes / OK, false on No / Cancel / any failure.
- */
-function confirm(message) {
-  try {
-    const ps = `[System.Windows.Forms.MessageBox]::Show('${message.replaceAll("'", "''")}', 'dsh-hub', 'YesNo', 'Warning')`
-    const result = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command',
-      'Add-Type -AssemblyName System.Windows.Forms; ' + ps], { encoding: 'utf8', windowsHide: true })
-    return result.stdout.trim() === 'Yes'
-  } catch {
-    // Fail safe: never auto-continue when the prompt machinery is unavailable.
-    return false
-  }
-}
-
-/**
- * Find every dsh web instance already running, grouped by process. A busy
- * 3080 is only one possibility — a CLI `dsh web --port N` binds any free
- * port, and one instance may listen on several (web + internal services).
- * The desktop shell itself uses `--port 0` (OS-assigned), so this runs
- * BEFORE boot and the shell's own future socket is never seen here.
- * @returns array of { pid, ports } for each running dsh web process.
- */
-function detectRunningDshInstances() {
-  try {
-    const result = spawnSync('netstat', ['-ano', '-p', 'tcp'], { encoding: 'utf8', windowsHide: true })
-    const stdout = result.stdout ?? ''
-    // <proto> <local> <foreign> <state> <pid> — collect 127.0.0.1/0.0.0.0/[::]
-    // listeners with their owning PID; empty PID means "system kernel".
-    const rows = stdout.split('\n').map(line => line.trim().split(/\s+/)).filter(cols => cols.length >= 5)
-    const listeners = new Map() // pid -> Set<port>
-    for (const cols of rows) {
-      if (cols[0] !== 'TCP' || !/(127\.0\.0\.1|0\.0\.0\.0|\[::\]):\d+/.test(cols[1])) continue
-      if (cols[3] !== 'LISTENING') continue
-      const port = cols[1].split(':').at(-1)
-      const pid = cols[4]
-      if (port === undefined || !/^\d+$/.test(pid)) continue
-      if (!listeners.has(pid)) listeners.set(pid, new Set())
-      listeners.get(pid).add(port)
-    }
-    // PIDs that belong to a dsh web process (dsh CLI or the desktop shell's
-    // `dsh web` child). Match on the dsh bin.js path — the CLI and desktop
-    // shell both boot `@deepseek-ai/dsh/lib/bin.js web`.
-    const dshPids = new Set()
-    try {
-      const ps = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command',
-        "Get-CimInstance Win32_Process -Filter \"Name='node.exe'\" | Where-Object { $_.CommandLine -match 'dsh.*web' } | Select-Object -ExpandProperty ProcessId"],
-      { encoding: 'utf8', windowsHide: true })
-      for (const pid of (ps.stdout ?? '').split('\n')) {
-        const n = Number.parseInt(pid.trim(), 10)
-        if (Number.isInteger(n) && n > 0) dshPids.add(n)
-      }
-    } catch {
-      // CIM unavailable; no dsh processes matched below.
-    }
-    const instances = []
-    for (const [pid, ports] of listeners) {
-      if (dshPids.has(Number(pid))) {
-        instances.push({ pid: Number(pid), ports: [...ports] })
-      }
-    }
-    // One process may own several listeners; keep order stable by PID.
-    instances.sort((a, b) => a.pid - b.pid)
-    return instances
-  } catch {
-    return []
-  }
-}
-
-/** True when something already listens on dsh's default web port. */
-function port3080InUse() {
-  return detectRunningDshInstances().some(inst => inst.ports.includes('3080'))
-}
-
-/** Decode a child-process error buffer: Windows CLIs write the console code
- * page (GBK on zh-CN), which UTF-8 decoding garbles into unreadable mojibake. */
-function decodeConsoleOutput(buffer) {
-  try {
-    return new TextDecoder('gbk').decode(buffer)
-  } catch {
-    return buffer.toString('utf8')
-  }
-}
-
 /** The web profile's shipped bundle layer (mirrors dsh's PROFILE_TEMPLATES.web). */
 const WEB_PROFILE_BUNDLES = ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app']
 
@@ -242,6 +129,19 @@ function ensureBundleInstalled() {
   // directly). Skip junction creation + bare-name registration entirely.
   if (bundles.includes(BUNDLE_SCOPED)) {
     log(`${BUNDLE_SCOPED} already registered in the web profile`)
+    // Historical bare-name entries would double-mount the same bundle layer
+    // (duplicate loader entry id); drop them idempotently once the scoped
+    // name is present.
+    if (bundles.includes(BUNDLE_NAME)) {
+      const cleaned = bundles.filter((name) => name !== BUNDLE_NAME)
+      manifest.dsh = { ...manifest.dsh, profile: { ...manifest.dsh?.profile, bundles: cleaned } }
+      try {
+        writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + '\n', 'utf8')
+        log(`removed legacy bare-name ${BUNDLE_NAME} from the web profile`)
+      } catch (error) {
+        log(`bundle manifest cleanup failed: ${error.message}`)
+      }
+    }
     return true
   }
 
@@ -323,15 +223,23 @@ function clearQuitMarker() {
   }
 }
 
-function main() {
-  // Process identity: re-exec the watchdog under dsh-hub-guard.exe so Task
-  // Manager never shows a bare "Node.js JavaScript Runtime" row for the
-  // desktop shell. The guard (and the app it spawns) carry the hub icon and
-  // product name; patched exes are generated + cached by hub-exe.mjs and
-  // refreshed automatically on Node upgrades.
-  if (relaunchAsGuard(fileURLToPath(import.meta.url))) return
+async function main() {
   // Fresh log per launch (bounded disk usage).
   resetLog()
+  // Process identity: refresh the patched hub exes BEFORE re-exec. A Node
+  // upgrade makes the cached copies stale; rebuilding after re-exec would
+  // fail with EBUSY while the guard runs from the file being replaced (C1).
+  // On failure the launcher keeps going as plain node (legacy path works).
+  try {
+    await ensureHubBinaries()
+  } catch (error) {
+    log(`hub exe refresh failed (${error.message}); continuing without hub identity`)
+  }
+  // Re-exec the watchdog under dsh-hub-guard.exe so Task Manager never shows
+  // a bare "Node.js JavaScript Runtime" row for the desktop shell. The guard
+  // (and the app it spawns) carry the hub icon and product name; a failed
+  // spawn keeps this process as plain node (C2).
+  if (await relaunchAsGuard(fileURLToPath(import.meta.url))) return
   log(`launcher started (cwd=${process.cwd()})`)
 
   // Release the lock whenever this launcher process ends, no matter which
@@ -352,54 +260,12 @@ function main() {
   // single owner and must not mistake an old marker for a new intentional quit.
   clearQuitMarker()
 
-  // Concurrent-instance guard. The desktop shell boots dsh with `--port 0`
-  // (OS-assigned random port), so it CAN technically coexist with an already
-  // running dsh web on any port (3080 default, or `--port N`). But multiple
-  // dsh processes share the same $DSH_HOME session/storage files, and writing
-  // the same session from both ends can CORRUPT the session log (seq clash on
-  // interleaved appends — see docs/会话损坏修复记录). Therefore coexistence
-  // is refused by default and only allowed when the user opts in from the
-  // settings card (allowMultipleInstances), with an explicit confirmation.
-  const runningInstances = detectRunningDshInstances()
-  if (runningInstances.length > 0) {
-    // Report instance count and every port across all of them, so the user can
-    // see how many dsh processes are already up (one process may own several
-    // ports — web UI + internal services).
-    const portList = runningInstances.flatMap(inst => inst.ports).join(', ')
-    const detailLines = runningInstances.map(inst => `  · PID ${inst.pid} → 端口 ${inst.ports.join(', ')}`).join('\n')
-    log(`detected ${runningInstances.length} running dsh instance(s); listening port(s): ${portList}`)
-    const allow = readShellConfig().allowMultipleInstances
-    if (!allow) {
-      // Default: refuse to start a second instance at all. Only an OK button —
-      // no "continue anyway" escape hatch — so a plain shortcut double-click
-      // while another dsh is up cannot silently produce a corrupting pair.
-      const message =
-        `⚠ 检测到已有 ${runningInstances.length} 个 dsh 实例正在运行：\n${detailLines}\n\n` +
-        '为保护会话数据，dsh-hub 默认禁止同时运行多个 dsh 实例。\n\n' +
-        '多个实例会共享同一份会话数据（$DSH_HOME），若同时在同一个会话中操作，' +
-        '会导致会话日志损坏（seq 冲突，已发生并需手工修复）。\n\n' +
-        '请先关闭已运行的 dsh 窗口，再启动桌面壳。\n' +
-        '（如确需共存，请到 设置 → DSH HUB 设置 中勾选「允许同时运行多个实例」，并阅读风险提示。）'
-      log('blocked: multiple instances not allowed (allowMultipleInstances=false); exiting')
-      alert(message)
-      releaseLock()
-      process.exit(0)
-    }
-    // Opted in: still warn hard and require an explicit Yes before coexisting.
-    const question =
-      `⚠ 检测到已有 ${runningInstances.length} 个 dsh 实例正在运行：\n${detailLines}\n\n` +
-      '多个 dsh 实例会共享同一份会话数据（$DSH_HOME），' +
-      '若同时在同一个会话中操作，会导致会话日志损坏（seq 冲突），' +
-      '可能丢失对话内容且需手工修复。\n\n' +
-      '你已勾选「允许同时运行多个实例」。\n' +
-      '确认仍要启动桌面壳（随机端口共存）吗？\n' +
-      '选择「是」继续；选择「否」退出。'
-    if (!confirm(question)) {
-      log('user declined to launch alongside the running dsh; exiting')
-      releaseLock()
-      process.exit(0)
-    }
-    log('user opted into coexistence and chose to continue; launching')
+  // Concurrent-instance guard (shared with the `dsh-hub` terminal command):
+  // refuse coexistence with a running dsh by default, allow it only after an
+  // explicit opt-in (allowMultipleInstances) plus a Yes/No confirmation.
+  if (!enforceSingleInstance(log)) {
+    releaseLock()
+    process.exit(0)
   }
 
   // Common path: dsh is already installed. findDsh returns only existing
@@ -508,4 +374,4 @@ function main() {
   void boot()
 }
 
-main()
+void main()

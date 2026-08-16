@@ -16,7 +16,7 @@
  */
 
 import { createRequire } from 'node:module'
-import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { homedir } from 'node:os'
 import { fileURLToPath } from 'node:url'
@@ -64,14 +64,14 @@ const ROLES = {
   },
 }
 
-/** Cache key: the exact Node build (version + exe size/mtime) + package version. */
+/** Cache key: the Node runtime + arch + package version. Deliberately NOT the
+ * exe's stat — after re-exec the process runs from the patched COPY whose
+ * size/mtime differ, so a stat-based key would never match and would force a
+ * rebuild (with EBUSY while the guard runs from the target) on every launch.
+ * rcedit does not change process.versions.node, so the key is identical on
+ * the node.exe side and the patched-exe side (C1). */
 function cacheKey() {
-  try {
-    const st = statSync(process.execPath)
-    return `${process.versions.node}|${st.size}|${Math.floor(st.mtimeMs)}|${VERSION}`
-  } catch {
-    return `${process.versions.node}|${VERSION}`
-  }
+  return `${process.versions.node}|${process.arch}|${VERSION}`
 }
 
 /** True when both patched exes exist and their stamp still matches this Node. */
@@ -141,30 +141,38 @@ export async function ensureHubBinaries() {
  * Re-exec the current launcher under the guard exe, so the watchdog that stays
  * in Task Manager carries the hub identity instead of "Node.js JavaScript
  * Runtime". The guard instance skips re-exec (execPath matches) and takes over.
+ * Resolves true only after the guard process actually spawned ('spawn' event);
+ * a failed spawn resolves false so the caller keeps the plain-node path
+ * instead of exiting silently (C2).
  * @param scriptPath - absolute path of the launcher script.
- * @returns true when this process re-exec'd (caller must stop and wait).
+ * @returns {Promise<boolean>} true when this process re-exec'd (caller must
+ *   stop and wait); false when it should continue as plain node.
  */
 export function relaunchAsGuard(scriptPath) {
-  if (process.platform !== 'win32') return false
-  try {
-    const guard = guardExePath()
-    if (!existsSync(guard)) return false
-    if (process.execPath.toLowerCase() === guard.toLowerCase()) return false
-    const { spawn } = require('node:child_process')
-    const child = spawn(guard, [scriptPath, ...process.argv.slice(2)], {
-      cwd: process.cwd(),
-      windowsHide: true,
-      stdio: 'inherit',
-      env: { ...process.env, DSH_HUB_GUARD: '1' },
-    })
-    child.on('error', () => {
-      // Guard could not start; keep running as plain node (legacy path).
-    })
-    child.on('exit', (code) => process.exit(code ?? 0))
-    return true
-  } catch {
-    return false
-  }
+  return new Promise((resolve) => {
+    if (process.platform !== 'win32') { resolve(false); return }
+    try {
+      const guard = guardExePath()
+      if (!existsSync(guard)) { resolve(false); return }
+      if (process.execPath.toLowerCase() === guard.toLowerCase()) { resolve(false); return }
+      const { spawn } = require('node:child_process')
+      const child = spawn(guard, [scriptPath, ...process.argv.slice(2)], {
+        cwd: process.cwd(),
+        windowsHide: true,
+        stdio: 'inherit',
+        env: { ...process.env, DSH_HUB_GUARD: '1' },
+      })
+      child.once('error', (error) => {
+        // Guard could not start; the caller falls back to plain node so the
+        // app still launches (legacy path).
+        resolve(false)
+      })
+      child.once('spawn', () => resolve(true))
+      child.on('exit', (code) => process.exit(code ?? 0))
+    } catch (error) {
+      resolve(false)
+    }
+  })
 }
 
 /**

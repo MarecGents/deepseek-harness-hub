@@ -37,6 +37,33 @@ export function processAlive(pid) {
   }
 }
 
+/** Atomically claim the lock file with the caller's PID ('wx' = create only).
+ * @returns the pid on success, null when the file already exists (EEXIST).
+ * @throws on any other failure (the caller's fallback handles it). */
+function claimLock(file) {
+  try {
+    // Options must be ONE object — a 4th positional arg would be silently
+    // dropped and 'wx' would never apply (verified on Node 24/Windows).
+    writeFileSync(file, `${process.pid}\n`, { encoding: 'utf8', flag: 'wx' })
+    return process.pid
+  } catch (error) {
+    if (error.code === 'EEXIST') return null
+    throw error
+  }
+}
+
+/** Read the lock owner PID; null for missing, empty, or unparseable content. */
+function readLockPid(file) {
+  try {
+    const raw = readFileSync(file, 'utf8').trim()
+    if (raw === '') return null
+    const pid = Number.parseInt(raw, 10)
+    return Number.isInteger(pid) && pid > 0 ? pid : null
+  } catch {
+    return null
+  }
+}
+
 /**
  * Try to own the single-instance lock.
  * @param log optional logger for diagnostics.
@@ -46,17 +73,29 @@ export function acquireLock(log = () => {}) {
   const file = lockFile()
   try {
     mkdirSync(dirname(file), { recursive: true })
-    let existing = null
-    try {
-      existing = Number.parseInt(readFileSync(file, 'utf8').trim(), 10)
-    } catch {
-      // No lock or unreadable — both mean we can take it over.
+    // Atomic claim ('wx'): creation + content are one syscall, so two
+    // launchers cannot both pass a check-then-write (TOCTOU). On EEXIST the
+    // owner's PID decides: alive → refuse; dead/empty → remove and retake.
+    let pid = claimLock(file)
+    if (pid === null) {
+      pid = readLockPid(file)
+      if (pid !== null && processAlive(pid)) {
+        log(`another instance is running (pid ${pid}); refusing to start`)
+        return false
+      }
+      // Dead owner, or an empty file left by a concurrent writer mid-write —
+      // remove and retake; if another launcher won the retake, re-check it.
+      rmSync(file, { force: true })
+      pid = claimLock(file)
+      if (pid === null) {
+        const other = readLockPid(file)
+        if (other !== null && processAlive(other)) {
+          log(`another instance is running (pid ${other}); refusing to start`)
+          return false
+        }
+        throw new Error('lock contention not resolved')
+      }
     }
-    if (existing !== null && processAlive(existing)) {
-      log(`another instance is running (pid ${existing}); refusing to start`)
-      return false
-    }
-    writeFileSync(file, `${process.pid}\n`, 'utf8')
     log(`acquired single-instance lock (pid ${process.pid})`)
     return true
   } catch (error) {

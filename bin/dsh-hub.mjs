@@ -15,6 +15,7 @@ import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { acquireLock, releaseLock } from './lock.mjs'
 import { ensureHubBinaries, resolveDshEntry } from './hub-exe.mjs'
+import { enforceSingleInstance } from './multi-instance.mjs'
 
 const PACKAGE_ROOT = dirname(dirname(fileURLToPath(import.meta.url)))
 const LOG_FILE = join(PACKAGE_ROOT, 'dsh.log')
@@ -69,6 +70,14 @@ async function main() {
     process.exit(0)
   }
   process.on('exit', releaseLock)
+
+  // Same multi-instance gate as the desktop shortcut launcher (shared module):
+  // refuse coexistence with a running dsh by default; opt-in still requires
+  // an explicit Yes (A3).
+  if (!enforceSingleInstance(log)) {
+    releaseLock()
+    process.exit(0)
+  }
 
   const dshCmd = findDsh()
   if (dshCmd === null) {
