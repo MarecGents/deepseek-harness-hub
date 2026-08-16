@@ -60,6 +60,8 @@ export interface ShellConfig {
    * can corrupt it). Default false = strictly refuse to coexist.
    */
   allowMultipleInstances: boolean
+  /** Active web-UI skin id ('default' = native look). */
+  skin: string
 }
 
 /** Defaults (mirror the plugin Config composition values). */
@@ -72,6 +74,7 @@ export const DEFAULT_SHELL_CONFIG: ShellConfig = {
   closeToTray: false,
   notifyOnTaskComplete: true,
   allowMultipleInstances: false,
+  skin: 'default',
 }
 
 /** Config document path under the harness home. */
@@ -207,6 +210,9 @@ export function makeConfigRoutes(onChange?: (value: ShellConfig, changed?: { siz
               if (typeof record.closeToTray === 'boolean') patch.closeToTray = record.closeToTray
               if (typeof record.notifyOnTaskComplete === 'boolean') patch.notifyOnTaskComplete = record.notifyOnTaskComplete
               if (typeof record.allowMultipleInstances === 'boolean') patch.allowMultipleInstances = record.allowMultipleInstances
+              // Skin id is an opaque short string; the client validates against
+              // its own registry and falls back to 'default' for unknown ids.
+              if (typeof record.skin === 'string' && record.skin.length > 0 && record.skin.length <= 64) patch.skin = record.skin
 
               const value = writeShellConfig(patch)
               onChange?.(value, { size: sizeChanged })

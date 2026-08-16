@@ -38,6 +38,8 @@ export interface ShellConfig {
      * can corrupt it). Default false = strictly refuse to coexist.
      */
     allowMultipleInstances: boolean;
+    /** Active web-UI skin id ('default' = native look). */
+    skin: string;
 }
 /** Defaults (mirror the plugin Config composition values). */
 export declare const DEFAULT_SHELL_CONFIG: ShellConfig;
