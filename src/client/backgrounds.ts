@@ -99,9 +99,15 @@ export function applyBackground(backgroundId: string): void {
     `background-color:color-mix(in srgb, var(--dsw-alias-bg-base) 75%, transparent) !important;` +
     `}` +
     // dsh-hub's own right sidebar is a body portal OUTSIDE #root, so it needs
-    // its own rule to let the frame image show through its surface.
+    // its own rule to let the frame image show through its surface. The
+    // translucent layer alone reads as solid when there is no image behind it
+    // (plain skin colors show through), so it gets the official frosted-glass
+    // recipe too: translucent fill + backdrop-filter blur (ui-primitives
+    // Modal.mask uses var(--dsw-mask-blur) exactly like this).
     `#dsh-hub-right-sidebar-root{` +
     `background-color:color-mix(in srgb, var(--dsw-specific-sidebar-fill) 75%, transparent) !important;` +
+    `backdrop-filter:var(--dsw-mask-blur, blur(2px)) !important;` +
+    `-webkit-backdrop-filter:var(--dsw-mask-blur, blur(2px)) !important;` +
     `}`
 }
 
