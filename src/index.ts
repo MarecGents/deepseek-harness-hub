@@ -42,6 +42,7 @@ import { dshHome } from './services/state-store.js'
 import { openFolderInExplorer } from './services/explorer.js'
 import { makeWorkspaceRoutes } from './services/workspace-api.js'
 import { makePinsRoutes } from './services/pins-api.js'
+import { makeBackgroundsRoutes } from './services/backgrounds-api.js'
 
 /** Stable Cordis plugin name (referenced by cordis.patch.yml's insert row). */
 export const name = '@marecgents/dsh-hub'
@@ -82,9 +83,13 @@ export interface Config {
 }
 
 export const Config: z<Config> = z.object({
-  title: z.string().required(),
-  width: z.number().required(),
-  height: z.number().required(),
+  // Defaults make the plugin hot-loadable without an explicit patch config;
+  // the shipped cordis.patch.yml still overrides these when installed normally.
+  // Contract: schema defaults must stay equal to the patch config values so
+  // hot-loaded and normally-installed runs behave identically.
+  title: z.string().default('DeepSeek Harness Hub'),
+  width: z.number().default(1280),
+  height: z.number().default(720),
   minimizeToTray: z.boolean().default(true),
   closeToTray: z.boolean().default(false),
   theme: z.union([z.const('system'), z.const('light'), z.const('dark')]).default('system'),
@@ -290,6 +295,7 @@ export function apply(ctx: Context, config: Config): void {
       }),
       ...makeWorkspaceRoutes(),
       ...makePinsRoutes(),
+      ...makeBackgroundsRoutes(),
     ].map((route) => server.register(route))
     routesDisposed = () => {
       for (const dispose of disposers) void dispose()

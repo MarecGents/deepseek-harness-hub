@@ -15,6 +15,7 @@ import clsx from 'clsx'
 import { IconChevronDownOutline14, Menu } from '@deepseek-ai/dsh-client-ui-primitives'
 import { CARD_CSS_CLASSES as c } from './style.ts'
 import { SKINS, DEFAULT_SKIN_ID, applySkin, markSkinUserPicked } from './skins.ts'
+import { BACKGROUNDS, DEFAULT_BACKGROUND_ID, applyBackground, markBackgroundUserPicked } from './backgrounds.ts'
 
 /** Owner share of a plugin card (the section supplies nothing). */
 export interface DesktopSettingsCardProps {
@@ -34,6 +35,7 @@ interface ShellConfig {
   soundEnabled: boolean
   allowMultipleInstances: boolean
   skin: string
+  background: string
 }
 
 /** Localized copy kept inline (the card is small; no locale plugin needed). */
@@ -68,6 +70,12 @@ const COPY = {
   skinDefaultName: '默认',
   skinDefaultDesc: '官方原生外观',
   skinApplyFailed: '皮肤切换失败，请重试',
+  backgroundSection: '背景图',
+  backgroundLabel: '背景图',
+  backgroundHint: '点击即应用并保存；「无」关闭背景图，恢复原生/皮肤背景',
+  backgroundDefaultName: '无',
+  backgroundDefaultDesc: '不显示背景图',
+  backgroundApplyFailed: '背景切换失败，请重试',
   discard: '放弃',
   save: '保存',
   saving: '保存中…',
@@ -114,6 +122,9 @@ export function DesktopSettingsCard(_props: DesktopSettingsCardProps): ReactNode
   const [skinId, setSkinId] = useState<string>(DEFAULT_SKIN_ID)
   const [skinFailed, setSkinFailed] = useState(false)
   const [skinMenuOpen, setSkinMenuOpen] = useState(false)
+  const [backgroundId, setBackgroundId] = useState<string>(DEFAULT_BACKGROUND_ID)
+  const [backgroundFailed, setBackgroundFailed] = useState(false)
+  const [backgroundMenuOpen, setBackgroundMenuOpen] = useState(false)
   // B7: monotonic request sequence — only the LATEST config write's response
   // may commit state; a slow older response must not clobber a newer one
   // (overlapping onSave + skin pick, or two quick skin picks).
@@ -134,6 +145,7 @@ export function DesktopSettingsCard(_props: DesktopSettingsCardProps): ReactNode
       setConfig(initial)
       setDraft(initial)
       setSkinId(initial === null ? DEFAULT_SKIN_ID : initial.skin)
+      setBackgroundId(initial === null ? DEFAULT_BACKGROUND_ID : initial.background)
       setLoading(false)
     })
     return () => { alive = false }
@@ -220,6 +232,33 @@ export function DesktopSettingsCard(_props: DesktopSettingsCardProps): ReactNode
         applySkin(DEFAULT_SKIN_ID)
         setSkinId(DEFAULT_SKIN_ID)
         setSkinFailed(true)
+        setSaving(false)
+      }
+    })
+  }
+
+  /** Apply a background immediately: persist, then restyle the page live. */
+  const onPickBackground = (id: string): void => {
+    if (id === backgroundId) return
+    // A user pick must never be clobbered by the boot background restore.
+    markBackgroundUserPicked()
+    setBackgroundFailed(false)
+    setBackgroundId(id)
+    applyBackground(id)
+    const seq = ++saveSeq.current
+    setSaving(true) // mirror onSave: only the latest write clears the flag
+    void saveConfig({ background: id }).then((value) => {
+      // Superseded by a newer pick/save — never roll back a newer pick (B7).
+      if (seq !== saveSeq.current) return
+      if (value !== null) {
+        setConfig((prev) => prev === null ? prev : { ...prev, background: id })
+        setDraft((prev) => prev === null ? prev : { ...prev, background: id })
+        setSaving(false)
+      } else {
+        // Roll back the live style if the persistence failed.
+        applyBackground(DEFAULT_BACKGROUND_ID)
+        setBackgroundId(DEFAULT_BACKGROUND_ID)
+        setBackgroundFailed(true)
         setSaving(false)
       }
     })
@@ -391,6 +430,51 @@ export function DesktopSettingsCard(_props: DesktopSettingsCardProps): ReactNode
                         {' — '}{COPY.skinHint}
                       </div>
                       {skinFailed ? <p className={c.failed} role="status">{COPY.skinApplyFailed}</p> : null}
+                    </div>
+                  )}
+                  {/* Background picker — official Setting-Cell row like the skin picker. */}
+                  {draft !== null && (
+                    <div className={c.section}>
+                      <div className={c.sectionTitle}>{COPY.backgroundSection}</div>
+                      <div className={c.fieldRow}>
+                        <span className={c.fieldLabel}>{COPY.backgroundLabel}</span>
+                        <Menu
+                          open={backgroundMenuOpen}
+                          onClose={() => { setBackgroundMenuOpen(false) }}
+                          items={[
+                            { id: DEFAULT_BACKGROUND_ID, label: COPY.backgroundDefaultName },
+                            ...BACKGROUNDS.map((background) => ({ id: background.id, label: background.name })),
+                          ]}
+                          selectedId={backgroundId}
+                          onSelect={(id) => {
+                            onPickBackground(id)
+                            setBackgroundMenuOpen(false)
+                          }}
+                          align="end"
+                          portal
+                          anchor={(
+                            <button
+                              type="button"
+                              className={c.selectPill}
+                              aria-haspopup="menu"
+                              aria-expanded={backgroundMenuOpen}
+                              onClick={() => { setBackgroundMenuOpen(v => !v) }}
+                            >
+                              {backgroundId === DEFAULT_BACKGROUND_ID
+                                ? COPY.backgroundDefaultName
+                                : (BACKGROUNDS.find((background) => background.id === backgroundId)?.name ?? backgroundId)}
+                              <IconChevronDownOutline14 />
+                            </button>
+                          )}
+                        />
+                      </div>
+                      <div className={c.hint}>
+                        {backgroundId === DEFAULT_BACKGROUND_ID
+                          ? COPY.backgroundDefaultDesc
+                          : (BACKGROUNDS.find((background) => background.id === backgroundId)?.description ?? '')}
+                        {' — '}{COPY.backgroundHint}
+                      </div>
+                      {backgroundFailed ? <p className={c.failed} role="status">{COPY.backgroundApplyFailed}</p> : null}
                     </div>
                   )}
                 </>

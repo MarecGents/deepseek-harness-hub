@@ -68,6 +68,8 @@ export interface ShellConfig {
   allowMultipleInstances: boolean
   /** Active web-UI skin id ('default' = native look). */
   skin: string
+  /** Active background image id ('none' = no image, native background). */
+  background: string
 }
 
 /** Defaults (mirror the plugin Config composition values). */
@@ -82,6 +84,7 @@ export const DEFAULT_SHELL_CONFIG: ShellConfig = {
   soundEnabled: true,
   allowMultipleInstances: false,
   skin: 'default',
+  background: 'none',
 }
 
 /** Config document path under the harness home. */
@@ -253,6 +256,9 @@ export function makeConfigRoutes(onChange?: (value: ShellConfig, changed?: { siz
               // Skin id is an opaque short string; the client validates against
               // its own registry and falls back to 'default' for unknown ids.
               if (typeof record.skin === 'string' && record.skin.length > 0 && record.skin.length <= 64) patch.skin = record.skin
+              // Background id is likewise an opaque short string (same cap as
+              // skin); unknown ids are ignored by the client and treated as 'none'.
+              if (typeof record.background === 'string' && record.background.length > 0 && record.background.length <= 64) patch.background = record.background
 
               const value = writeShellConfig(patch)
               onChange?.(value, { size: sizeChanged })

@@ -9,6 +9,7 @@
 | `index.ts` | client 入口：`inject` 声明（slots/workspaces/sessions）、slot 声明合并（`settings.plugin.item`）、设置卡片 + 右侧栏装配、托盘桥 `__mgShellReady` |
 | `settings-card.tsx` | 设置卡片（DSH HUB 设置）：窗口尺寸/主题/托盘行为/通知/提示音/多实例开关/皮肤选择（Setting-Cell 行式），走 `/api/dsh-hub/config` |
 | `skins.ts` | 皮肤注册表：`DshSkin` 定义 + 5 套皮肤（午夜蓝/旧纸张/终端绿/ZCode/极光紫）+ `findSkin`/`applySkin` |
+| `backgrounds.ts` | 背景图注册表：`DshBackground` 定义 + 内置图片（远航）+ `applyBackground`（frame 层双层背景注入）/ `fetchStoredBackground` |
 | `right-sidebar.tsx` | 右侧栏：概览（Token 统计）/ 文件树 / Git 三页，body portal 挂载 |
 | `right-sidebar-style.ts` | 右侧栏样式（CSS 字符串注入，`mg-rs-*` 前缀） |
 | `pin-conversations.ts` | 置顶会话：内容匹配行定位（零 CSS-hash）+ 置顶区/行按钮注入 + pins 状态机（dirtyDelta / ready 门控剪枝 / disposer 移除 DOM） |
@@ -27,6 +28,7 @@
 ### 皮肤（skins）豁免（见根 AGENTS.md 3.1）
 
 - **`skins.ts` 中的自定义皮肤不受上述 UI 风格铁律约束**：允许硬编码色值、自定义配色，是新的视觉风格。
+- **背景图（`backgrounds.ts`）同样豁免**：`applyBackground` 注入 frame 层双层背景（锚点 `#root div[style*="grid-template-columns"]` + `linear-gradient` 蒙层 + 图片），允许 `!important` 图片层；禁止硬编码 hex 颜色；`'none'` 哨兵清空注入。
 - **默认皮肤（default）严格受约束**；设置卡片/右侧栏等非皮肤代码**一律遵守铁律**（token/图标/官方组件）。
 - 每套皮肤开发前先读 `docs/skins/{skin-id}.md` 风格文档与 `docs/skins/AGENTS.md`；新增皮肤必须同步建文档。
 - 皮肤技术约束：覆盖选择器 `body`（浅）/ `body[data-ds-dark-theme]`（深）；样式 append `<head>`；`default` 移除注入样式表；id ≤64 字符、未知回退 default。

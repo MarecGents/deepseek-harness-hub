@@ -7,6 +7,7 @@
 | 文件 | 模块类别 | 职责 | Tauri 迁移 |
 |---|---|---|---|
 | `config-api.ts` | **Server + Services** | 配置读写路由 `/api/dsh-hub/config`（GET/POST）、`ShellConfig` 定义与持久化、旧名迁移 `migrateLegacyPaths` | 保留 |
+| `backgrounds-api.ts` | **Server + Services** | 背景图静态资源路由 `/api/dsh-hub/backgrounds/*`（正则白名单防穿越，服务 assets/backgrounds） | 保留 |
 | `workspace-api.ts` | **Server + Services** | 工作区路由 `/api/dsh-hub/workspace/{list,git}`（文件树 + Git 检测） | 保留 |
 | `pins-api.ts` | **Server + Services** | 置顶会话路由 `/api/dsh-hub/pins`（GET/PUT）、`pins.json` 持久化（renameSync 原子写） | 保留 |
 | `theme-sync.ts` | **Services** | 页面主题 → IPC 桥转发（配合壳层 Dwm 应用） | 保留（桥） |
