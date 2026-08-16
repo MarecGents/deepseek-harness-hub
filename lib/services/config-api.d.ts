@@ -46,6 +46,8 @@ export interface ShellConfig {
     allowMultipleInstances: boolean;
     /** Active web-UI skin id ('default' = native look). */
     skin: string;
+    /** Active background image id ('none' = no image, native background). */
+    background: string;
 }
 /** Defaults (mirror the plugin Config composition values). */
 export declare const DEFAULT_SHELL_CONFIG: ShellConfig;

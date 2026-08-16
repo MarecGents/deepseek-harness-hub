@@ -68,6 +68,8 @@ export interface ShellConfig {
   allowMultipleInstances: boolean
   /** Active web-UI skin id ('default' = native look). */
   skin: string
+  /** Active background image id ('none' = no image, native background). */
+  background: string
 }
 
 /** Defaults (mirror the plugin Config composition values). */
@@ -82,6 +84,7 @@ export const DEFAULT_SHELL_CONFIG: ShellConfig = {
   soundEnabled: true,
   allowMultipleInstances: false,
   skin: 'default',
+  background: 'none',
 }
 
 /** Config document path under the harness home. */
@@ -253,6 +256,9 @@ export function makeConfigRoutes(onChange?: (value: ShellConfig, changed?: { siz
               // Skin id is an opaque short string; the client validates against
               // its own registry and falls back to 'default' for unknown ids.
               if (typeof record.skin === 'string' && record.skin.length > 0 && record.skin.length <= 64) patch.skin = record.skin
+              // Background id is likewise an opaque short string; unknown ids are
+              // ignored by the client and treated as 'none'.
+              if (typeof record.background === 'string' && record.background.length > 0 && record.background.length <= 128) patch.background = record.background
 
               const value = writeShellConfig(patch)
               onChange?.(value, { size: sizeChanged })
@@ -262,6 +268,37 @@ export function makeConfigRoutes(onChange?: (value: ShellConfig, changed?: { siz
           )
         }
         json(res, 405, { ok: false, error: 'method-not-allowed' })
+        return Promise.resolve()
+      },
+    },
+    {
+      // Static background-image assets. The client references them as
+      // `/api/dsh-hub/backgrounds/<file>`; only bundled files under
+      // assets/backgrounds are served (regex-whitelisted, no path traversal).
+      kind: 'prefix',
+      path: `${CONFIG_API_PREFIX}/backgrounds`,
+      handler: (req: IncomingMessage, res: ServerResponse): Promise<void> => {
+        if (req.method !== 'GET') {
+          res.writeHead(405, { 'content-type': 'text/plain; charset=utf-8' })
+          res.end('method-not-allowed')
+          return Promise.resolve()
+        }
+        const name = decodeURIComponent((req.url ?? '').split('?')[0].split('/').filter(Boolean).pop() ?? '')
+        if (!/^[a-z0-9-]+\.(jpg|jpeg|png|gif|webp)$/i.test(name)) {
+          res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' })
+          res.end('not-found')
+          return Promise.resolve()
+        }
+        try {
+          const bytes = readFileSync(new URL(`../../assets/backgrounds/${name}`, import.meta.url))
+          const ext = name.split('.').pop()?.toLowerCase()
+          const type = ext === 'png' ? 'image/png' : ext === 'gif' ? 'image/gif' : ext === 'webp' ? 'image/webp' : 'image/jpeg'
+          res.writeHead(200, { 'content-type': type, 'cache-control': 'public, max-age=86400' })
+          res.end(bytes)
+        } catch {
+          res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' })
+          res.end('not-found')
+        }
         return Promise.resolve()
       },
     },

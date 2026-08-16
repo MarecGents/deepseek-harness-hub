@@ -239,11 +239,15 @@ export function openDesktopShell(
   /** Startup/restore size: the persisted saved size when one is stored
    * (options.width/height from effectiveConfig), else the 3/4 default. Used
    * by both the initial window and the un-maximize restore, so a maximized
-   * session always returns to the user's saved size (A4). */
-  const restoreSize = (): { width: number; height: number } => {
+   * session always returns to the user's saved size (A4).
+   *
+   * `logical` records the unit of the returned dimensions: saved sizes are
+   * logical (settings card / CSS pixels), the 3/4 default is physical
+   * (resolveLaunchScreen after the Application initializes DPI awareness). */
+  const restoreSize = (): { width: number; height: number; logical: boolean } => {
     return options.width !== undefined && options.height !== undefined
-      ? { width: options.width, height: options.height }
-      : defaultSize()
+      ? { width: options.width, height: options.height, logical: true }
+      : { ...defaultSize(), logical: false }
   }
 
   // ── Window factory (recreatable for close-to-tray) ────────────────────────
@@ -255,8 +259,9 @@ export function openDesktopShell(
   let closedToTray = false
   let themeSetting: DesktopOptions['theme'] = options.theme
   let tray: WebViewTray | undefined
-  /** Custom size requested while maximized; consumed by the next un-maximize. */
-  let pendingCustomSize: { width: number; height: number } | undefined
+  /** Custom size requested while maximized; consumed by the next un-maximize.
+   * Always logical (settings card / CSS pixels), so `logical` is true. */
+  let pendingCustomSize: { width: number; height: number; logical: boolean } | undefined
   /** One pending "current workspace path" request callback at a time. */
   let pendingWorkspacePathCb: ((path: string | null) => void) | undefined
 
@@ -319,12 +324,15 @@ export function openDesktopShell(
       title: options.title,
       width,
       height,
+      // Saved sizes are logical; the 3/4 screen default is physical.
+      logical: size.logical,
       // A hidden window (close-to-tray keepalive) starts invisible so the
       // app survives the previous window's close without flashing.
       ...(opts?.hidden === true ? { visible: false } : {}),
     })
     win = w
-    w.setMinSize(MIN_WIDTH, MIN_HEIGHT)
+    // MIN_WIDTH/MIN_HEIGHT are logical (settings card minimums).
+    w.setMinSize(MIN_WIDTH, MIN_HEIGHT, true)
     w.center()
     if (state.maximized === true) w.setMaximized(true)
 
@@ -398,7 +406,10 @@ export function openDesktopShell(
         const restored = pendingCustomSize ?? restoreSize()
         pendingCustomSize = undefined
         try {
-          w.setSize(restored.width, restored.height, true)
+          // pendingCustomSize is logical; restoreSize carries its own unit
+          // (saved = logical, 3/4 default = physical). Passing the flag keeps
+          // the restored window inside the screen at any DPI scaling.
+          w.setSize(restored.width, restored.height, restored.logical)
           w.center()
         } catch {
           // Best-effort; the window is already restored to the OS default.
@@ -605,7 +616,8 @@ export function openDesktopShell(
         if (win.isMaximized()) {
           // Saving a custom size while maximized: exit maximize first and let
           // the resize handler apply the requested size (via pendingCustomSize).
-          pendingCustomSize = { width, height }
+          // Settings sizes are logical; the resize handler honors the flag.
+          pendingCustomSize = { width, height, logical: true }
           win.setMaximized(false)
         }
         win.setSize(width, height, true)

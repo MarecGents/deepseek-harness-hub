@@ -31,6 +31,7 @@ import { injectCardStyle } from './style.ts'
 import { RightSidebar } from './right-sidebar.tsx'
 import { injectRightSidebarStyle } from './right-sidebar-style.ts'
 import { applySkin, fetchStoredSkin, hasUserPickedSkin } from './skins.ts'
+import { applyBackground, fetchStoredBackground, hasUserPickedBackground } from './backgrounds.ts'
 import { installPinnedConversations } from './pin-conversations.ts'
 
 /**
@@ -205,6 +206,13 @@ export function apply(ctx: ClientContext): void {
   void fetchStoredSkin().then((skinId) => {
     if (hasUserPickedSkin()) return
     applySkin(skinId)
+  })
+
+  // Same for the background image: restore the saved choice unless the user
+  // already picked one in this page lifetime.
+  void fetchStoredBackground().then((backgroundId) => {
+    if (hasUserPickedBackground()) return
+    applyBackground(backgroundId)
   })
 
   try {
