@@ -30,6 +30,7 @@ import { DesktopSettingsCard, type DesktopSettingsCardProps } from './settings-c
 import { injectCardStyle } from './style.ts'
 import { RightSidebar } from './right-sidebar.tsx'
 import { injectRightSidebarStyle } from './right-sidebar-style.ts'
+import { installPinnedConversations } from './pin-conversations.ts'
 
 /**
  * Tray-bridge ready flag, set at module scope — the very first thing that

@@ -37,6 +37,7 @@ import { installSettingsSection, settingsNamespace } from '@deepseek-ai/dsh-sett
 import z from '@deepseek-ai/schemastery'
 import { openDesktopShell, type DesktopShellHandle } from './desktop.ts'
 import { makeConfigRoutes, migrateLegacyPaths, readShellConfig, storedNotifyOnTaskComplete, type ShellConfig } from './services/config-api.js'
+import { makePinsRoutes } from './services/pins-api.js'
 import { dshHome } from './services/state-store.js'
 import { openFolderInExplorer } from './services/explorer.js'
 import { makeWorkspaceRoutes } from './services/workspace-api.js'
@@ -253,6 +254,7 @@ export function apply(ctx: Context, config: Config): void {
         if (changed?.size === true) shell?.applySize(saved.width, saved.height)
       }),
       ...makeWorkspaceRoutes(),
+      ...makePinsRoutes(),
     ].map((route) => server.register(route))
     routesDisposed = () => {
       for (const dispose of disposers) void dispose()
