@@ -33,6 +33,7 @@ export declare const CARD_CSS_CLASSES: {
     readonly select: "mg-card-select";
     readonly checkboxRow: "mg-card-checkbox-row";
     readonly hint: "mg-card-hint";
+    readonly dangerHint: "mg-card-danger-hint";
     readonly footer: "mg-card-footer";
     readonly discard: "mg-card-discard";
     readonly save: "mg-card-save";

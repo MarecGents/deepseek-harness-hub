@@ -30,6 +30,7 @@ interface ShellConfig {
   minimizeToTray: boolean
   closeToTray: boolean
   notifyOnTaskComplete: boolean
+  allowMultipleInstances: boolean
 }
 
 /** Localized copy kept inline (the card is small; no locale plugin needed). */
@@ -50,6 +51,12 @@ const COPY = {
   closeHint: '点 X 关闭窗口时保持进程与托盘存活（不勾选则完全退出）',
   notifyLabel: '会话完成通知',
   notifyHint: '任务回合完成时弹出系统通知，点击回到窗口',
+  multiInstanceLabel: '允许同时运行多个 dsh 实例',
+  multiInstanceDanger:
+    '⚠ 危险：多个 dsh 实例共享同一份会话数据（$DSH_HOME），' +
+    '若同时在同一个会话中操作，会导致会话日志损坏（seq 冲突），' +
+    '可能丢失对话内容且需要手工修复。强烈不建议开启。',
+  multiInstanceHint: '不勾选时，若检测到已有 dsh 在运行，桌面壳将拒绝启动以保护数据',
   discard: '放弃',
   save: '保存',
   saving: '保存中…',
@@ -119,7 +126,8 @@ export function DesktopSettingsCard(_props: DesktopSettingsCardProps): ReactNode
       || draft.theme !== config.theme
       || draft.minimizeToTray !== config.minimizeToTray
       || draft.closeToTray !== config.closeToTray
-      || draft.notifyOnTaskComplete !== config.notifyOnTaskComplete)
+      || draft.notifyOnTaskComplete !== config.notifyOnTaskComplete
+      || draft.allowMultipleInstances !== config.allowMultipleInstances)
   const blocked = !dirty || saving || draft === null
 
   const patchDraft = (patch: Partial<ShellConfig>): void => {
@@ -140,6 +148,7 @@ export function DesktopSettingsCard(_props: DesktopSettingsCardProps): ReactNode
     if (draft.minimizeToTray !== config.minimizeToTray) patch.minimizeToTray = draft.minimizeToTray
     if (draft.closeToTray !== config.closeToTray) patch.closeToTray = draft.closeToTray
     if (draft.notifyOnTaskComplete !== config.notifyOnTaskComplete) patch.notifyOnTaskComplete = draft.notifyOnTaskComplete
+    if (draft.allowMultipleInstances !== config.allowMultipleInstances) patch.allowMultipleInstances = draft.allowMultipleInstances
     if (Object.keys(patch).length === 0) return
     setSaving(true)
     setFailed(false)
@@ -263,6 +272,17 @@ export function DesktopSettingsCard(_props: DesktopSettingsCardProps): ReactNode
                         <span>{COPY.notifyLabel}</span>
                       </label>
                       <div className={c.hint}>{COPY.notifyHint}</div>
+                      <label className={c.checkboxRow}>
+                        <input
+                          type="checkbox"
+                          checked={draft.allowMultipleInstances}
+                          onChange={(event) => patchDraft({ allowMultipleInstances: event.target.checked })}
+                        />
+                        <span>{COPY.multiInstanceLabel}</span>
+                      </label>
+                      {draft.allowMultipleInstances
+                        ? <div className={c.dangerHint} role="alert">{COPY.multiInstanceDanger}</div>
+                        : <div className={c.hint}>{COPY.multiInstanceHint}</div>}
                     </div>
                   )}
                 </>

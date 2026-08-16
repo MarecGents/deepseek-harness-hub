@@ -23,11 +23,28 @@ const BUNDLE_NAME = 'dsh-hub'
 // "duplicate loader entry id: dsh-hub".
 const BUNDLE_SCOPED = '@marecgents/dsh-hub'
 const LOG_FILE = join(PACKAGE_ROOT, 'dsh.log')
+/** Persisted shell config shared with the plugin's settings card. */
+const SHELL_CONFIG_FILE = join(dshHome(), 'dsh-hub', 'config.json')
 
 /** Max automatic restarts after an unexpected dsh crash (webviewjs SIGSEGV etc). */
 const MAX_RESTARTS = 3
 /** Delay before each restart, giving the OS/WebView2 a moment to release handles. */
 const RESTART_DELAY_MS = 1200
+
+/**
+ * Read the persisted shell config (written by the plugin's settings card).
+ * Missing/malformed config falls back to strict defaults: multiple instances
+ * are NOT allowed, so an already-running dsh blocks this launch.
+ * @returns {{ allowMultipleInstances: boolean }}
+ */
+function readShellConfig() {
+  try {
+    const raw = JSON.parse(readFileSync(SHELL_CONFIG_FILE, 'utf8'))
+    return { allowMultipleInstances: raw?.allowMultipleInstances === true }
+  } catch {
+    return { allowMultipleInstances: false }
+  }
+}
 
 function log(message) {
   const line = `[${new Date().toISOString()}] ${message}\n`
@@ -328,12 +345,14 @@ function main() {
   // single owner and must not mistake an old marker for a new intentional quit.
   clearQuitMarker()
 
-  // Concurrent-instance warning. The desktop shell boots dsh with `--port 0`
-  // (OS-assigned random port), so it can technically coexist with an already
+  // Concurrent-instance guard. The desktop shell boots dsh with `--port 0`
+  // (OS-assigned random port), so it CAN technically coexist with an already
   // running dsh web on any port (3080 default, or `--port N`). But multiple
   // dsh processes share the same $DSH_HOME session/storage files, and writing
-  // the same session from both ends risks corruption — so surface the risk and
-  // let the user decide (Yes = continue & coexist, No = abort).
+  // the same session from both ends can CORRUPT the session log (seq clash on
+  // interleaved appends — see docs/会话损坏修复记录). Therefore coexistence
+  // is refused by default and only allowed when the user opts in from the
+  // settings card (allowMultipleInstances), with an explicit confirmation.
   const runningInstances = detectRunningDshInstances()
   if (runningInstances.length > 0) {
     // Report instance count and every port across all of them, so the user can
@@ -342,18 +361,38 @@ function main() {
     const portList = runningInstances.flatMap(inst => inst.ports).join(', ')
     const detailLines = runningInstances.map(inst => `  · PID ${inst.pid} → 端口 ${inst.ports.join(', ')}`).join('\n')
     log(`detected ${runningInstances.length} running dsh instance(s); listening port(s): ${portList}`)
+    const allow = readShellConfig().allowMultipleInstances
+    if (!allow) {
+      // Default: refuse to start a second instance at all. Only an OK button —
+      // no "continue anyway" escape hatch — so a plain shortcut double-click
+      // while another dsh is up cannot silently produce a corrupting pair.
+      const message =
+        `⚠ 检测到已有 ${runningInstances.length} 个 dsh 实例正在运行：\n${detailLines}\n\n` +
+        '为保护会话数据，dsh-hub 默认禁止同时运行多个 dsh 实例。\n\n' +
+        '多个实例会共享同一份会话数据（$DSH_HOME），若同时在同一个会话中操作，' +
+        '会导致会话日志损坏（seq 冲突，已发生并需手工修复）。\n\n' +
+        '请先关闭已运行的 dsh 窗口，再启动桌面壳。\n' +
+        '（如确需共存，请到 设置 → MG DSH 设置 中勾选「允许同时运行多个实例」，并阅读风险提示。）'
+      log('blocked: multiple instances not allowed (allowMultipleInstances=false); exiting')
+      alert(message)
+      releaseLock()
+      process.exit(0)
+    }
+    // Opted in: still warn hard and require an explicit Yes before coexisting.
     const question =
-      `检测到已有 ${runningInstances.length} 个 dsh 实例正在运行：\n${detailLines}\n\n` +
+      `⚠ 检测到已有 ${runningInstances.length} 个 dsh 实例正在运行：\n${detailLines}\n\n` +
       '多个 dsh 实例会共享同一份会话数据（$DSH_HOME），' +
-      '若同时在同一个会话中操作，可能导致数据写入冲突或损坏。\n\n' +
-      '是否仍然启动桌面壳（将使用随机端口，多个实例共存）？\n' +
-      '选择「是」继续启动；选择「否」退出。'
+      '若同时在同一个会话中操作，会导致会话日志损坏（seq 冲突），' +
+      '可能丢失对话内容且需手工修复。\n\n' +
+      '你已勾选「允许同时运行多个实例」。\n' +
+      '确认仍要启动桌面壳（随机端口共存）吗？\n' +
+      '选择「是」继续；选择「否」退出。'
     if (!confirm(question)) {
       log('user declined to launch alongside the running dsh; exiting')
       releaseLock()
       process.exit(0)
     }
-    log('user chose to launch alongside the running dsh; continuing')
+    log('user opted into coexistence and chose to continue; launching')
   }
 
   // Common path: dsh is already installed. findDsh returns only existing

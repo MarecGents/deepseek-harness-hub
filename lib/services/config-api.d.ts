@@ -32,6 +32,12 @@ export interface ShellConfig {
     closeToTray: boolean;
     /** Show a Windows toast when a top-level user task completes. */
     notifyOnTaskComplete: boolean;
+    /**
+     * Allow launching this desktop shell while another dsh instance is already
+     * running (they share $DSH_HOME; writing the same session from both ends
+     * can corrupt it). Default false = strictly refuse to coexist.
+     */
+    allowMultipleInstances: boolean;
 }
 /** Defaults (mirror the plugin Config composition values). */
 export declare const DEFAULT_SHELL_CONFIG: ShellConfig;
