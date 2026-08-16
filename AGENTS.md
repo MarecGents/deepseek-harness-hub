@@ -18,6 +18,7 @@
 3. **启动门控不可破坏**：`cordis.patch.yml` 的 `disabled: !!js process.env.DSH_HUB_LAUNCHED !== '1'` 保证普通 `dsh web` 不加载桌面壳。任何改动不得让 CLI 模式加载壳/插件页。
 4. **多实例防护不可削弱**：默认拒绝与已运行的 dsh 共存（`allowMultipleInstances=false`）。多个 dsh 共享 `$DSH_HOME` 会话存储，同会话双写会损坏会话日志（seq 冲突，已实际发生并需手工修复，见 [docs/关键踩坑记录.md#24](docs/关键踩坑记录.md)）。任何修改不得默认放开共存。
 5. **settings 命名空间约束**：`settingsNamespace('dsh-hub')` 强制小写 kebab-case；带 scope 的包名（`@marecgents/dsh-hub`）不能用作 settings ns 或 API 前缀。第三方配置 UI 一律走插件自有 HTTP 路由 `/api/dsh-hub/*`。
+6. **发布前检查不可跳过**：每次 `npm publish` 之前**必须**运行 `node scripts/verify-release.mjs` 且**全部 PASS**（含「干净安装 → 首启装配」冒烟），FAIL 立即停止排查，**禁止发布**。发布流程与检查细则见 §5（rc.10–rc.13 曾因跳过"全新环境安装验证"连发 4 版首启即崩的包，见 [docs/关键踩坑记录.md#33](docs/关键踩坑记录.md)）。
 
 ---
 
@@ -105,7 +106,7 @@ dsh-hub 是**双 half** 结构，且**套壳代码与插件代码必须严格模
 5. **类型**：`strict: true`；`any` 必须解释为何无法收窄；ESM（`"type": "module"`）；相对导入用 `.ts` 后缀（host）或构建约定。
 6. **文档同步**：行为/配置/接口变更必须同步更新 `README.md`、`docs/关键踩坑记录.md`（新坑补录）或本项目任务日志。
 
-## 5. 构建 / 发布 / 分支
+## 5. 构建 / 发布 / 分支 / 发包前强制检查
 
 ```sh
 npm run build          # host（tsc → lib/）
@@ -113,15 +114,64 @@ npm run build:client   # client（tsdown + SDK junction）
 ```
 
 - `npm install` 会清掉 SDK junction → 装完依赖必须重跑 `build:client`。
-- **发布**（rc 预览版）：
-  ```sh
-  npm version <bump>                    # 不能同版本覆盖；每次发布必须升版本
-  npm run build && npm run build:client
-  npm publish --access public --tag rc --registry=https://registry.npmjs.org/
-  ```
-  本机默认 registry 是华为镜像，发布/校验必须显式 `--registry=https://registry.npmjs.org/`。
-- **分支策略**：`main` = 发布分支；`dev-v1` = 当前开发分支。功能开发在 `dev-v1`，完成后合并 `main` 发布；发布前合并后重新构建验证。
+
+### 5.1 分支策略（2026-08-16 更新）
+
+- `main` = **发布分支**。保护：`enforce_admins=false` + `required_approving_review_count=1` → 发布合并用 `gh pr merge N --merge --admin`。
+- `dev-v1` = **冻结存档**（WebView2 时代收尾：rc.13 / rc.14）。仅紧急修复破例，修复后必须同步 main 与 dev-v2。
+- `dev-v2` = **当前开发分支**（Tauri 2.x 壳迁移）。
+- 发布流程：功能开发在 dev-v2（紧急修复可在 dev-v1）→ PR 合并 main → main 上 bump/重建/发布 → **三分支同步**（main 与 dev-v1 用 ff；dev-v2 有独有提交时用普通 merge）。
+
+### 5.2 发布铁律（硬约束，任一 FAIL 禁止 publish）
+
+0. **门禁**：先 `node scripts/verify-release.mjs`，**全部 PASS** 才可继续（脚本自动检查 P1–P5，含干净安装冒烟）。
+1. **插件身份四重相等**（§0 铁律 2）：package.json name == tsdown PLUGIN_ID == cordis.patch.yml insert.name == web profile bundles 条目。
+2. **loader entry 必须是 scoped 包名** `@marecgents/dsh-hub`：bare 名（`dsh-hub`）会让全新环境首启 `ERR_MODULE_NOT_FOUND` → 「连续异常退出」弹窗（rc.10–rc.13 真实事故，见 [docs/关键踩坑记录.md#33](docs/关键踩坑记录.md)）。launcher 装配必须 scoped（junction `node_modules/@marecgents/dsh-hub`），禁止 bare 兜底残留。
+3. **lib 产物零漂移**：build 后 `git status` 无未提交 lib/ 变更（prepack 会重建 lib，发布前已提交；`bin/launcher.vbs` 是 postinstall 生成模板，无关改动 `git checkout -- bin/launcher.vbs`）。
+4. **dist-tags 直查 registry**：发布后 `Invoke-RestMethod 'https://registry.npmjs.org/-/package/@marecgents/dsh-hub/dist-tags'` 必须 `latest == rc == 当前版本`。**`npm view` 有镜像缓存，不可信**。
+5. **registry 显式官方**：publish / dist-tag 一律 `--registry=https://registry.npmjs.org/`（本机默认是华为镜像）。
+6. **版本不可覆盖**：`npm version <bump>` 每次升版本，同版本 publish 会被拒绝。
+7. **三分支同步 + tag**：main / dev-v1（ff）/ dev-v2（merge）全部推送，`v0.0.1-rc.<N>` tag 推送。
+8. **发布后真机验证**：测试电脑 `npm i -g @marecgents/dsh-hub` 首启冒烟（含 postinstall 快捷方式）——脚本隔离验证用 `--ignore-scripts`，不覆盖 postinstall 链路。
+
+### 5.3 发布命令（rc 流程，逐步执行）
+
+```sh
+# 0. 门禁（必须 ALL PASS，FAIL 禁止继续）
+node scripts/verify-release.mjs
+
+# 1. 合并开发分支 → main（gh pr merge --merge --admin）
+gh pr create --base main --head <dev-v1|dev-v2> --title "..."
+gh pr merge <N> --merge --admin
+
+# 2. main 上 bump + 重建
+git checkout main && git pull origin main
+npm version 0.0.1-rc.<N+1>
+npm run build && npm run build:client
+
+# 3. 发布 + latest dist-tag（显式官方 registry）
+npm publish --access public --tag rc --registry=https://registry.npmjs.org/
+npm dist-tag add @marecgents/dsh-hub@0.0.1-rc.<N+1> latest --registry=https://registry.npmjs.org/
+
+# 4. 校验（registry 直查，勿用 npm view）
+(Invoke-RestMethod 'https://registry.npmjs.org/-/package/@marecgents/dsh-hub/dist-tags').latest   # 必须 = 0.0.1-rc.<N+1>
+
+# 5. 推送 main + tag + 三分支同步
+git push origin main && git push origin v0.0.1-rc.<N+1>
+git checkout dev-v1 && git merge main --ff-only && git push origin dev-v1
+git checkout dev-v2 && git merge main && git push origin dev-v2   # dev-v2 有独有提交时用 merge
+
+# 6. 发布记录 docs/发布记录-rc<N>-YYYY-MM-DD-HHmm.md → commit → 三分支同步
+```
+
 - **发布版本号策略**：当前 rc 预览期（`0.0.1-rc.x`）；正式版需在 **Tauri 2.x 迁移完成并达到良好体验后**再发布（见 [docs/dsh桌面端技术路线-2026-08-16.md](../../docs/dsh桌面端技术路线-2026-08-16.md)）。
+
+### 5.4 全新环境首启崩溃事故（rc.10–rc.13，勿重蹈）
+
+- **现象**：全新机器装好 Node + `npm i -g @marecgents/dsh-hub` 后首启弹「dsh-hub 连续异常退出」；dsh.log 见 `ERR_MODULE_NOT_FOUND: Cannot find package '@marecgents/dsh-hub' imported from C:\Users\...\.dsh\profiles\web\`，崩溃 3 次后放弃。
+- **原因**：launcher 旧版在 profile 未注册 scoped 名时走 bare 兜底装配（junction `node_modules/dsh-hub` + bundles 加 `dsh-hub`），与 cordis.patch.yml 的 scoped loader entry 不匹配 → 启动即崩。**本机 npm link 环境永远测不出来**——发布验证必须包含「干净安装 → 首启装配」链路（P4）。
+- **修复**（rc.14）：launcher 统一 scoped 装配 + 每次启动自愈 junction + 幂等清理 bare 遗留 + `DSH_HUB_ASSEMBLE_ONLY=1` 诊断模式。
+- **详细**：[docs/关键踩坑记录.md#33](docs/关键踩坑记录.md)（含升级冒烟项）。
 
 ## 6. 未来技术路线（约束方向，不立即实施）
 
