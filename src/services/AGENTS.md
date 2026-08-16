@@ -8,6 +8,7 @@
 |---|---|---|---|
 | `config-api.ts` | **Server + Services** | 配置读写路由 `/api/dsh-hub/config`（GET/POST）、`ShellConfig` 定义与持久化、旧名迁移 `migrateLegacyPaths` | 保留 |
 | `workspace-api.ts` | **Server + Services** | 工作区路由 `/api/dsh-hub/workspace/{list,git}`（文件树 + Git 检测） | 保留 |
+| `pins-api.ts` | **Server + Services** | 置顶会话路由 `/api/dsh-hub/pins`（GET/PUT）、`pins.json` 持久化（renameSync 原子写） | 保留 |
 | `theme-sync.ts` | **Services** | 页面主题 → IPC 桥转发（配合壳层 Dwm 应用） | 保留（桥） |
 | `dwm-theme.ts` | **Helper** | koffi 调 Dwm 设置标题栏主题（Windows 专属） | **重写**（Tauri 窗口 API） |
 | `tray.ts` | **Manager（托盘）** | 系统托盘：helper 进程优先、进程内兜底 | **重写**（tauri-plugin-tray） |

@@ -11,12 +11,15 @@
 | `skins.ts` | 皮肤注册表：`DshSkin` 定义 + 5 套皮肤（午夜蓝/旧纸张/终端绿/ZCode/极光紫）+ `findSkin`/`applySkin` |
 | `right-sidebar.tsx` | 右侧栏：概览（Token 统计）/ 文件树 / Git 三页，body portal 挂载 |
 | `right-sidebar-style.ts` | 右侧栏样式（CSS 字符串注入，`mg-rs-*` 前缀） |
+| `pin-conversations.ts` | 置顶会话：内容匹配行定位（零 CSS-hash）+ 置顶区/行按钮注入 + pins 状态机（dirtyDelta / ready 门控剪枝 / disposer 移除 DOM） |
+| `pin-conversations-style.ts` | 置顶区/行按钮样式（CSS 字符串注入，`mg-pin-*` 前缀） |
 | `style.ts` | 设置卡片样式（CSS 字符串注入，`mg-card-*` 前缀） |
 
 ## UI 风格铁律（严格遵循 dsh web）
 
 1. **只用官方 token**：`--dsw-alias-*` / `--dsw-specific-*` / `--dsw-static-*`；**禁止硬编码 hex/灰度**（可保留 `var(..., fallback)` 双保险）。
 2. **只用官方图标**：`@deepseek-ai/dsh-client-ui-primitives` 的 `Icon*Outline16` 系列；不自行造图标、不用 emoji 当图标。
+   - **单点豁免（置顶 pin 图标）**：官方图标库无 pin/bookmark/star，`pin-conversations.ts` 自绘 1 个 16 视口填充路径 pin glyph（`currentColor`、`aria-hidden`）——**限定 1 个 glyph / 1 个模块**；官方提供 pin 图标后立即切换（根 AGENTS.md §3 交叉引用）。
 3. **参照官方组件**：设置卡片 → `ui-settings-plugins` 的 `PluginCard.module.css` / `fields.module.css`；tab → `ConversationRoot.module.css`（13px/500、选中蓝 + 2px 蓝条）；tooltip → `ui-primitives/Tooltip.module.css`（tooltip-bg 深灰底 + bluish-00 白字、500ms 延迟）。
 4. **右侧栏 body portal**：React root 挂 `document.body`（参考 DSH-better-sidebar），**不占用官方 details slot**；`--mg-sidebar-width`（360/56px）+ `body #root { margin-right }` 让中间栏让位；可与 better-sidebar 共存。
 5. **文案**：产品文案中文；代码注释英文。
@@ -28,6 +31,7 @@
 - 每套皮肤开发前先读 `docs/skins/{skin-id}.md` 风格文档与 `docs/skins/AGENTS.md`；新增皮肤必须同步建文档。
 - 皮肤技术约束：覆盖选择器 `body`（浅）/ `body[data-ds-dark-theme]`（深）；样式 append `<head>`；`default` 移除注入样式表；id ≤64 字符、未知回退 default。
 - **皮肤覆盖范围**：除 `--dsw-alias-*` 语义 token 外，必须同时覆盖 `--dsw-specific-*`（`sidebar-fill`、`sidebar-nav-item-*`、`menu`）与 `--dsw-alias-bg-module-platform`，保证左导航/右详情/卡片/浮层与中栏一致跟随皮肤；文字对比度由各皮肤自己的 `label-*` 色系保证（深色亮字/浅色暗字）。新增皮肤遗漏上述 token = 覆盖不全 bug。
+- **DOM 增强纪律（置顶会话）**：对官方 slot cell 的增强只用 stable 锚点（`data-slot`/`role`），**禁止 CSS-module hash 定位**（dsh 升级即失效，见 docs/关键踩坑记录.md #29）；行→会话映射用内容匹配（行内文本 == displayTitle），同名整组跳过（宁缺毋错）；pins 写路径 phase 门控（空 byId 收缩会清空数据）、boot 结果与 dirtyDelta 合并、disposer 移除注入 DOM（HMR 重装防僵尸写）。
 
 ## client 注册规范
 

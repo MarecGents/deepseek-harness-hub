@@ -31,6 +31,7 @@ import { injectCardStyle } from './style.ts'
 import { RightSidebar } from './right-sidebar.tsx'
 import { injectRightSidebarStyle } from './right-sidebar-style.ts'
 import { applySkin, fetchStoredSkin } from './skins.ts'
+import { installPinnedConversations } from './pin-conversations.ts'
 
 /**
  * Tray-bridge ready flag, set at module scope — the very first thing that
@@ -220,5 +221,14 @@ export function apply(ctx: ClientContext): void {
     }, 'dsh-hub: right sidebar mount')
   } catch (error) {
     console.warn('[dsh-hub] right sidebar mount failed:', error)
+  }
+
+  // Pinned conversations (置顶会话): augment the official session list with
+  // stable anchors (no CSS-module hashes). The effect disposer tears down all
+  // injected DOM on reload, so HMR / include.refresh rebuild cleanly.
+  try {
+    ctx.effect(() => installPinnedConversations(ctx), 'dsh-hub: pinned conversations')
+  } catch (error) {
+    console.warn('[dsh-hub] pinned conversations install failed:', error)
   }
 }

@@ -68,6 +68,7 @@ dsh-hub 是**双 half** 结构，且**套壳代码与插件代码必须严格模
 
 - 颜色/字体/圆角/间距一律用官方 `--dsw-*` token（`--dsw-alias-*` / `--dsw-specific-*` / `--dsw-static-*`），**禁止硬编码 hex/灰度**（可保留 `var(..., fallback)` 双保险）。
 - 图标用官方图标库 `@deepseek-ai/dsh-client-ui-primitives`（`Icon*Outline16` 系列），不自行造图标。
+  - **单点豁免（置顶 pin 图标，到期条款）**：官方图标库无 pin/bookmark/star，`src/client/pin-conversations.ts` 自绘 **1 个** 16 视口填充路径 pin glyph（`currentColor`、`aria-hidden`）——限定 1 个 glyph / 1 个模块 / 不扩散；**官方提供 pin 图标后立即切换**（见 src/client/AGENTS.md §UI 铁律 2）。
 - 遵循 dsh 官方组件样式：设置卡片参照 `ui-settings-plugins` 的 `PluginCard.module.css` / `fields.module.css`；tab 参照 `ConversationRoot.module.css`；tooltip 参照 `ui-primitives/Tooltip.module.css`。
 - 右侧栏用 **body portal** 挂载（不占用官方 details slot），自管宽度；收起 rail 与左弹 tooltip 逻辑保持。
 - 产品文案用中文；代码注释用英文（与 dsh 官方一致）。
