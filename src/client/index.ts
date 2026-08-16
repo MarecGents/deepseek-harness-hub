@@ -146,6 +146,38 @@ export function apply(ctx: ClientContext): void {
   ;(window as unknown as { __mgGetCurrentWorkspace?: () => string | null }).__mgGetCurrentWorkspace
     = () => currentWorkspace(ctx)?.path ?? null
 
+  // Report the focused session to the desktop host over IPC so its toast
+  // policy can tell "watching the finished session" (sound only) apart from
+  // "watching another session" (toast too). `ctx.sessions.list.current` is
+  // the persisted current selection — the session the UI is showing. The
+  // list store republishes on any summary change, so a last-sent cache keeps
+  // the channel quiet unless the focus actually moved.
+  let lastSentFocus: string | undefined
+  const reportFocus = (): void => {
+    try {
+      const client = ctx as unknown as {
+        sessions?: { list?: { getSnapshot?: () => { current?: string } } }
+      }
+      const current = client.sessions?.list?.getSnapshot?.()?.current
+      if (current === lastSentFocus) return
+      lastSentFocus = current
+      const ipc = (window as unknown as { ipc?: { postMessage(message: string): void } }).ipc
+      ipc?.postMessage(`mg:session-focus:${current === undefined ? '' : encodeURIComponent(current)}`)
+    } catch {
+      // Best-effort; the host falls back to always-toast when focus is unknown.
+    }
+  }
+  reportFocus()
+  try {
+    const list = (ctx as unknown as {
+      sessions?: { list?: { subscribe?: (callback: () => void) => () => void } }
+    }).sessions?.list
+    const unsubscribe = list?.subscribe?.(reportFocus)
+    ctx.effect(() => () => unsubscribe?.(), 'dsh-hub: session focus reporter')
+  } catch (error) {
+    console.warn('[dsh-hub] session focus reporter failed:', error)
+  }
+
   const slots = ctx.get('slots')
   if (slots === undefined) return
 

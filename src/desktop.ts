@@ -34,6 +34,7 @@ import { resolveLaunchScreen } from './services/screen.js'
 import { WebViewThemeDetector } from './services/theme-sync.js'
 import { WebViewTray, type TrayCommand } from './services/tray.js'
 import { dshFaviconBlack, dshFaviconDark, dshFaviconDataUrl, dshFaviconTray } from './services/icons.js'
+import { playTaskSound, type TaskSoundKind } from './services/sound.js'
 import path from 'node:path'
 import os from 'node:os'
 import fs from 'node:fs'
@@ -92,11 +93,24 @@ export interface DesktopShellHandle {
    */
   dispatchEvent(name: string, detail?: Record<string, unknown>): void
   /**
+   * Play one shell event sound (question submitted / task complete / AI
+   * approval / task error). Best-effort: a failed chime never breaks the
+   * session loop.
+   */
+  playSound(kind: TaskSoundKind): void
+  /**
    * Show a native Windows notification (task-complete toast). Clicking it
    * restores the main window, so the user can jump straight back to the
    * finished conversation even when the window is hidden to the tray.
+   *
+   * Toast policy: suppressed only when the window is visible AND the
+   * completed session is the one the user is currently looking at
+   * (`opts.sessionId` matches the host's tracked focused session) — that
+   * case already announces itself in the UI, and the sound alone suffices.
+   * Hidden/minimized windows and background (non-focused) sessions still
+   * toast, subject to the spam cooldown.
    */
-  notifyTaskComplete(body: string): void
+  notifyTaskComplete(body: string, opts?: { sessionId?: string }): void
   /** Dispose the shell (tray, theme polling, event pump). */
   dispose(): void
 }
@@ -310,18 +324,29 @@ export function openDesktopShell(
     webview = wv
     wv.setBackgroundColor(...DARK_BG, 255)
 
-    // Central IPC handler: theme-sync and workspace-path requests share the
-    // single onIpcMessage slot so neither overwrites the other.
+    // Central IPC handler: theme-sync, workspace-path and session-focus
+    // requests share the single onIpcMessage slot so neither overwrites the
+    // other.
     wv.onIpcMessage((message) => {
       detector?.handleIpcMessage(message)
       try {
         const text = message.body.toString()
-        if (!text.startsWith('mg:workspace-path:')) return
-        const raw = text.slice('mg:workspace-path:'.length)
-        const path = raw === '' ? null : decodeURIComponent(raw)
-        const cb = pendingWorkspacePathCb
-        pendingWorkspacePathCb = undefined
-        cb?.(path)
+        if (text.startsWith('mg:workspace-path:')) {
+          const raw = text.slice('mg:workspace-path:'.length)
+          const path = raw === '' ? null : decodeURIComponent(raw)
+          const cb = pendingWorkspacePathCb
+          pendingWorkspacePathCb = undefined
+          cb?.(path)
+          return
+        }
+        // The browser half reports the focused session so the toast policy
+        // can distinguish "watching the finished session" (sound only) from
+        // "watching something else" (toast too).
+        if (text.startsWith('mg:session-focus:')) {
+          const raw = text.slice('mg:session-focus:'.length)
+          focusedSessionId = raw === '' ? undefined : decodeURIComponent(raw)
+          return
+        }
       } catch {
         // Ignore malformed IPC payloads.
       }
@@ -551,6 +576,8 @@ export function openDesktopShell(
   let activeNotification: Notification | undefined
   /** Timestamp of the last shown task toast (cooldown bookkeeping). */
   let lastNotifiedAt = 0
+  /** The session the web UI reports as currently focused (see IPC handler). */
+  let focusedSessionId: string | undefined
 
   const shell: DesktopShellHandle = {
     app,
@@ -601,17 +628,23 @@ export function openDesktopShell(
       }, 2000)
     },
     dispatchEvent,
-    notifyTaskComplete: (body: string) => {
+    playSound: (kind: TaskSoundKind) => {
+      playTaskSound(kind)
+    },
+    notifyTaskComplete: (body: string, opts?: { sessionId?: string }) => {
       try {
-        // Only remind when the user is NOT looking at the window: a toast
-        // while the shell is visible in the foreground is noise, not a
-        // reminder. Hidden-to-tray and minimized windows still notify.
+        // Only remind when the user is NOT already looking at the finished
+        // session: a toast while the shell is visible AND focused on that
+        // session is noise (the completion is right there). Hidden-to-tray
+        // and minimized windows, and any session the user is not watching,
+        // still toast.
         const watching = win !== undefined
           && !win.isDisposed()
           && win.isVisible()
           && !win.isMinimized()
-        if (watching) {
-          console.log('[dsh-hub] task complete while window visible; skipping toast')
+        const focused = opts?.sessionId !== undefined && opts.sessionId === focusedSessionId
+        if (watching && focused) {
+          console.log('[dsh-hub] task complete for the focused session; sound only (no toast)')
           return
         }
         // Spam guard: at most one toast per cooldown window, so a burst of

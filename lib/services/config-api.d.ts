@@ -33,6 +33,12 @@ export interface ShellConfig {
     /** Show a Windows toast when a top-level user task completes. */
     notifyOnTaskComplete: boolean;
     /**
+     * Play the shell's event sounds (question submitted / task complete / AI
+     * approval / task error). Independent of `notifyOnTaskComplete`: sounds
+     * are the always-on channel, toasts are the focused-window-aware one.
+     */
+    soundEnabled: boolean;
+    /**
      * Allow launching this desktop shell while another dsh instance is already
      * running (they share $DSH_HOME; writing the same session from both ends
      * can corrupt it). Default false = strictly refuse to coexist.
@@ -61,6 +67,11 @@ export declare function writeShellConfig(patch: Partial<ShellConfig>): ShellConf
  * DEFAULT_SHELL_CONFIG default.
  */
 export declare function storedNotifyOnTaskComplete(): boolean | undefined;
+/**
+ * The persisted sound flag only — `undefined` when the user never saved it,
+ * so callers can fall back to the composition Config value.
+ */
+export declare function storedSoundEnabled(): boolean | undefined;
 /**
  * Build the shell config route (one exact route; GET reads, POST updates).
  * @param onChange - invoked with the persisted config after each successful

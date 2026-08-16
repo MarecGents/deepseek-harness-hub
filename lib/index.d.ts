@@ -51,6 +51,12 @@ export interface Config {
      * toast restores the main window. Defaults to on.
      */
     notifyOnTaskComplete: boolean;
+    /**
+     * Play the shell's event sounds (question submitted / task complete / AI
+     * approval / task error). Independent of `notifyOnTaskComplete`. Defaults
+     * to on.
+     */
+    soundEnabled: boolean;
 }
 export declare const Config: z<Config>;
 /** Settings namespace owned by this plugin (spelled like the package). */

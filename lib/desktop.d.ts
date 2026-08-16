@@ -26,6 +26,7 @@
  */
 import { Application } from '@webviewjs/webview';
 import type { BrowserWindow } from '@webviewjs/webview';
+import { type TaskSoundKind } from './services/sound.js';
 /** Shell options resolved from the dsh plugin Config schema. */
 export interface DesktopOptions {
     /** Window title bar text. */
@@ -82,11 +83,26 @@ export interface DesktopShellHandle {
      */
     dispatchEvent(name: string, detail?: Record<string, unknown>): void;
     /**
+     * Play one shell event sound (question submitted / task complete / AI
+     * approval / task error). Best-effort: a failed chime never breaks the
+     * session loop.
+     */
+    playSound(kind: TaskSoundKind): void;
+    /**
      * Show a native Windows notification (task-complete toast). Clicking it
      * restores the main window, so the user can jump straight back to the
      * finished conversation even when the window is hidden to the tray.
+     *
+     * Toast policy: suppressed only when the window is visible AND the
+     * completed session is the one the user is currently looking at
+     * (`opts.sessionId` matches the host's tracked focused session) — that
+     * case already announces itself in the UI, and the sound alone suffices.
+     * Hidden/minimized windows and background (non-focused) sessions still
+     * toast, subject to the spam cooldown.
      */
-    notifyTaskComplete(body: string): void;
+    notifyTaskComplete(body: string, opts?: {
+        sessionId?: string;
+    }): void;
     /** Dispose the shell (tray, theme polling, event pump). */
     dispose(): void;
 }

@@ -55,6 +55,12 @@ export interface ShellConfig {
   /** Show a Windows toast when a top-level user task completes. */
   notifyOnTaskComplete: boolean
   /**
+   * Play the shell's event sounds (question submitted / task complete / AI
+   * approval / task error). Independent of `notifyOnTaskComplete`: sounds
+   * are the always-on channel, toasts are the focused-window-aware one.
+   */
+  soundEnabled: boolean
+  /**
    * Allow launching this desktop shell while another dsh instance is already
    * running (they share $DSH_HOME; writing the same session from both ends
    * can corrupt it). Default false = strictly refuse to coexist.
@@ -73,6 +79,7 @@ export const DEFAULT_SHELL_CONFIG: ShellConfig = {
   minimizeToTray: true,
   closeToTray: false,
   notifyOnTaskComplete: true,
+  soundEnabled: true,
   allowMultipleInstances: false,
   skin: 'default',
 }
@@ -132,6 +139,19 @@ export function storedNotifyOnTaskComplete(): boolean | undefined {
   try {
     const raw = JSON.parse(readFileSync(configFile(), 'utf8')) as Partial<ShellConfig>
     return typeof raw.notifyOnTaskComplete === 'boolean' ? raw.notifyOnTaskComplete : undefined
+  } catch {
+    return undefined
+  }
+}
+
+/**
+ * The persisted sound flag only — `undefined` when the user never saved it,
+ * so callers can fall back to the composition Config value.
+ */
+export function storedSoundEnabled(): boolean | undefined {
+  try {
+    const raw = JSON.parse(readFileSync(configFile(), 'utf8')) as Partial<ShellConfig>
+    return typeof raw.soundEnabled === 'boolean' ? raw.soundEnabled : undefined
   } catch {
     return undefined
   }
@@ -209,6 +229,7 @@ export function makeConfigRoutes(onChange?: (value: ShellConfig, changed?: { siz
               if (typeof record.minimizeToTray === 'boolean') patch.minimizeToTray = record.minimizeToTray
               if (typeof record.closeToTray === 'boolean') patch.closeToTray = record.closeToTray
               if (typeof record.notifyOnTaskComplete === 'boolean') patch.notifyOnTaskComplete = record.notifyOnTaskComplete
+              if (typeof record.soundEnabled === 'boolean') patch.soundEnabled = record.soundEnabled
               if (typeof record.allowMultipleInstances === 'boolean') patch.allowMultipleInstances = record.allowMultipleInstances
               // Skin id is an opaque short string; the client validates against
               // its own registry and falls back to 'default' for unknown ids.

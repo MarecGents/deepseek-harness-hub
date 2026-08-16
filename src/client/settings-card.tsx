@@ -31,6 +31,7 @@ interface ShellConfig {
   minimizeToTray: boolean
   closeToTray: boolean
   notifyOnTaskComplete: boolean
+  soundEnabled: boolean
   allowMultipleInstances: boolean
   skin: string
 }
@@ -53,6 +54,8 @@ const COPY = {
   closeHint: '点 X 关闭窗口时保持进程与托盘存活（不勾选则完全退出）',
   notifyLabel: '会话完成通知',
   notifyHint: '任务回合完成时弹出系统通知，点击回到窗口',
+  soundLabel: '提示音',
+  soundHint: '用户提问、任务完成、AI 请求批准或任务出错时播放提示音（与系统通知互相独立）',
   multiInstanceLabel: '允许同时运行多个 dsh 实例',
   multiInstanceDanger:
     '⚠ 危险：多个 dsh 实例共享同一份会话数据（$DSH_HOME），' +
@@ -137,6 +140,7 @@ export function DesktopSettingsCard(_props: DesktopSettingsCardProps): ReactNode
       || draft.minimizeToTray !== config.minimizeToTray
       || draft.closeToTray !== config.closeToTray
       || draft.notifyOnTaskComplete !== config.notifyOnTaskComplete
+      || draft.soundEnabled !== config.soundEnabled
       || draft.allowMultipleInstances !== config.allowMultipleInstances)
   const blocked = !dirty || saving || draft === null
 
@@ -158,6 +162,7 @@ export function DesktopSettingsCard(_props: DesktopSettingsCardProps): ReactNode
     if (draft.minimizeToTray !== config.minimizeToTray) patch.minimizeToTray = draft.minimizeToTray
     if (draft.closeToTray !== config.closeToTray) patch.closeToTray = draft.closeToTray
     if (draft.notifyOnTaskComplete !== config.notifyOnTaskComplete) patch.notifyOnTaskComplete = draft.notifyOnTaskComplete
+    if (draft.soundEnabled !== config.soundEnabled) patch.soundEnabled = draft.soundEnabled
     if (draft.allowMultipleInstances !== config.allowMultipleInstances) patch.allowMultipleInstances = draft.allowMultipleInstances
     if (Object.keys(patch).length === 0) return
     setSaving(true)
@@ -301,6 +306,15 @@ export function DesktopSettingsCard(_props: DesktopSettingsCardProps): ReactNode
                         <span>{COPY.notifyLabel}</span>
                       </label>
                       <div className={c.hint}>{COPY.notifyHint}</div>
+                      <label className={c.checkboxRow}>
+                        <input
+                          type="checkbox"
+                          checked={draft.soundEnabled}
+                          onChange={(event) => patchDraft({ soundEnabled: event.target.checked })}
+                        />
+                        <span>{COPY.soundLabel}</span>
+                      </label>
+                      <div className={c.hint}>{COPY.soundHint}</div>
                       <label className={c.checkboxRow}>
                         <input
                           type="checkbox"
