@@ -24,9 +24,9 @@ export function setAppUserModelId(): void {
     const setAumid = shell32.func('int SetCurrentProcessExplicitAppUserModelID(str16 AppID)')
     const hr = setAumid(APP_USER_MODEL_ID)
     if (hr !== 0) {
-      console.warn(`[mg-dsh-desktop] SetCurrentProcessExplicitAppUserModelID failed hr=0x${(hr >>> 0).toString(16)}`)
+      console.warn(`[dsh-hub] SetCurrentProcessExplicitAppUserModelID failed hr=0x${(hr >>> 0).toString(16)}`)
     }
   } catch (error) {
-    console.warn(`[mg-dsh-desktop] app identity setup failed:`, error)
+    console.warn(`[dsh-hub] app identity setup failed:`, error)
   }
 }

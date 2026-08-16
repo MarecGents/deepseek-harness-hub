@@ -389,7 +389,7 @@ export function applySkin(skinId: string): void {
 /** Read the persisted skin id through the plugin's config API. */
 export async function fetchStoredSkin(): Promise<string> {
   try {
-    const res = await fetch('/api/mg-dsh-desktop/config')
+    const res = await fetch('/api/dsh-hub/config')
     if (!res.ok) return DEFAULT_SKIN_ID
     const body = (await res.json()) as { ok?: boolean; value?: { skin?: string } }
     const skin = body.ok === true ? body.value?.skin : undefined
