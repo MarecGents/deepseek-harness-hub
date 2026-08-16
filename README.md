@@ -2,7 +2,7 @@
 
 > **`@marecgents/dsh-hub`** —— DeepSeek Harness（`dsh`）的桌面端框架：以原生 WebView2 窗口运行 dsh Web UI，提供托盘、主题同步、窗口记忆、右侧栏与系统通知。
 >
-> **版本状态（2026-08-16）**：`0.0.1-rc.13` 是 **WebView2 壳的最后一个 rc 版本**（`dev-v1` 分支已冻结）。正式版将在 **Tauri 2.x 壳**（`dev-v2`）迁移完成并达到良好体验后发布——多端支持（Windows / macOS / Linux）、~10MB 体积、自定义壳 UI。迁移期间插件层（client + config/workspace API）原样保留，壳层整体重写（见 [docs/dsh桌面端技术路线-2026-08-16.md](docs/dsh桌面端技术路线-2026-08-16.md)）。
+> **版本状态（2026-08-16）**：`0.0.1-rc.14` 是 **WebView2 壳的最终 rc 版本**（`dev-v1` 分支已冻结）。rc.13 发布后曾暴露全新环境首启崩溃 bug（`ERR_MODULE_NOT_FOUND`，见 [docs/关键踩坑记录.md#33](docs/关键踩坑记录.md)），rc.14 为修复版。正式版将在 **Tauri 2.x 壳**（`dev-v2`）迁移完成并达到良好体验后发布——多端支持（Windows / macOS / Linux）、~10MB 体积、自定义壳 UI。迁移期间插件层（client + config/workspace API）原样保留，壳层整体重写（见 [docs/dsh桌面端技术路线-2026-08-16.md](docs/dsh桌面端技术路线-2026-08-16.md)）。
 
 [![npm version](https://img.shields.io/npm/v/@marecgents/dsh-hub)](https://www.npmjs.com/package/@marecgents/dsh-hub)
 [![npm rc](https://img.shields.io/npm/v/@marecgents/dsh-hub/rc)](https://www.npmjs.com/package/@marecgents/dsh-hub)
@@ -17,7 +17,7 @@
 
 | 分支 | 状态 | 说明 |
 |---|---|---|
-| `main` | 发布分支 | 当前 = `0.0.1-rc.13`（WebView2 最终版） |
+| `main` | 发布分支 | 当前 = `0.0.1-rc.14`（WebView2 最终版，含全新环境首启修复） |
 | `dev-v1` | **已冻结**（WebView2 壳） | 不再开发；仅安全/文档性修复可走 PR |
 | `dev-v2` | **当前开发分支**（Tauri 2.x 壳） | 壳层重写中，插件层保留 |
 
