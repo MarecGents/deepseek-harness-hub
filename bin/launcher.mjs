@@ -124,44 +124,63 @@ function ensureBundleInstalled() {
   }
   const bundles = manifest.dsh?.profile?.bundles ?? []
 
-  // npm-installed scoped package already registered in the manifest: nothing
-  // to do (dsh resolves `@marecgents/dsh-hub` from the profile's node_modules
-  // directly). Skip junction creation + bare-name registration entirely.
-  if (bundles.includes(BUNDLE_SCOPED)) {
-    log(`${BUNDLE_SCOPED} already registered in the web profile`)
-    // Historical bare-name entries would double-mount the same bundle layer
-    // (duplicate loader entry id); drop them idempotently once the scoped
-    // name is present.
-    if (bundles.includes(BUNDLE_NAME)) {
-      const cleaned = bundles.filter((name) => name !== BUNDLE_NAME)
-      manifest.dsh = { ...manifest.dsh, profile: { ...manifest.dsh?.profile, bundles: cleaned } }
-      try {
-        writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + '\n', 'utf8')
-        log(`removed legacy bare-name ${BUNDLE_NAME} from the web profile`)
-      } catch (error) {
-        log(`bundle manifest cleanup failed: ${error.message}`)
-      }
+  // The loader entry in cordis.patch.yml is the SCOPED name
+  // (`@marecgents/dsh-hub`), so dsh resolves the bundle from
+  // `profiles/web/node_modules/@marecgents/dsh-hub` — never the bare
+  // `dsh-hub` path. Every assembly path below therefore registers the scoped
+  // name and links the scoped path; the legacy bare-name layout (junction at
+  // `node_modules/dsh-hub` + `bundles: ["dsh-hub"]`) makes dsh die at boot
+  // with ERR_MODULE_NOT_FOUND (C7) and is cleaned up whenever seen.
+  const nmDir = join(profileDir, 'node_modules')
+  const scopedDir = join(nmDir, '@marecgents')
+  const scopedLink = join(scopedDir, 'dsh-hub')
+  const bareLink = join(nmDir, BUNDLE_NAME)
+
+  // 2. The scoped name must appear in the bundle list. Drop the historical
+  //    bare name in the same pass — it would double-mount the same patch row
+  //    (duplicate loader entry id: dsh-hub).
+  if (!bundles.includes(BUNDLE_SCOPED)) {
+    const cleaned = bundles.filter((name) => name !== BUNDLE_NAME)
+    cleaned.push(BUNDLE_SCOPED)
+    manifest.dsh = { ...manifest.dsh, profile: { ...manifest.dsh?.profile, bundles: cleaned } }
+    try {
+      writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + '\n', 'utf8')
+      log(`registered ${BUNDLE_SCOPED} in the web profile`)
+    } catch (error) {
+      log(`bundle manifest update failed: ${error.message}`)
+      return false
     }
-    return true
+  } else if (bundles.includes(BUNDLE_NAME)) {
+    const cleaned = bundles.filter((name) => name !== BUNDLE_NAME)
+    manifest.dsh = { ...manifest.dsh, profile: { ...manifest.dsh?.profile, bundles: cleaned } }
+    try {
+      writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + '\n', 'utf8')
+      log(`removed legacy bare-name ${BUNDLE_NAME} from the web profile`)
+    } catch (error) {
+      log(`bundle manifest cleanup failed: ${error.message}`)
+    }
+  } else {
+    log(`${BUNDLE_SCOPED} already registered in the web profile`)
   }
 
-  // 2. Junction the package into the profile's node_modules (idempotent).
-  const nmDir = join(profileDir, 'node_modules')
-  const linkPath = join(nmDir, BUNDLE_NAME)
+  // 3. The scoped junction must exist and point at this package root. This
+  //    runs on EVERY launch, not only when the manifest changes: a missing or
+  //    stale link means dsh cannot resolve the loader entry and dies on a
+  //    fresh machine (C7).
   try {
-    mkdirSync(nmDir, { recursive: true })
+    mkdirSync(scopedDir, { recursive: true })
     let stat = null
     try {
-      stat = lstatSync(linkPath)
+      stat = lstatSync(scopedLink)
     } catch {
       // No link yet.
     }
     if (stat !== null && stat.isDirectory() && !stat.isSymbolicLink()) {
       // A real directory (pnpm's isolated layout or a manual copy): use it.
-      log(`found ${BUNDLE_NAME} already in the web profile (real directory)`)
+      log(`found ${BUNDLE_SCOPED} already in the web profile (real directory)`)
     } else if (stat === null) {
-      symlinkSync(PACKAGE_ROOT, linkPath, 'junction')
-      log(`linked ${BUNDLE_NAME} into the web profile`)
+      symlinkSync(PACKAGE_ROOT, scopedLink, 'junction')
+      log(`linked ${BUNDLE_SCOPED} into the web profile`)
     } else {
       // A junction/symlink — including a VALID one pointing elsewhere (the
       // npm-global install vs this dev clone). Leaving a stale junction in
@@ -169,17 +188,17 @@ function ensureBundleInstalled() {
       // whenever it does not already point here.
       let current = null
       try {
-        current = existsSync(linkPath) ? readlinkSync(linkPath) : null
+        current = existsSync(scopedLink) ? readlinkSync(scopedLink) : null
       } catch {
         current = null
       }
       const normalize = (p) => (p ?? '').replace(/^\\\\\?\\/, '').replace(/\/+$/, '').toLowerCase()
       if (normalize(current) === normalize(PACKAGE_ROOT)) {
-        log(`${BUNDLE_NAME} already linked from this package root`)
+        log(`${BUNDLE_SCOPED} already linked from this package root`)
       } else {
-        rmSync(linkPath, { recursive: true, force: true })
-        symlinkSync(PACKAGE_ROOT, linkPath, 'junction')
-        log(`relinked ${BUNDLE_NAME} into the web profile`)
+        rmSync(scopedLink, { recursive: true, force: true })
+        symlinkSync(PACKAGE_ROOT, scopedLink, 'junction')
+        log(`relinked ${BUNDLE_SCOPED} into the web profile`)
       }
     }
   } catch (error) {
@@ -187,18 +206,24 @@ function ensureBundleInstalled() {
     return false
   }
 
-  // 3. Register the bundle layer (append when absent).
-  if (!bundles.includes(BUNDLE_NAME)) {
-    bundles.push(BUNDLE_NAME)
-    manifest.dsh = { ...manifest.dsh, profile: { ...manifest.dsh?.profile, bundles } }
+  // 4. Remove the legacy bare-name junction (if any). With the scoped name
+  //    registered nothing mounts `dsh-hub` anymore; a real directory (pnpm
+  //    layout) is left untouched.
+  try {
+    let bareStat = null
     try {
-      writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + '\n', 'utf8')
-      log(`registered ${BUNDLE_NAME} in the web profile`)
-    } catch (error) {
-      log(`bundle manifest update failed: ${error.message}`)
-      return false
+      bareStat = lstatSync(bareLink)
+    } catch {
+      bareStat = null
     }
+    if (bareStat !== null && bareStat.isSymbolicLink()) {
+      rmSync(bareLink, { recursive: true, force: true })
+      log(`removed legacy bare-name junction ${BUNDLE_NAME}`)
+    }
+  } catch {
+    // Best-effort cleanup; the scoped assembly above is authoritative.
   }
+
   return true
 }
 
@@ -259,6 +284,16 @@ async function main() {
   // Clear any stale quit marker from a previous run; this launcher is now the
   // single owner and must not mistake an old marker for a new intentional quit.
   clearQuitMarker()
+
+  // Diagnostic mode: assemble the web-profile bundle (register + link) then
+  // exit WITHOUT booting dsh — no window, no single-instance gate. Used by
+  // tests and support checks (`DSH_HUB_ASSEMBLE_ONLY=1 dsh-hub`).
+  if (process.env.DSH_HUB_ASSEMBLE_ONLY === '1') {
+    log('assemble-only mode: registering the web profile bundle…')
+    if (!ensureBundleInstalled()) process.exit(1)
+    log('assemble-only mode: web profile bundle ready; exiting')
+    process.exit(0)
+  }
 
   // Concurrent-instance guard (shared with the `dsh-hub` terminal command):
   // refuse coexistence with a running dsh by default, allow it only after an
