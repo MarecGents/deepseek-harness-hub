@@ -14,6 +14,7 @@ import { existsSync, appendFileSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { acquireLock, releaseLock } from './lock.mjs'
+import { ensureHubBinaries, resolveDshEntry } from './hub-exe.mjs'
 
 const PACKAGE_ROOT = dirname(dirname(fileURLToPath(import.meta.url)))
 const LOG_FILE = join(PACKAGE_ROOT, 'dsh.log')
@@ -59,7 +60,7 @@ function findDsh() {
   return null
 }
 
-function main() {
+async function main() {
   // Same single-instance lock as the desktop shortcut launcher: the shell now
   // uses a random port, so only a PID lock can reliably prevent two desktop
   // instances from fighting over the same dsh profile.
@@ -84,17 +85,33 @@ function main() {
     ? extra
     : [...extra, '--port', '0']
 
-  // Inherit stdout/stderr so the user sees dsh output in this terminal.
-  const child = spawn(process.env.ComSpec, ['/d', '/s', '/c', `"${dshCmd}" web ${args.join(' ')}`], {
+  // Inherit stdout/stderr so the user sees dsh output in this terminal. The
+  // dsh runtime itself runs under the patched dsh-hub.exe (hub identity in
+  // Task Manager); falls back to the cmd shim when the patched exe is
+  // unavailable.
+  const spawnOpts = {
     cwd: PACKAGE_ROOT,
     windowsHide: false,
-    windowsVerbatimArguments: true,
     stdio: 'inherit',
     env: {
       ...process.env,
       DSH_HUB_LAUNCHED: '1',
     },
-  })
+  }
+  let child
+  try {
+    const { appExe } = await ensureHubBinaries()
+    const dshEntry = resolveDshEntry(dshCmd)
+    if (dshEntry === null) throw new Error(`cannot resolve dsh entry from ${dshCmd}`)
+    log(`dsh-hub: booting via hub exe: ${appExe} ${dshEntry} web ${args.join(' ')}`)
+    child = spawn(appExe, [dshEntry, 'web', ...args], spawnOpts)
+  } catch (error) {
+    log(`dsh-hub: hub exe path unavailable (${error.message}); using cmd shim`)
+    child = spawn(process.env.ComSpec, ['/d', '/s', '/c', `"${dshCmd}" web ${args.join(' ')}`], {
+      ...spawnOpts,
+      windowsVerbatimArguments: true,
+    })
+  }
   child.on('error', (error) => {
     log(`dsh-hub: dsh failed to start: ${error.message}`)
     process.exit(1)
@@ -105,4 +122,4 @@ function main() {
   })
 }
 
-main()
+void main()

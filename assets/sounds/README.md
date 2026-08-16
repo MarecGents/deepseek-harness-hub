@@ -1,14 +1,17 @@
 # 提示音素材
 
-4 个 WAV 来自 **Mixkit**（免费许可，可商用、无需署名），与
-[DeepSeek-Reasonix](https://github.com/MarecGents/DeepSeek-Reasonix) 桌面端
-`desktop/frontend/public/sounds/` 使用的提示音一致（参考其 `sound.ts`）。
+4 段事件提示音为 **dsh-hub 原创合成**（`scripts/synthesize-sounds.mjs` 生成），
+**不复制任何第三方库**——此前复用的 Reasonix/Mixkit 文件已按项目决定移除。
 
-| 文件 | 事件 | 播放时机 |
+| 文件 | 事件 | 旋律（原创） |
 |---|---|---|
-| `mixkit-software-interface-start-2574.wav` | 提问 | 用户提交新问题（`turn/start`） |
-| `mixkit-correct-answer-tone-2870.wav` | 完成 | 回合正常结束（`turn/end` → `completed`） |
-| `mixkit-positive-notification-951.wav` | 需要你 | AI 请求批准/提问（`approval/asked`） |
-| `mixkit-software-interface-back-2575.wav` | 出错 | 回合报错中断（`turn/end` → `error`） |
+| `dsh-hub-start.wav` | 提问（用户提交，`turn/start`） | 快速上行双音（E5→A5） |
+| `dsh-hub-success.wav` | 完成（`turn/end` → `completed`） | 三音上行琶音（C5→E5→G5） |
+| `dsh-hub-attention.wav` | 需要你（AI 请求批准，`approval/asked`） | 双音提醒（A5→E5） |
+| `dsh-hub-error.wav` | 出错（`turn/end` → `error`） | 下行小调（F4→C#4→A3） |
 
-来源：https://mixkit.co/free-sound-effects/（免费许可，允许商业使用）。
+## 规格与再生成
+
+- 44.1 kHz / 16-bit / 单声道 WAV；基音 + 轻微二次谐波，指数衰减包络
+- 修改旋律后重新生成：`node scripts/synthesize-sounds.mjs`
+- 播放：host 侧 koffi → winmm `PlaySoundW`（SND_ASYNC）；素材缺失自动回退系统别名音

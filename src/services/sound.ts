@@ -3,8 +3,9 @@
  *
  * Task/session events play short WAV chimes so the user hears progress even
  * when the window is hidden to the tray (toasts are separately gated by
- * visibility + focus). Reasonix-style: one distinct sound per event kind,
- * shipped as assets (see assets/sounds/README.md for the mixkit sources).
+ * visibility + focus). One distinct original sound per event kind — the WAVs
+ * are synthesized in-repo (scripts/synthesize-sounds.mjs), not copied from
+ * any library (see assets/sounds/README.md).
  *
  * Primary carrier is koffi → winmm.dll `PlaySoundW` with SND_FILENAME +
  * SND_ASYNC (fire-and-forget, never blocks the session loop). When the FFI
@@ -32,10 +33,10 @@ const SND_FILENAME = 0x20000
 
 /** Asset file name + fallback system alias per event kind. */
 const SOUNDS: Record<TaskSoundKind, { file: string; alias: string }> = {
-  start: { file: 'mixkit-software-interface-start-2574.wav', alias: 'SystemAsterisk' },
-  success: { file: 'mixkit-correct-answer-tone-2870.wav', alias: 'SystemExclamation' },
-  attention: { file: 'mixkit-positive-notification-951.wav', alias: 'SystemQuestion' },
-  error: { file: 'mixkit-software-interface-back-2575.wav', alias: 'SystemHand' },
+  start: { file: 'dsh-hub-start.wav', alias: 'SystemAsterisk' },
+  success: { file: 'dsh-hub-success.wav', alias: 'SystemExclamation' },
+  attention: { file: 'dsh-hub-attention.wav', alias: 'SystemQuestion' },
+  error: { file: 'dsh-hub-error.wav', alias: 'SystemHand' },
 }
 
 /** Absolute path of one shipped sound asset (package root `assets/sounds`). */

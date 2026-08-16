@@ -13,6 +13,7 @@ import { existsSync, lstatSync, readFileSync, readlinkSync, appendFileSync, rmSy
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { acquireLock, dshHome, releaseLock } from './lock.mjs'
+import { ensureHubBinaries, relaunchAsGuard, resolveDshEntry } from './hub-exe.mjs'
 
 const PACKAGE_ROOT = dirname(dirname(fileURLToPath(import.meta.url)))
 const BUNDLE_NAME = 'dsh-hub'
@@ -323,6 +324,12 @@ function clearQuitMarker() {
 }
 
 function main() {
+  // Process identity: re-exec the watchdog under dsh-hub-guard.exe so Task
+  // Manager never shows a bare "Node.js JavaScript Runtime" row for the
+  // desktop shell. The guard (and the app it spawns) carry the hub icon and
+  // product name; patched exes are generated + cached by hub-exe.mjs and
+  // refreshed automatically on Node upgrades.
+  if (relaunchAsGuard(fileURLToPath(import.meta.url))) return
   // Fresh log per launch (bounded disk usage).
   resetLog()
   log(`launcher started (cwd=${process.cwd()})`)
@@ -422,14 +429,13 @@ function main() {
   // Boot dsh web; restarts itself a bounded number of times after an
   // unexpected crash (the known webviewjs SIGSEGV / 0xC0000005 failures).
   let restarts = 0
-  const boot = () => {
+  const boot = async () => {
     log('booting dsh web…')
     // Random web port (`--port 0` = the OS picks a free one), so a busy 3080
     // can never collide with the desktop shell.
-    const child = spawn(process.env.ComSpec, ['/d', '/s', '/c', `"${dshCmd}" web --port 0`], {
+    const spawnOpts = {
       cwd: PACKAGE_ROOT,
       windowsHide: true,
-      windowsVerbatimArguments: true,
       stdio: ['ignore', 'pipe', 'pipe'],
       env: {
         ...process.env,
@@ -438,7 +444,24 @@ function main() {
         // settings card. A plain `dsh web` on a command line leaves both off.
         DSH_HUB_LAUNCHED: '1',
       },
-    })
+    }
+    let child
+    try {
+      // Preferred path: run the dsh runtime directly under the patched
+      // dsh-hub.exe (hub identity in Task Manager). Falls back to the cmd
+      // shim when the patched exe cannot be generated/resolved.
+      const { appExe } = await ensureHubBinaries()
+      const dshEntry = resolveDshEntry(dshCmd)
+      if (dshEntry === null) throw new Error(`cannot resolve dsh entry from ${dshCmd}`)
+      log(`booting via hub exe: ${appExe} ${dshEntry} web --port 0`)
+      child = spawn(appExe, [dshEntry, 'web', '--port', '0'], spawnOpts)
+    } catch (error) {
+      log(`hub exe path unavailable (${error.message}); using cmd shim`)
+      child = spawn(process.env.ComSpec, ['/d', '/s', '/c', `"${dshCmd}" web --port 0`], {
+        ...spawnOpts,
+        windowsVerbatimArguments: true,
+      })
+    }
     const logStream = (chunk) => {
       try { appendFileSync(LOG_FILE, chunk.toString()) } catch { /* ignore */ }
     }
@@ -482,7 +505,7 @@ function main() {
       process.exit(code ?? 1)
     })
   }
-  boot()
+  void boot()
 }
 
 main()

@@ -3,8 +3,9 @@
  *
  * Task/session events play short WAV chimes so the user hears progress even
  * when the window is hidden to the tray (toasts are separately gated by
- * visibility + focus). Reasonix-style: one distinct sound per event kind,
- * shipped as assets (see assets/sounds/README.md for the mixkit sources).
+ * visibility + focus). One distinct original sound per event kind — the WAVs
+ * are synthesized in-repo (scripts/synthesize-sounds.mjs), not copied from
+ * any library (see assets/sounds/README.md).
  *
  * Primary carrier is koffi → winmm.dll `PlaySoundW` with SND_FILENAME +
  * SND_ASYNC (fire-and-forget, never blocks the session loop). When the FFI
