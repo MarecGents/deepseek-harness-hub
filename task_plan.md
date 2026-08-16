@@ -1,19 +1,36 @@
-# 任务计划：PR 任务处理（本地合并 + 测试 + harness 更新）
+# task_plan.md — dsh-hub 皮肤覆盖修复 + 保存修复 + 选择器重设计 + 重命名
 
-## 目标（用户确认）
-1. 本地合并 PR #2/#3 到 dev-v1，代码级测试功能生效
-2. PR 处理方式：合并后关闭（不长期挂 open）
-3. skins 新风格不受 UI 风格约束 → 更新根/UI harness + 每套 skin 建 {skin} 风格文档
+> 目标：① 皮肤全面覆盖左/中/右 + 卡片 + 文字高对比（frontend-design 系统性美化，保持 PR 风格）；② 勾选保存修复 + 复查；③ 皮肤选择器改方案 A（Setting-Cell 行式）；④ 重命名（设置卡片标题 + 窗口标题）；⑤ 文档同步（skins harness + 总 harness + 色板文档 + 踩坑记录）。构建并提交推送 dev-v1。
+
+## 任务拆解与技能映射
+
+- 皮肤 token 扩充 + 系统性美化（先行）→ 技能：frontend-design（用户指定，配色原则/一致性）
+- 勾选保存修复（settings-card.tsx）→ 直接执行（bounded 修复）
+- 皮肤选择器方案 A（同文件）→ 直接执行（参照官方 LanguageRow Setting-Cell 模式）
+- 重命名（settings-card + cordis.patch.yml + launcher.mjs 引用）→ 直接执行
+- 文档同步（依赖皮肤 token 定稿）→ 直接执行
+- 构建/验证/提交 → 直接执行（harness 构建前推演）
 
 ## 阶段
-- [ ] 阶段 1：合并 PR #2（零源码冲突）→ 构建 → 测试
-- [ ] 阶段 2：合并 PR #3（解 settings-card/config-api 冲突）→ 构建 → 测试
-- [ ] 阶段 3：harness 更新（根 AGENTS + client AGENTS + skins 风格文档）
-- [ ] 阶段 4：处理 PR（close + comment）
-- [ ] 阶段 5：构建验证 + 提交推送
-- [ ] 阶段 6：收尾（日志 + 清理）
 
-## 技能映射
-- PR 操作 → gh CLI（GitHub 访问规范）
-- 技术分析/修复 → 直接执行（AGENTS.md 约束）
-- 追踪 → planning-with-files-zh
+- [x] 阶段1：skins.ts 新增 token（sidebar-fill / nav-item-* / bg-module-platform / specific-menu）×5 皮肤 ×2 模式
+- [x] 阶段2：settings-card.tsx —— 皮肤选择器方案 A（行式 Menu + 动态 hint）
+- [x] 阶段3：settings-card.tsx —— onSave 防御性修复 setDraft({...saved, ...patch}) + 复查
+- [x] 阶段4：重命名 —— COPY.title→DSH HUB 设置；cordis.patch.yml 标题→DeepSeek Harness Hub；launcher.mjs 卡片名引用
+- [x] 阶段5：文档 —— docs/skins/AGENTS.md（新 harness）+ 5×docs/skins/*.md 补 token 表 + 根/客户端 AGENTS.md §3.1 + 关键踩坑记录 #25/#26
+- [ ] 阶段6：npm run build + build:client；代码级验证；git commit + push dev-v1
+- [ ] 阶段7：归档任务日志 + 清理规划文件
+
+## 关键决策（grill 已确认）
+
+- Q1：全覆盖（sidebar/nav/module/menu token），frontend-design 美化，保持 PR 风格，深/浅两套适配
+- Q2：文字用每套皮肤自己的 label 色系（不强制纯白纯黑）
+- Q3：只改文本（卡片标题+窗口标题）；AUMID 保留
+- Q4：重启后保存正常（旧内存代码）；仍做防御性修复
+- Q5：文档同步 + skins harness + 总 harness 补充
+
+## 遇到的错误
+
+| 错误 | 尝试次数 | 解决方案 |
+|------|---------|---------|
+| （待记录） | | |

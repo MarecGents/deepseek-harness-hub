@@ -9,7 +9,7 @@
  * injected stylesheet entirely.
  */
 
-/** One semantic token override (token name without the leading `--`). */
+/** One semantic token override (alias token name without the leading `--dsw-alias-`). */
 export interface Palette {
   [token: string]: string
 }
@@ -19,16 +19,26 @@ export interface DshSkin {
   id: string
   name: string
   description: string
+  /** `--dsw-alias-*` overrides (the main semantic tokens). */
   light: Palette
   dark: Palette
+  /**
+   * `--dsw-specific-*` overrides — surfaces the alias tokens do not drive
+   * (sidebar surface, sidebar nav item states, floating menus). Kept
+   * separate so alias keys stay short and the specific set is explicit.
+   */
+  specific: { light: Palette; dark: Palette }
 }
 
-/** Serialize a palette block as `:root { --token:value; ... }` CSS. */
-function block(selector: string, palette: Palette): string {
-  const body = Object.entries(palette)
+/** Serialize one selector block: alias tokens plus optional specific tokens. */
+function block(selector: string, palette: Palette, specific?: Palette): string {
+  const aliasBody = Object.entries(palette)
     .map(([token, value]) => `--dsw-alias-${token}:${value};`)
     .join('')
-  return `${selector}{${body}}`
+  const specificBody = specific === undefined ? '' : Object.entries(specific)
+    .map(([token, value]) => `--dsw-specific-${token}:${value};`)
+    .join('')
+  return `${selector}{${aliasBody}${specificBody}}`
 }
 
 function buildCss(skin: DshSkin): string {
@@ -37,7 +47,7 @@ function buildCss(skin: DshSkin): string {
   // cascade (body wins for its own subtree), so both blocks must target the
   // same selectors the app uses; the injected stylesheet is appended to head
   // and therefore wins at equal specificity.
-  return `${block('body', skin.light)}${block('body[data-ds-dark-theme]', skin.dark)}`
+  return `${block('body', skin.light, skin.specific.light)}${block('body[data-ds-dark-theme]', skin.dark, skin.specific.dark)}`
 }
 
 /**
@@ -74,6 +84,7 @@ export const SKINS: DshSkin[] = [
       'markdown-inline-code': '#dde5f2',
       'scrollbar-bg-l1': '#d5dceb',
       'scrollbar-hover-l1': '#c0cbe0',
+      'bg-module-platform': '#d3dcec',
       'tooltip-bg': '#1c2333',
       'toast-bg': '#1c2333',
     },
@@ -104,6 +115,23 @@ export const SKINS: DshSkin[] = [
       'scrollbar-hover-l1': '#2b4068',
       'tooltip-bg': '#1c2333',
       'toast-bg': '#1c2333',
+      'bg-module-platform': '#192a48',
+    },
+    specific: {
+      light: {
+        'sidebar-fill': '#e4e9f4',
+        'sidebar-nav-item-active-accent': '#3b6fe0',
+        'sidebar-nav-item-active': '#dbe4fa',
+        'sidebar-nav-item-hover': '#dce4f2',
+        menu: '#d3dcec',
+      },
+      dark: {
+        'sidebar-fill': '#0f1a30',
+        'sidebar-nav-item-active-accent': '#5b8cff',
+        'sidebar-nav-item-active': '#1d3050',
+        'sidebar-nav-item-hover': '#182742',
+        menu: '#192a48',
+      },
     },
   },
   {
@@ -135,6 +163,7 @@ export const SKINS: DshSkin[] = [
       'markdown-inline-code': '#e6dac0',
       'scrollbar-bg-l1': '#d9cbaa',
       'scrollbar-hover-l1': '#c8b688',
+      'bg-module-platform': '#e0d3ba',
       'tooltip-bg': '#3d3527',
       'toast-bg': '#3d3527',
     },
@@ -165,6 +194,23 @@ export const SKINS: DshSkin[] = [
       'scrollbar-hover-l1': '#4a3f2b',
       'tooltip-bg': '#3d3527',
       'toast-bg': '#3d3527',
+      'bg-module-platform': '#3c3222',
+    },
+    specific: {
+      light: {
+        'sidebar-fill': '#ede4d2',
+        'sidebar-nav-item-active-accent': '#7a5c2e',
+        'sidebar-nav-item-active': '#e9dfc8',
+        'sidebar-nav-item-hover': '#e8ddc6',
+        menu: '#e0d3ba',
+      },
+      dark: {
+        'sidebar-fill': '#2a2419',
+        'sidebar-nav-item-active-accent': '#c9a45c',
+        'sidebar-nav-item-active': '#37301f',
+        'sidebar-nav-item-hover': '#322a1c',
+        menu: '#3c3222',
+      },
     },
   },
   {
@@ -196,6 +242,7 @@ export const SKINS: DshSkin[] = [
       'markdown-inline-code': '#d8ead6',
       'scrollbar-bg-l1': '#cfe3cc',
       'scrollbar-hover-l1': '#b9d6b4',
+      'bg-module-platform': '#cce3c9',
       'tooltip-bg': '#1d301c',
       'toast-bg': '#1d301c',
     },
@@ -226,6 +273,23 @@ export const SKINS: DshSkin[] = [
       'scrollbar-hover-l1': '#2a5230',
       'tooltip-bg': '#a9f0a9',
       'toast-bg': '#a9f0a9',
+      'bg-module-platform': '#17301a',
+    },
+    specific: {
+      light: {
+        'sidebar-fill': '#e2efe0',
+        'sidebar-nav-item-active-accent': '#2e7d32',
+        'sidebar-nav-item-active': '#d8ecd5',
+        'sidebar-nav-item-hover': '#dcebda',
+        menu: '#cce3c9',
+      },
+      dark: {
+        'sidebar-fill': '#0e1c10',
+        'sidebar-nav-item-active-accent': '#33ff88',
+        'sidebar-nav-item-active': '#14301c',
+        'sidebar-nav-item-hover': '#11241a',
+        menu: '#17301a',
+      },
     },
   },
   {
@@ -258,6 +322,7 @@ export const SKINS: DshSkin[] = [
       'markdown-inline-code': '#ececee',
       'scrollbar-bg-l1': '#c8c8ca99',
       'scrollbar-hover-l1': '#a8a8aa',
+      'bg-module-platform': '#f8f8f8',
       'tooltip-bg': '#262626',
       'toast-bg': '#262626',
       'state-success-primary': '#2da44e',
@@ -297,6 +362,24 @@ export const SKINS: DshSkin[] = [
       'state-error-primary': '#f85149',
       'state-warn-primary': '#d29922',
       'state-business-primary': '#0096e0',
+      'bg-module-platform': '#161616',
+    },
+    specific: {
+      light: {
+        'sidebar-fill': '#ececee',
+        'sidebar-nav-item-active-accent': '#0095df',
+        'sidebar-nav-item-active': '#d9edf9',
+        'sidebar-nav-item-hover': '#e0e0e2',
+        menu: '#f8f8f8',
+      },
+      dark: {
+        // ZCode 深色实测：侧栏 #363636（比内容 #2b2b2b 亮一步），标题栏 #161616 更暗
+        'sidebar-fill': '#363636',
+        'sidebar-nav-item-active-accent': '#0096e0',
+        'sidebar-nav-item-active': '#1d3a47',
+        'sidebar-nav-item-hover': '#3a3a3a',
+        menu: '#161616',
+      },
     },
   },
   {
@@ -328,6 +411,7 @@ export const SKINS: DshSkin[] = [
       'markdown-inline-code': '#ded6f4',
       'scrollbar-bg-l1': '#d6cdf0',
       'scrollbar-hover-l1': '#c3b6e6',
+      'bg-module-platform': '#d8d0f0',
       'tooltip-bg': '#241f3d',
       'toast-bg': '#241f3d',
     },
@@ -358,6 +442,23 @@ export const SKINS: DshSkin[] = [
       'scrollbar-hover-l1': '#3a3480',
       'tooltip-bg': '#e2dcff',
       'toast-bg': '#e2dcff',
+      'bg-module-platform': '#24214e',
+    },
+    specific: {
+      light: {
+        'sidebar-fill': '#e8e4f7',
+        'sidebar-nav-item-active-accent': '#7c5cff',
+        'sidebar-nav-item-active': '#e0d8fb',
+        'sidebar-nav-item-hover': '#e6e0f8',
+        menu: '#d8d0f0',
+      },
+      dark: {
+        'sidebar-fill': '#151331',
+        'sidebar-nav-item-active-accent': '#9f7cff',
+        'sidebar-nav-item-active': '#241f4d',
+        'sidebar-nav-item-hover': '#1c1940',
+        menu: '#24214e',
+      },
     },
   },
 ]

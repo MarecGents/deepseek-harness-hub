@@ -372,7 +372,7 @@ function main() {
         '多个实例会共享同一份会话数据（$DSH_HOME），若同时在同一个会话中操作，' +
         '会导致会话日志损坏（seq 冲突，已发生并需手工修复）。\n\n' +
         '请先关闭已运行的 dsh 窗口，再启动桌面壳。\n' +
-        '（如确需共存，请到 设置 → MG DSH 设置 中勾选「允许同时运行多个实例」，并阅读风险提示。）'
+        '（如确需共存，请到 设置 → DSH HUB 设置 中勾选「允许同时运行多个实例」，并阅读风险提示。）'
       log('blocked: multiple instances not allowed (allowMultipleInstances=false); exiting')
       alert(message)
       releaseLock()

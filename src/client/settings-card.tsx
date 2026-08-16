@@ -12,7 +12,7 @@
 
 import { useEffect, useState, type ReactNode } from 'react'
 import clsx from 'clsx'
-import { IconChevronDownOutline14 } from '@deepseek-ai/dsh-client-ui-primitives'
+import { IconChevronDownOutline14, Menu } from '@deepseek-ai/dsh-client-ui-primitives'
 import { CARD_CSS_CLASSES as c } from './style.ts'
 import { SKINS, DEFAULT_SKIN_ID, applySkin } from './skins.ts'
 
@@ -38,7 +38,7 @@ interface ShellConfig {
 
 /** Localized copy kept inline (the card is small; no locale plugin needed). */
 const COPY = {
-  title: 'MG DSH 设置',
+  title: 'DSH HUB 设置',
   description: '桌面壳配置：窗口尺寸、主题与托盘行为',
   unsaved: '未保存',
   readOnly: '当前文档只读，无法保存',
@@ -63,6 +63,7 @@ const COPY = {
     '可能丢失对话内容且需要手工修复。强烈不建议开启。',
   multiInstanceHint: '不勾选时，若检测到已有 dsh 在运行，桌面壳将拒绝启动以保护数据',
   skinSection: '界面皮肤',
+  skinLabel: '界面皮肤',
   skinHint: '点击即应用并保存；「默认」恢复原生外观。深色模式下的皮肤跟随 dsh 主题设置',
   skinDefaultName: '默认',
   skinDefaultDesc: '官方原生外观',
@@ -112,6 +113,7 @@ export function DesktopSettingsCard(_props: DesktopSettingsCardProps): ReactNode
   const [saved, setSaved] = useState(false)
   const [skinId, setSkinId] = useState<string>(DEFAULT_SKIN_ID)
   const [skinFailed, setSkinFailed] = useState(false)
+  const [skinMenuOpen, setSkinMenuOpen] = useState(false)
 
   // Load the config once on mount. The width/height fields seed from the
   // window's ACTUAL current size (the SPA viewport ≈ the native client area),
@@ -172,7 +174,12 @@ export function DesktopSettingsCard(_props: DesktopSettingsCardProps): ReactNode
       setSaving(false)
       if (saved !== null) {
         setConfig(saved)
-        setDraft(saved)
+        // Replay the submitted patch over the server response so the user's
+        // change is never silently reverted when the response omits a field
+        // (stale host build, whitelist miss, config write war). `config`
+        // keeps server truth, so a genuinely dropped field still shows as
+        // unsaved (dirty badge + enabled save button) instead of vanishing.
+        setDraft({ ...saved, ...patch })
         setSaved(true)
       } else {
         setFailed(true)
@@ -328,48 +335,47 @@ export function DesktopSettingsCard(_props: DesktopSettingsCardProps): ReactNode
                         : <div className={c.hint}>{COPY.multiInstanceHint}</div>}
                     </div>
                   )}
-                  {/* Skin picker */}
+                  {/* Skin picker — official Setting-Cell row: label left, menu pill right, live description below. */}
                   {draft !== null && (
                     <div className={c.section}>
                       <div className={c.sectionTitle}>{COPY.skinSection}</div>
-                      <div className={c.hint}>{COPY.skinHint}</div>
-                      <div style={{
-                        display: 'grid',
-                        gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))',
-                        gap: 8,
-                        marginTop: 8,
-                      }}>
-                        <button
-                          type="button"
-                          className={c.select}
-                          aria-pressed={skinId === DEFAULT_SKIN_ID}
-                          onClick={() => onPickSkin(DEFAULT_SKIN_ID)}
-                          style={{
-                            textAlign: 'left',
-                            padding: '8px 10px',
-                            border: skinId === DEFAULT_SKIN_ID ? '2px solid var(--dsw-alias-brand-primary, #4a90d9)' : undefined,
+                      <div className={c.fieldRow}>
+                        <span className={c.fieldLabel}>{COPY.skinLabel}</span>
+                        <Menu
+                          open={skinMenuOpen}
+                          onClose={() => { setSkinMenuOpen(false) }}
+                          items={[
+                            { id: DEFAULT_SKIN_ID, label: COPY.skinDefaultName },
+                            ...SKINS.map((skin) => ({ id: skin.id, label: skin.name })),
+                          ]}
+                          selectedId={skinId}
+                          onSelect={(id) => {
+                            onPickSkin(id)
+                            setSkinMenuOpen(false)
                           }}
-                        >
-                          <strong>{COPY.skinDefaultName}</strong>
-                          <div style={{ fontSize: 11, opacity: 0.7 }}>{COPY.skinDefaultDesc}</div>
-                        </button>
-                        {SKINS.map((skin) => (
-                          <button
-                            key={skin.id}
-                            type="button"
-                            className={c.select}
-                            aria-pressed={skinId === skin.id}
-                            onClick={() => onPickSkin(skin.id)}
-                            style={{
-                              textAlign: 'left',
-                              padding: '8px 10px',
-                              border: skinId === skin.id ? '2px solid var(--dsw-alias-brand-primary, #4a90d9)' : undefined,
-                            }}
-                          >
-                            <strong>{skin.name}</strong>
-                            <div style={{ fontSize: 11, opacity: 0.7 }}>{skin.description}</div>
-                          </button>
-                        ))}
+                          align="end"
+                          portal
+                          anchor={(
+                            <button
+                              type="button"
+                              className={c.selectPill}
+                              aria-haspopup="menu"
+                              aria-expanded={skinMenuOpen}
+                              onClick={() => { setSkinMenuOpen(v => !v) }}
+                            >
+                              {skinId === DEFAULT_SKIN_ID
+                                ? COPY.skinDefaultName
+                                : (SKINS.find((skin) => skin.id === skinId)?.name ?? skinId)}
+                              <IconChevronDownOutline14 />
+                            </button>
+                          )}
+                        />
+                      </div>
+                      <div className={c.hint}>
+                        {skinId === DEFAULT_SKIN_ID
+                          ? COPY.skinDefaultDesc
+                          : (SKINS.find((skin) => skin.id === skinId)?.description ?? '')}
+                        {' — '}{COPY.skinHint}
                       </div>
                       {skinFailed ? <p className={c.failed} role="status">{COPY.skinApplyFailed}</p> : null}
                     </div>

@@ -7,7 +7,7 @@
 | 文件 | 职责 |
 |---|---|
 | `index.ts` | client 入口：`inject` 声明（slots/workspaces/sessions）、slot 声明合并（`settings.plugin.item`）、设置卡片 + 右侧栏装配、托盘桥 `__mgShellReady` |
-| `settings-card.tsx` | 设置卡片（MG DSH 设置）：窗口尺寸/主题/托盘行为/通知/多实例开关/皮肤选择，走 `/api/dsh-hub/config` |
+| `settings-card.tsx` | 设置卡片（DSH HUB 设置）：窗口尺寸/主题/托盘行为/通知/提示音/多实例开关/皮肤选择（Setting-Cell 行式），走 `/api/dsh-hub/config` |
 | `skins.ts` | 皮肤注册表：`DshSkin` 定义 + 5 套皮肤（午夜蓝/旧纸张/终端绿/ZCode/极光紫）+ `findSkin`/`applySkin` |
 | `right-sidebar.tsx` | 右侧栏：概览（Token 统计）/ 文件树 / Git 三页，body portal 挂载 |
 | `right-sidebar-style.ts` | 右侧栏样式（CSS 字符串注入，`mg-rs-*` 前缀） |
@@ -25,8 +25,9 @@
 
 - **`skins.ts` 中的自定义皮肤不受上述 UI 风格铁律约束**：允许硬编码色值、自定义配色，是新的视觉风格。
 - **默认皮肤（default）严格受约束**；设置卡片/右侧栏等非皮肤代码**一律遵守铁律**（token/图标/官方组件）。
-- 每套皮肤开发前先读 `docs/skins/{skin-id}.md` 风格文档；新增皮肤必须同步建文档。
+- 每套皮肤开发前先读 `docs/skins/{skin-id}.md` 风格文档与 `docs/skins/AGENTS.md`；新增皮肤必须同步建文档。
 - 皮肤技术约束：覆盖选择器 `body`（浅）/ `body[data-ds-dark-theme]`（深）；样式 append `<head>`；`default` 移除注入样式表；id ≤64 字符、未知回退 default。
+- **皮肤覆盖范围**：除 `--dsw-alias-*` 语义 token 外，必须同时覆盖 `--dsw-specific-*`（`sidebar-fill`、`sidebar-nav-item-*`、`menu`）与 `--dsw-alias-bg-module-platform`，保证左导航/右详情/卡片/浮层与中栏一致跟随皮肤；文字对比度由各皮肤自己的 `label-*` 色系保证（深色亮字/浅色暗字）。新增皮肤遗漏上述 token = 覆盖不全 bug。
 
 ## client 注册规范
 

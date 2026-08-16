@@ -76,12 +76,17 @@ dsh-hub 是**双 half** 结构，且**套壳代码与插件代码必须严格模
 
 - **「默认（default）」= 原生外观**，严格受上述 UI 风格约束（官方 token、官方图标、官方组件参照）。
 - **自定义皮肤（skins）是新的视觉风格，不受上述 UI 风格约束**——皮肤通过覆盖 `--dsw-alias-*` / `--dsw-specific-*` 语义令牌实现自定义配色，允许使用硬编码色值。
-- **每套皮肤必须自建风格 harness 文档**，存放于 `docs/skins/{skin-id}.md`，写明：设计意图、浅色/深色调色板（明确列出色值）、覆盖了哪些 token、与默认风格的关系、注意事项。开发该皮肤相关改动前先读对应文档。
+- **每套皮肤必须自建风格 harness 文档**，存放于 `docs/skins/{skin-id}.md`，写明：设计意图、浅色/深色调色板（明确列出色值）、覆盖了哪些 token、与默认风格的关系、注意事项。开发该皮肤相关改动前先读对应文档与 `docs/skins/AGENTS.md`（皮肤公共 harness）。
+- **皮肤覆盖范围（强制，缺 = 覆盖不全 bug）**：皮肤必须同时覆盖
+  - `--dsw-alias-*` 语义 token（`bg-*`/`label-*`/`border-*`/`brand-*`/`button-*`/`interactive-*`/`markdown-*`/`scrollbar-*`/`tooltip-bg`/`toast-bg`/**`bg-module-platform`**）；
+  - `--dsw-specific-*` 表面 token（`sidebar-fill`/`sidebar-nav-item-active-accent`/`sidebar-nav-item-active`/`sidebar-nav-item-hover`/`menu`）——左导航、右详情、卡片、浮层才与中栏一致跟随皮肤。
+  - 文字对比度由各皮肤自己的 `label-*` 色系保证：深色模式亮字、浅色模式暗字，任一模式下文字/背景对比不得低于可读阈值。
 - 皮肤实现约束（技术层面仍强制）：
   - 覆盖选择器必须与 app 声明一致：浅色 `body`、深色 `body[data-ds-dark-theme]`（`:root` 覆盖会输给 body 级联）。
   - 注入样式表 append 到 `<head>`，同特异性后声明者胜。
   - `default` 皮肤必须移除注入的样式表（零副作用）。
   - 皮肤 id 为不透明短字符串（≤64 字符）；未知 id 回退 `default`。
+  - `skins.ts` 的 `DshSkin` 结构：`light`/`dark` = alias token（`--dsw-alias-` 前缀），`specific.light`/`specific.dark` = specific token（`--dsw-specific-` 前缀）；`buildCss` 双块输出。
 - 皮肤清单见 `src/client/skins.ts`（当前 5 套：午夜蓝/旧纸张/终端绿/ZCode/极光紫）。
 
 ## 4. 代码质量规范（大厂级）

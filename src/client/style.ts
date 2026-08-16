@@ -29,9 +29,11 @@ export const CARD_CSS_CLASSES = {
   sectionTitle: 'mg-card-section-title',
   field: 'mg-card-field',
   fieldLabel: 'mg-card-field-label',
+  fieldRow: 'mg-card-field-row',
   control: 'mg-card-control',
   input: 'mg-card-input',
   select: 'mg-card-select',
+  selectPill: 'mg-card-select-pill',
   checkboxRow: 'mg-card-checkbox-row',
   hint: 'mg-card-hint',
   dangerHint: 'mg-card-danger-hint',
@@ -141,11 +143,44 @@ const STYLE_TEXT = `
   padding: 12px 0;
 }
 .${css.field} + .${css.field} { border-top: 1px solid var(--dsw-alias-border-l2, rgb(0 0 0 / 10%)); }
+/* Horizontal field row (official Setting-Cell style): label left, control right. */
+.${css.fieldRow} {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 0;
+}
+.${css.fieldRow} + .${css.field} { border-top: 1px solid var(--dsw-alias-border-l2, rgb(0 0 0 / 10%)); }
 .${css.fieldLabel} {
   font-size: 13px;
   font-weight: 500;
   line-height: 1.5;
   color: var(--dsw-alias-label-primary, #0f1115);
+}
+/* Selector pill for popup-menu fields (mirrors the theme select look, auto width). */
+.${css.selectPill} {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: auto;
+  min-width: 140px;
+  box-sizing: border-box;
+  height: 34px;
+  padding: 0 12px;
+  border: 1px solid var(--dsw-alias-border-l2, rgb(0 0 0 / 10%));
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-layer-3, #ffffff);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--dsw-alias-label-primary, #0f1115);
+  cursor: pointer;
+}
+.${css.selectPill}:focus-visible {
+  outline: none;
+  border-color: var(--dsw-alias-brand-primary, #3964fe);
 }
 .${css.control} {
   display: flex;

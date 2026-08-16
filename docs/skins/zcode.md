@@ -25,7 +25,18 @@
 | markdown-code-block / inline-code | `#f4f4f6` / `#ececee` | 代码浅灰 |
 | scrollbar-bg-l1 / hover-l1 | `#c8c8ca99`（半透明）/ `#a8a8aa` | 滚动条 |
 | tooltip-bg / toast-bg | `#262626` | 深灰浮层 |
+| bg-module-platform | `#f8f8f8` | 卡片徽章/模块底（= bg-layer-3） |
 | state-success / error / warn / business | `#2da44e` / `#cf222e` / `#bf8700` / `#0095df` | 状态色（GitHub 系绿/红/黄） |
+
+### 导航与浮层（`--dsw-specific-*`，浅色）
+
+| Token | 色值 |
+|---|---|
+| sidebar-fill | `#ececee` |
+| sidebar-nav-item-active-accent | `#0095df` |
+| sidebar-nav-item-active | `#d9edf9` |
+| sidebar-nav-item-hover | `#e0e0e2` |
+| menu | `#f8f8f8` |
 
 ### 深色（`body[data-ds-dark-theme]`）
 
@@ -43,10 +54,21 @@
 | scrollbar-bg-l1 / hover-l1 | `#54545499`（半透明）/ `#6e6e6e` |
 | tooltip-bg / toast-bg | `#161616` |
 | state-success / error / warn / business | `#3fb950` / `#f85149` / `#d29922` / `#0096e0` |
+| bg-module-platform | `#161616` |
+
+### 导航与浮层（`--dsw-specific-*`，深色）
+
+| Token | 色值 |
+|---|---|
+| sidebar-fill | `#363636` |
+| sidebar-nav-item-active-accent | `#0096e0` |
+| sidebar-nav-item-active | `#1d3a47` |
+| sidebar-nav-item-hover | `#3a3a3a` |
+| menu | `#161616` |
 
 ## 覆盖的 token
 
-`bg-*`、`label-*`、`border-*`、`brand-*`（含 invert/text）、`button-*`、`interactive-*`、`markdown-*`、`scrollbar-*`、`tooltip-bg`、`toast-bg`，以及全套 `state-*`（success/error/warn/business）——是目前**唯一覆盖状态色**的皮肤。
+`bg-*`、`label-*`、`border-*`、`brand-*`（含 invert/text）、`button-*`、`interactive-*`、`markdown-*`、`scrollbar-*`、`tooltip-bg`、`toast-bg`、`bg-module-platform`，全套 `state-*`（success/error/warn/business）——是目前**唯一覆盖状态色**的皮肤；以及 `--dsw-specific-*` 的 `sidebar-fill` / `sidebar-nav-item-*` / `menu`（左导航与浮层，见上表）。
 
 ## 与默认风格的关系
 

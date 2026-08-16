@@ -25,6 +25,17 @@
 | markdown-code-block / inline-code | `#e4def7` / `#ded6f4` | 代码淡紫 |
 | scrollbar-bg-l1 / hover-l1 | `#d6cdf0` / `#c3b6e6` | 滚动条 |
 | tooltip-bg / toast-bg | `#241f3d` | 深紫浮层 |
+| bg-module-platform | `#d8d0f0` | 卡片徽章/模块底（= bg-layer-3） |
+
+### 导航与浮层（`--dsw-specific-*`，浅色）
+
+| Token | 色值 |
+|---|---|
+| sidebar-fill | `#e8e4f7` |
+| sidebar-nav-item-active-accent | `#7c5cff` |
+| sidebar-nav-item-active | `#e0d8fb` |
+| sidebar-nav-item-hover | `#e6e0f8` |
+| menu | `#d8d0f0` |
 
 ### 深色（`body[data-ds-dark-theme]`）
 
@@ -41,10 +52,21 @@
 | markdown-code-block / inline-code | `#121026` / `#191632` |
 | scrollbar-bg-l1 / hover-l1 | `#2b2760` / `#3a3480` |
 | tooltip-bg / toast-bg | `#e2dcff`（亮紫白浮层） |
+| bg-module-platform | `#24214e` |
+
+### 导航与浮层（`--dsw-specific-*`，深色）
+
+| Token | 色值 |
+|---|---|
+| sidebar-fill | `#151331` |
+| sidebar-nav-item-active-accent | `#9f7cff` |
+| sidebar-nav-item-active | `#241f4d` |
+| sidebar-nav-item-hover | `#1c1940` |
+| menu | `#24214e` |
 
 ## 覆盖的 token
 
-`bg-*`、`label-*`、`border-*`、`brand-*`（含 invert/text）、`button-*`、`interactive-*`、`markdown-*`、`scrollbar-*`、`tooltip-bg`、`toast-bg`。
+`bg-*`、`label-*`、`border-*`、`brand-*`（含 invert/text）、`button-*`、`interactive-*`、`markdown-*`、`scrollbar-*`、`tooltip-bg`、`toast-bg`、`bg-module-platform`，以及 `--dsw-specific-*` 的 `sidebar-fill` / `sidebar-nav-item-*` / `menu`（左导航与浮层，见上表）。
 
 ## 与默认风格的关系
 

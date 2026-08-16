@@ -28,9 +28,11 @@ export declare const CARD_CSS_CLASSES: {
     readonly sectionTitle: "mg-card-section-title";
     readonly field: "mg-card-field";
     readonly fieldLabel: "mg-card-field-label";
+    readonly fieldRow: "mg-card-field-row";
     readonly control: "mg-card-control";
     readonly input: "mg-card-input";
     readonly select: "mg-card-select";
+    readonly selectPill: "mg-card-select-pill";
     readonly checkboxRow: "mg-card-checkbox-row";
     readonly hint: "mg-card-hint";
     readonly dangerHint: "mg-card-danger-hint";
