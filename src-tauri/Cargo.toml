@@ -1,0 +1,35 @@
+[package]
+name = "dsh-hub"
+version = "0.0.0"
+description = "DeepSeek Harness Hub — Tauri 2.x desktop shell (WebView2/WebKit/WKWebView)"
+authors = ["MarecGents"]
+edition = "2021"
+publish = false
+
+[lib]
+# Tauri template convention: lib crate name = <package>_lib (main.rs calls dsh_hub_lib::run()).
+name = "dsh_hub_lib"
+# Tauri requires this crate-type for both static and dynamic linking.
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2.11", features = ["tray-icon"] }
+tauri-plugin-log = "2"
+tauri-plugin-shell = "2"
+tauri-plugin-single-instance = "2"
+tauri-plugin-process = "2"
+tauri-plugin-dialog = "2"
+# deep-link: enabled at M5 per the deep-link decision (SOP §2.4 T1.1); kept
+# out of capabilities until then.
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+dirs = "5"
+log = "0.4"
+
+[features]
+# The custom-protocol feature is required when the frontendDist is served via
+# the custom protocol in release builds.
+custom-protocol = ["tauri/custom-protocol"]

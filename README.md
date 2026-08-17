@@ -118,6 +118,21 @@ npm i -g ./dist/marecgents-dsh-hub-<version>.tgz --allow-scripts=@marecgents/dsh
 > ⚠️ 若桌面壳正在运行（托盘驻留），覆盖安装会报 `EBUSY`——先退出桌面壳再执行。
 > 安装完成后可用 `node scripts/install-local.mjs` 自带的校验输出确认：全局包版本、`dsh-hub` 命令 shim、快捷方式指向。
 
+### Tauri 2.x 壳开发（M1+，dev-v2）
+
+Tauri 壳层（Rust）在 `src-tauri/` 下开发，流程与阶段指标见《迁移项目执行SOP》（`docs/process/`）：
+
+```sh
+npm run tauri:dev        # dev 模式：起临时页 + Rust 壳窗口（M1 起）
+npm run tauri:build      # 构建安装包（M5 起全量）
+npm run m1:check         # M1 字段核对断言（tauri.conf/lib.rs，10 项）
+npm run m1:ipc-smoke     # M1 本地窗口 IPC 冒烟断言（需 tauri dev 已运行）
+```
+
+- 前置：Rust 工具链（rustup stable）+ `@tauri-apps/cli`（已入 devDependencies）
+- M1 临时页由 `scripts/dev-shell-page.mjs` 伺服（`http://127.0.0.1:17891`），M4 起 devUrl 改指 dsh web 端口
+- 插件层（`src/client/*`、config/workspace API）全程零改动，壳层重写为 Rust
+
 ### 验证门控
 
 ```sh

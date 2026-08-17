@@ -41,7 +41,12 @@
     "prepack": "npm run build && npm run build:client",
     "postinstall": "node ./scripts/postinstall.mjs",
     "postuninstall": "node ./scripts/postuninstall.mjs",
-    "install:local": "node ./scripts/install-local.mjs"
+    "install:local": "node ./scripts/install-local.mjs",
+    "tauri:dev": "tauri dev",
+    "tauri:build": "tauri build",
+    "tauri:icon": "tauri icon",
+    "m1:check": "node scripts/check-tauri-conf.mjs",
+    "m1:ipc-smoke": "node scripts/ipc-smoke.mjs"
   },
   "dsh": {
     "bundle": {
@@ -89,6 +94,7 @@
     "@deepseek-ai/dsh-session": "^0.1.0-rc.6",
     "@deepseek-ai/dsh-settings": "^0.1.0-rc.6",
     "@resvg/resvg-js": "^2.6.2",
+    "@tauri-apps/cli": "^2.11.4",
     "@types/node": "^24.0.0",
     "@types/react": "^18.3.31",
     "@types/react-dom": "^18.3.1",

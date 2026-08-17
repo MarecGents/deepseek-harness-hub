@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>DeepSeek Harness Hub — M1 shell page</title>
+<style>
+  html, body { height: 100%; margin: 0; background: #101418; color: #d6dbe1;
+    font-family: system-ui, sans-serif; display: flex; align-items: center; justify-content: center; }
+  .badge { font-size: 14px; letter-spacing: .5px; opacity: .8; }
+  #ipc { margin-top: 12px; font-size: 12px; color: #7dd3a8; }
+</style>
+</head>
+<body>
+  <div>
+    <div class="badge">DeepSeek Harness Hub · M1 shell</div>
+    <div id="ipc">IPC 冒烟运行中…</div>
+  </div>
+  <script>
+    // M1 IPC 冒烟：__TAURI_INTERNALS__ 探测 + invoke + event（capabilities 最小授权验证）。
+    // 结果上报 /smoke?result=，由 scripts/ipc-smoke.mjs 轮询断言。
+    const tauri = window.__TAURI_INTERNALS__
+    const report = (v) => { try { fetch('/smoke?result=' + encodeURIComponent(v)) } catch (e) { /* 非 dev server 环境忽略 */ } }
+    if (tauri && tauri.invoke) {
+      tauri.invoke('ping')
+        .then((r) => {
+          document.getElementById('ipc').textContent = 'IPC ping → ' + r
+          report('pong')
+        })
+        .catch((e) => { document.getElementById('ipc').textContent = 'IPC ping 失败: ' + e; report('ERR:' + e) })
+      // event 链路冒烟（listen + emit，core:event:default 授权）
+      try {
+        tauri.event.listen('m1-hello', () => {})
+        tauri.event.emit('m1-hello', 'ok')
+      } catch (e) { console.warn('event smoke skipped', e) }
+    } else {
+      document.getElementById('ipc').textContent = '非 Tauri 环境（浏览器预览）'
+    }
+  </script>
+</body>
+</html>
