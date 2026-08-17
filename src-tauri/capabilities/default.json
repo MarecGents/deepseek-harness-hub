@@ -1,10 +1,15 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "M3 授权集——按 ACL 报错驱动逐项最小化放行；M1 起 core:default 全家桶禁用",
+  "description": "M4 授权集——按 ACL 报错驱动逐项最小化放行；M1 起 core:default 全家桶禁用",
   "windows": [
     "main"
   ],
+  "remote": {
+    "urls": [
+      "http://127.0.0.1:*"
+    ]
+  },
   "permissions": [
     "core:event:default",
     "core:tray:default",
@@ -13,7 +18,20 @@
     "core:window:allow-set-focus",
     "core:window:allow-hide",
     "core:window:allow-close",
+    "core:window:allow-minimize",
+    "core:window:allow-maximize",
+    "core:window:allow-unmaximize",
+    "core:window:allow-is-maximized",
     "log:default",
-    "notification:default"
+    "notification:default",
+    "allow-ping",
+    "allow-diag-report",
+    "allow-set-window-theme",
+    "allow-set-window-size",
+    "allow-get-workspace-path",
+    "allow-window-minimize",
+    "allow-window-toggle-maximize",
+    "allow-window-close",
+    "allow-notify-task-complete"
   ]
 }

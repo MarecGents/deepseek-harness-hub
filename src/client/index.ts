@@ -47,8 +47,9 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
     /**
      * One plugin's card inside the plugin configuration section. Declared at
      * runtime by ui-settings-plugins; this shape mirrors its contract.
+     * rc.7 起 slot 从 `list` 改为 `keyed`（卡片按 settings namespace key 派发）。
      */
-    'settings.plugin.item': { kind: 'list'; scope: 'root'; owner: SettingsPluginItemOwnerProps }
+    'settings.plugin.item': { kind: 'keyed'; scope: 'root'; owner: SettingsPluginItemOwnerProps }
   }
 }
 
@@ -118,19 +119,40 @@ function sendCurrentWorkspace(ctx: ClientContext): void {
 /** Handle one tray command dispatched by the desktop shell. */
 function handleShellCommand(ctx: ClientContext, event: Event): void {
   const detail = (event as CustomEvent<{ command?: string }>).detail
-  if (detail?.command !== 'new-task') return
-  // Official New Session flow (sidebar "+" button path). Deliberately pass no
-  // explicit workspaceId: startSession resolves the current session's
-  // workspace first, then the recent workspace, then clears.
-  const workspaces = (ctx as unknown as {
-    workspaces?: { startSession?: () => void }
-  }).workspaces
-  if (workspaces === undefined || workspaces.startSession === undefined) {
-    console.warn('[dsh-hub] new-task ignored: workspaces service unavailable')
+  if (detail?.command === 'new-task') {
+    // Official New Session flow (sidebar "+" button path). Deliberately pass no
+    // explicit workspaceId: startSession resolves the current session's
+    // workspace first, then the recent workspace, then clears.
+    const workspaces = (ctx as unknown as {
+      workspaces?: { startSession?: () => void }
+    }).workspaces
+    if (workspaces === undefined || workspaces.startSession === undefined) {
+      console.warn('[dsh-hub] new-task ignored: workspaces service unavailable')
+      return
+    }
+    console.log('[dsh-hub] new-task (current session workspace)')
+    workspaces.startSession()
     return
   }
-  console.log('[dsh-hub] new-task (current session workspace)')
-  workspaces.startSession()
+  if (detail?.command === 'open-workspace') {
+    // Tray "Open workspace": report the current workspace path to the shell.
+    // Tauri 壳：经 __TAURI_INTERNALS__.event.emit 上行 → Rust app.listen → Explorer。
+    // WebView2 壳：window.ipc.postMessage（rc.14 路径，保留）。
+    const path = currentWorkspace(ctx)?.path
+    const ipc = (window as unknown as { ipc?: { postMessage(message: string): void } }).ipc
+    if (ipc) {
+      ipc.postMessage(`mg:workspace-path:${path === undefined ? '' : encodeURIComponent(path)}`)
+    } else {
+      try {
+        const internals = (window as unknown as {
+          __TAURI_INTERNALS__?: { event?: { emit?: (e: string, p: unknown) => Promise<void> } }
+        }).__TAURI_INTERNALS__
+        internals?.event?.emit?.('mg:workspace-path', { path: path ?? '' }).catch?.(() => {})
+      } catch {
+        // Best-effort; the shell falls back to its own cwd tracking.
+      }
+    }
+  }
 }
 
 /** Client plugin body. */
@@ -219,8 +241,11 @@ export function apply(ctx: ClientContext): void {
     slots.inject('settings.plugin.item', function* () {
       yield slots.register({
         name: 'settings.plugin.item',
-        id: 'dsh-hub',
-        order: 30,
+        // rc.7 keyed slot：卡片按 settings namespace key 派发（tab-store 匹配 served）。
+        // key 必须 = SETTINGS_NS（'dsh-hub'），否则卡片永不渲染。
+        key: 'dsh-hub',
+        // rc.7 用 priority（替代旧版 order）。
+        priority: 30,
       }, (props: DesktopSettingsCardProps) => DesktopSettingsCard(props))
     })
   } catch (error) {

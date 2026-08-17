@@ -25,6 +25,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::{Arc, Mutex};
 use log::{info, warn};
+use tauri::Manager;
 
 /// dsh home 路径（rc.14 语义：DSH_HOME env || ~/.dsh）。
 fn dsh_home() -> PathBuf {
@@ -61,6 +62,56 @@ fn parse_dsh_ready_port(line: &str) -> Option<u16> {
         }
     }
     None
+}
+
+/// 执行 tauri-shell.ts 经 stdout 上行的请求行（SOP D-1：stdio JSON-RPC）。
+/// 格式：`DSH_CMD <json>`，json 为 `{ "cmd": "applyTheme|applySize|notify", ... }`。
+fn dispatch_dsh_cmd(app: &tauri::AppHandle, cmd_json: &str) {
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(cmd_json) else {
+        warn!("node: DSH_CMD unparseable: {}", cmd_json);
+        return;
+    };
+    let Some(cmd) = value.get("cmd").and_then(|c| c.as_str()) else {
+        warn!("node: DSH_CMD missing cmd field: {}", cmd_json);
+        return;
+    };
+    info!("node: DSH_CMD received: {}", cmd);
+
+    match cmd {
+        // tauri-shell.ts 经 invoke() 发出的命令名（= Rust #[tauri::command] 名）。
+        "set_window_theme" => {
+            if let Some(theme) = value.get("theme").and_then(|t| t.as_str()) {
+                let tauri_theme = match theme {
+                    "dark" => Some(tauri::Theme::Dark),
+                    "light" => Some(tauri::Theme::Light),
+                    _ => None,
+                };
+                if let Some(win) = app.get_webview_window("main") {
+                    let _ = win.set_theme(tauri_theme);
+                    let _ = crate::theme::apply_theme(&win, tauri_theme.unwrap_or(tauri::Theme::Dark));
+                }
+            }
+        }
+        "set_window_size" => {
+            let w = value.get("width").and_then(|v| v.as_f64());
+            let h = value.get("height").and_then(|v| v.as_f64());
+            if let (Some(w), Some(h)) = (w, h) {
+                if let Some(win) = app.get_webview_window("main") {
+                    let _ = win.set_size(tauri::Size::Logical(tauri::LogicalSize::new(w, h)));
+                }
+            }
+        }
+        "notify_task_complete" => {
+            let title = value.get("title").and_then(|v| v.as_str()).unwrap_or("DeepSeek Harness");
+            let body = value.get("body").and_then(|v| v.as_str()).unwrap_or("任务完成");
+            let _ = crate::notify::notify_task_complete(app.clone(), Some(title.to_string()), Some(body.to_string()), None);
+        }
+        // 兼容旧名（早期实现）。
+        "applyTheme" | "applySize" | "notify" => {
+            warn!("node: DSH_CMD legacy name '{}' ignored (use set_window_theme/set_window_size/notify_task_complete)", cmd);
+        }
+        other => warn!("node: DSH_CMD unknown: {}", other),
+    }
 }
 
 /// dsh web 子进程状态（Arc 共享，background 线程可更新 port/ready）。
@@ -110,17 +161,19 @@ fn find_dsh() -> Option<PathBuf> {
 ///
 /// 1. 组装 profile（调 assemble-profile.mjs）
 /// 2. spawn node → dsh web --port 0
-/// 3. 后台线程逐行解析 stdout，等待 READY 事件
-/// 4. state.port/ready 在后台线程更新
-pub fn start_dsh(state: Arc<NodeState>) -> Result<(), String> {
+/// 3. 后台线程逐行解析 stdout：READY 信号 + DSH_CMD 上行请求行
+///    （tauri-shell.ts 写 `DSH_CMD <json>` → 此处执行窗口操作）
+pub fn start_dsh(state: Arc<NodeState>, app: tauri::AppHandle) -> Result<(), String> {
     // 确保 profile 已装配。
-    let assemble_script = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("scripts").join("assemble-profile.mjs");
+    // CARGO_MANIFEST_DIR = src-tauri/，assemble-profile.mjs 在仓库根 scripts/。
+    let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
+    let assemble_script = repo_root.join("scripts").join("assemble-profile.mjs");
     if assemble_script.exists() {
         info!("node: assembling profile via {}", assemble_script.display());
         let asm = Command::new("cmd")
             .args(["/d", "/s", "/c", &format!("node {}", assemble_script.display())])
             .env("DSH_HOME", dsh_home())
+            .env("DSH_HUB_PACKAGE_ROOT", repo_root)
             .output()
             .map_err(|e| format!("assemble-profile failed: {e}"))?;
         if !asm.status.success() {
@@ -145,8 +198,8 @@ pub fn start_dsh(state: Arc<NodeState>) -> Result<(), String> {
     let stdout = child.stdout.take().expect("stdout pipe");
     let stderr = child.stderr.take();
 
-    // 后台线程：逐行读取 stdout，解析 READY 信号。
-    // port/ready 写入共享 state（Arc<NodeState>）。
+    // 后台线程：逐行读取 stdout，解析 READY 信号 + DSH_CMD 上行请求行。
+    // port/ready 写入共享 state（Arc<NodeState>）；DSH_CMD 经 AppHandle 执行窗口操作。
     let state_ready = state.clone();
     std::thread::spawn(move || {
         let reader = BufReader::new(stdout);
@@ -158,6 +211,9 @@ pub fn start_dsh(state: Arc<NodeState>) -> Result<(), String> {
                         *state_ready.ready.lock().unwrap() = true;
                         *state_ready.port.lock().unwrap() = Some(port);
                         info!("node: READY on port {}", port);
+                    } else if let Some(cmd_json) = l.strip_prefix("DSH_CMD ") {
+                        // tauri-shell.ts 的 stdio 上行请求行（SOP D-1）。
+                        dispatch_dsh_cmd(&app, cmd_json);
                     }
                 }
                 Err(e) => {

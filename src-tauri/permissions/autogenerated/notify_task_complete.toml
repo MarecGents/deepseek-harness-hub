@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-notify-task-complete"
+description = "Enables the notify_task_complete command without any pre-configured scope."
+commands.allow = ["notify_task_complete"]
+
+[[permission]]
+identifier = "deny-notify-task-complete"
+description = "Denies the notify_task_complete command without any pre-configured scope."
+commands.deny = ["notify_task_complete"]
