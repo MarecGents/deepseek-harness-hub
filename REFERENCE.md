@@ -1,0 +1,113 @@
+# REFERENCE — 参考仓库索引
+
+> dsh-hub 开发参考仓库清单（本地 clone 路径 + 调研描述）。
+> 每条目的「描述」由并行调研子代理基于实际仓库内容校验后写成，供 agent 开发时快速定位参考源。
+> 标签约定：`[desk-ui]` = 桌面壳/窗口层参考；`[dsh-plugin]` = dsh 插件层参考；`[plugin]` = 插件/agent 功能参考；`[ui]` = 前端 UI 参考；`[core]` = 框架核心源码。
+
+## 1. docs
+- **文件目录**：`E:\Workdata\Git_repositories\deepseek\docs`
+- **描述**：dsh-hub 从零到发布的完整开发档案（2026-08-13~16）：技术栈调研 → WebView2 壳实现与发布（mg-dsh-desktop 0.1.6→0.1.8-rc.2）→ 更名 @marecgents/dsh-hub → Tauri 2.x 迁移决策。组织规律「每个功能一条带时间戳的任务日志，完成即归档 archieved/」。关键参考：① `dsh桌面端技术路线-2026-08-16.md`（Tauri 迁移路线与逐项映射表，最值得先看）；② `deepseek-ai-dsh包调研报告-2026-08-15.md`（221 个官方 npm 包清单 + 30 个高价值 seam 包，插件开发依赖/官方接口索引）；③ `archieved/` 踩坑史（托盘/右侧栏/多实例/窗口管理/junction 注册/npm 发布 registry 踩坑）；④ `archieved/mg-dsh-desktop-项目交接文档-2026-08-14.md`（双 half 插件架构全貌，新 agent 第一入口）。⚠️ 旧文档为 mg-dsh-desktop 时代，包名/环境变量以技术路线最新命名为准（`@marecgents/dsh-hub` / `DSH_HUB_*`）。
+- **关键目录要点**：
+  - `archieved/`（50 篇）→ 历史任务日志（托盘/右侧栏/多实例/窗口分辨率/发布记录），开发同类功能先查
+  - `dsh桌面端技术路线-2026-08-16.md` → Tauri 2.x 迁移决策与 desktop.ts/托盘/通知/窗口状态/单实例逐项映射表
+  - `deepseek-ai-dsh包调研报告-2026-08-15.md` → 官方 dsh 包生态索引
+  - `会话损坏修复记录-2026-08-16-1023.md` → 多实例会话 seq 冲突修复（session.jsonl.zstd 格式细节）
+- **调研状态**：已完成
+
+## 2. deepseek-harness
+- **文件目录**：`E:\Workdata\Git_repositories\deepseek\deepseek-harness`
+- **描述**：DeepSeek AI 官方开源的 agent harness 单仓库（npm 根包 `@deepseek-ai/dsh-root` v0.1.0-rc.5，MIT，developer preview，官方声明会有破坏性变更）。pnpm monorepo（60+ 包，ESM 全栈，Node ^22.19||>=24），核心是「万物皆插件」——基于 source-vendored 的 Cordis 框架，无特权核心、一切可替换。一个运行中的 dsh = 按层装配的插件树：profile（`$DSH_HOME/profiles/<name>`）列出有序 bundles（`dsh.bundle.patch` 指向 patch 文件），`cordis.patch.yml` 按 entry id 打补丁，Cordis Loader 挂载条目，`inject` 表达服务依赖，`ctx.effect()`/`ctx.on()` 注册可逆 effect（注册即 effect、卸载即回滚），类型化事件（declare merging + emit/waterfall/parallel/serial 四种 dispatch）是主要扩展点；会话侧是 append-only `SessionEvent` 日志（JSONL/SQLite）。⚠️ 官方源码中无「插件身份四重相等」术语，最接近的是 `vendor/loader/src/config/entry.ts` 的 entry diff 判定（name/inject/group 变化 → 整行 replace，仅 config 变化 → 热补丁，patch 按 entry id 定位）——dsh-hub 沿用该概念时需对照此文件。参考价值：①profile bundles 装配看 `packages/boot/app-boot/`（含 `$DSH_HOME/profiles/node_modules` 扁平 symlink 方案，桌面壳 bundling 可直接复用）；②HTTP 路由官方接口看 `packages/host/webserver/`（exact/prefix/fallback 匹配序、升级握手，Tauri 迁移对照）；③slot 系统看 `packages/client/ui-slots/`；④查任意 `ctx.*` 服务/事件/配置以 `docs/` 下源码生成的 catalogs 与 `subsystems/` 为准（CI 保鲜）。
+- **关键目录要点**：
+  - `docs/` → 官方接口权威入口：architecture.md、cordis-primer.md、config/tool/event catalogs、subsystems/
+  - `vendor/` → vendored Cordis 全家桶（loader/include/group/hmr/schemastery 等，rescope @deepseek-ai/*）
+  - `packages/boot/app-boot/` → profile bundles 装配唯一官方实现（loadProfile/composeEntries/watchUserPatches）
+  - `packages/host/webserver` + `packages/client/ui-slots` → webServer 路由与 slot 系统（桌面壳最相关）
+  - `apps/cli` + `apps/web` → 入口与 web 前端壳
+- **调研状态**：已完成
+
+## 3. awesome-tauri-[desk-ui,desk-ui-plugin]
+- **文件目录**：`E:\Workdata\Git_repositories\deepseek\reference\awesome-tauri-[desk-ui,desk-ui-plugin]`
+- **描述**：Tauri 官方维护的 **awesome 精选资源清单**（awesome.re 仓库，非插件 monorepo——本身不含插件源码，README 全为外链）。覆盖面：入门/模板、约 50 个社区插件（`tauri-plugin-pinia`/`tauri-plugin-svelte` 持久化 store、`tauri-plugin-theme` 主题切换、`window-vibrancy`/`window-shadows` 窗口效果、`tauri-update-server` 等）、集成工具（Tauri Specta 类型安全命令、MCP server、更新服务器）、大量 Tauri 桌面应用案例（含托盘/菜单栏应用 KFtray、GitBar、SwitchShuttle、TrayFier）。对 dsh-hub Tauri 2.x 迁移的价值是**索引而非实现**：官方插件（store/shell/fs/notification/updater/single-instance/window-state/tray 等）源码需顺 README 的 `tauri-apps/plugins-workspace` 入口去拿；自动更新可参考清单给出的多个 update-server 实现；主题可参考 `tauri-plugin-theme`。注意：README 未单独列出 single-instance/window-state/tray/deep-link 官方插件条目，需在 plugins-workspace 内确认。
+- **关键目录要点**：
+  - `README.md`（543 行）→ 唯一实质内容；**Development → Plugins 段（L89-141）是找官方插件实现的关键入口**（含 `plugins-workspace` 链接）
+  - `package.json` + `.github/` → 纯清单仓库（awesome-lint 校验、收录标准：Tauri 2.x+/开源/30 天+/英文文档）
+- **调研状态**：已完成
+
+## 4. cordis-[dsh-plugin]
+- **文件目录**：`E:\Workdata\Git_repositories\deepseek\reference\cordis-[dsh-plugin]`
+- **描述**：Cordis 官方 monorepo（cordiverse/cordis，main @ 8cc9e33，9 包）——dsh-hub 插件层依赖的 Cordis v4 核心实现（`cordis@4.0.0-rc.8`，API 未稳定）。定位「时空可组合性元框架」：**Fiber 管时间维（插件生命周期）、Context 的 isolate/intercept 管空间维（上下文作用域）**。核心：`new Context()` 建根，`ctx.plugin(fn|class|{apply}, config)` 装配插件，每个插件实例是一个 Fiber，生命周期由 `ctx.effect()` 管理（dispose 可同步/异步/生成器，epoch 驱动状态机自动卸载/重载）；事件系统提供 `on/once/emit/parallel/serial/bail/waterfall` 六种派发 + `internal/*` 扩展点；服务经 `Service` 基类 + `ctx.provide/reflect` 注册，Proxy 化 Context 惰性解析 + `@Inject` 声明依赖，服务上下线自动触发依赖 fiber 刷新；装配由 `plugin-loader`（EntryTree 条目管理）+ `plugin-include`（YAML 配置 + 按 id 打 patches：override/insert/disabled、原子写回）构成——**dsh-hub 的 profile/cordis.patch.yml/dev_fix_patch 机制是它的直系对应**，`include/tests/patch.spec.ts` 可当行为规范读；`plugin-hmr` 提供插件级热重载。参考方式：查 API 直接读 `packages/core/src/*.ts`，以 `packages/core/tests/*.spec.ts` 为可运行范例；装配/配置写法看 `loader/src/config/entry.ts` 与 `include/`。⚠️ 仓库无 docs/（README 链接的 cordis-primer 由 dsh-hub 自家托管，可作配套文档源）。
+- **关键目录要点**：
+  - `packages/core/src/` → 内核全部源码（fiber.ts 生命周期状态机、events.ts 六种派发、registry.ts 插件/注入、context.ts Proxy 化 Context）
+  - `packages/core/tests/` → 每个概念的可用示例（比 README 实用）
+  - `packages/loader/src/config/` → Entry/EntryTree/EntryGroup（按 id 管理、baseUrl、`cordis:` 前缀、isolate realm）
+  - `packages/include/` → 配置驱动 + patches（override/insert/disabled、原子写回）
+- **调研状态**：已完成
+
+## 5. DeepSeek-Reasonix-[ui,plugin]
+- **文件目录**：`E:\Workdata\Git_repositories\deepseek\reference\DeepSeek-Reasonix-[ui,plugin]`
+- **描述**：以 Go 单二进制为内核、深度适配 DeepSeek API（OpenAI 兼容 + Anthropic Messages 双协议 + prefix-cache 优化）的 cache-first 自主编码 agent（v1.26.0，MIT）。同一内核提供 CLI/TUI、桌面应用、浏览器、ACP 编辑器四种前端。⚠️ **桌面栈是 Wails v2.13（Go 绑定 + WebView2），非 Tauri**——但其 WebView2 平台经验与整套前端 UI 设计可直接借鉴（dsh-hub 当前壳同 WebView2 路线）。桌面壳 `desktop/`：React 19 + TS + Vite + pnpm，`bridge.ts` 以 `window.go.main.App` 绑定 + `runtime.EventsOn("agent:event")` 事件流直连 Go 内核，含 WebView2 诊断/恢复、窗口状态、自动更新、托盘、8 套官方主题包。DeepSeek 适配关键：thinking 模式流式 `reasoning_content`（`RequiresToolCallReasoning` 策略）、missing-reasoning 静默重试、长思考取消、系统提示前缀字节稳定保持 prefix-cache 命中、内置成本账本。插件体系两层：声明式（skills/agents/commands/prompts/hooks/MCP servers/themes）+ Manifest v2 代码扩展（sidecar Extension Protocol v2，可拦截/替换事件、贡献流式模型、结构化 UI、只读主题），运行时 fail-atomic 快照 reload。参考价值：① settings 面板体系（SettingsPanel/ProviderAccessSettings/ThemeGallery）、三种 desktop layout、命令面板、en/zh/zh-TW i18n、transcript 虚拟化滚动仲裁；② agent 功能（传输无关 Controller 分层、权限审批、plan mode/checkpoint、子代理 profile、上下文预算环）；③ DeepSeek API 双协议适配与成本账单。
+- **关键目录要点**：
+  - `desktop/` → Wails 桌面壳（WebView2 平台诊断/更新/托盘/主题包）
+  - `internal/` → Go 内核（control 控制器/provider 多协议/plugin 插件体系）
+  - `docs/` → EXTENSIONS.md / PLUGIN_PACKAGES.md / EXTENSION_PROTOCOL.md（插件规范一手文档）
+  - `npm/reasonix` → 原生二进制分发的 npm 模式（可选依赖分发）
+- **调研状态**：已完成
+
+## 6. DSH-better-sidebar-[dsh-ui,dsh-plugin]
+- **文件目录**：`E:\Workdata\Git_repositories\deepseek\reference\DSH-better-sidebar-[dsh-ui,dsh-plugin]`
+- **描述**：已发布 npm 的官方外生态 dsh 插件（v0.12.3，源码态）。单包 host/client 双半结构：`cordis.patch.yml` 单条 insert 装配（`better-sidebar`），双安装通道（官方 profile bundle 与 plugin-registry），双 client bundle 同源编译；对外暴露 `ctx.betterSidebar` 服务（`registerTab`/`registerFileViewer`），内置 7 tab + 6 viewer 也走同一服务（吃狗粮）。UI：React 18 + CSS Modules，令牌驱动（`--dsw-alias-*`），官方 client 包走模块表 externals；侧边栏 DOM portal 挂 `document.body`（`[data-dsh-better-sidebar]` 锚点），slots 只用于 `settings.section` 与 `conversation.chat.turnTail` 两处注入；CodeMirror/xterm 走 `/sidebar/bundle` 懒加载 chunk。参考价值：完整插件开发路径样板（patch 装配、双半划分、HMR-safe disposer、CI 真实挂载门禁）、官方 UI token/组件用法（含 `tests/theme.spec.ts` 守护）、slot 与 portal 边界划分、服务化扩展点 + 类型合并模式；`platform: web` 的 client 挂载方式对 dsh-hub Tauri 2.x webview 迁移可直接沿用。
+- **关键目录要点**：
+  - `cordis.patch.yml` + `src/`（host/client 半区）→ 插件装配与双半结构样板
+  - `tests/theme.spec.ts` → 主题 token 守护测试
+  - client portal 注入 → body 锚点挂载（`[data-dsh-better-sidebar]`）
+- **调研状态**：已完成
+
+## 7. dsh-web-ui-[dsh-ui,dsh-plugin]
+- **文件目录**：`E:\Workdata\Git_repositories\deepseek\reference\dsh-web-ui-[dsh-ui,dsh-plugin]`
+- **描述**：dsh 的插件/皮肤全家桶 monorepo（npm 名 `dsh-web-ui`，Apache-2.0）——13 个 cordis bundle 插件包 + 12 款主题皮肤 + 皮肤画廊静态站（任务看板、Git 图谱、右侧面板、移动端远程、SSH 运维、agent 预设等），全部经 `cordis.patch.yml` + profile 机制挂载，不修改 dsh 源码、只基于 `@deepseek-ai/*` 官方 SDK。插件为 host/client 双半区：host（cordis 插件，`inject: ['webServer','settings']`，mount-once 防重，schemastery Config，`ctx.effect` 挂路由）；client（类型层 `declare module '@deepseek-ai/dsh-client-ui-slots'` 扩展槽位，运行时 `ctx.slots.inject('settings.section')` + `ctx.locale.register` 中英词典）。UI 定制两条路：功能插件走官方 slots 系统（跨插件协作只走 cordis 服务，禁 value import）；皮肤绕开 token/slot 直接 DOM 层叠加（body attribute + CSS Modules 作用域 + effect 撤销）——说明官方主题 API 未暴露 token 级定制接口。client 构建统一走 `shared/tsdown.client.ts`（tsdown + lightningcss，`__ModuleLoader__.load` 注册，外部依赖冻结种子表）。参考价值：bundle 插件全生命周期样板（脚手架→patch→注入→聚合→发版门禁）、client slots/多语言/设置卡注入规范、tsdown client 构建预设与冻结模块表、多包聚合防 duplicate-id 命名空间方案（`web-ui-` 前缀）。
+- **关键目录要点**：
+  - `packages/dsh-*` → dsh 插件开发路径活体样板（patch + host/client + tsdown 共享预设）
+  - `shared/tsdown.client.ts` + `web-platform.ts` → client 构建唯一事实源、externals 冻结模块表
+  - `packages/skins/<id>` + `dsh-skins` → 皮肤定制样板（skin.json + client apply() DOM 叠加 + 互斥启用）
+  - `packages/dsh-web-ui-all` + `scripts/` → 聚合机制（aggregate.yml → 聚合 patch，`web-ui-` 前缀防 duplicate id）
+- **调研状态**：已完成
+
+## 8. opencode-[plugin]
+- **文件目录**：`E:\Workdata\Git_repositories\deepseek\reference\opencode-[plugin]`
+- **描述**：成熟商业化开源 agent（anomalyco/opencode，v1.18.18，MIT，累计下载约 1020 万，社区一线）。技术栈：Bun workspaces + Turbo + TypeScript + Effect 4（Service/Layer/Schema/HttpApi）+ Drizzle/SQLite + Vercel AI SDK（约 20 家 provider）；TUI 用 @opentui(Solid)，Web/桌面 UI 用 SolidJS + Vite + Tailwind，**桌面壳是 Electron 42（非 Tauri）**。架构：CLI 跑本地 HTTP Server（Effect HttpApi + WebSocket + mdns + auth + 事件投影），TUI/桌面/SDK 均经 `@opencode-ai/sdk` 客户端连接；分层 schema → core → protocol → server。对 dsh-hub 最相关：① **插件体系**——config 驱动装载管线（按需 npm 安装 → 入口解析 → 版本兼容 → 动态 import），插件返回 `Hooks` 对象（tool/auth/provider/event/config + 约 20 个生命周期钩子：chat.message、permission.ask、tool.execute.before·after 等），是"钩子面"扩展模式，可对照 Cordis 依赖注入容器借鉴钩子粒度划分；② **会话管理**——SQLite 持久化 + 父子 fork + 摘要 + share/revert + compaction，SessionExecution 按 sessionID 全局调度，System Context 用 Context Source/Epoch 代数化管理；③ 商业化形态——MIT 核心 + Electron 桌面（BETA）+ enterprise 包 + 云组件。
+- **关键目录要点**：
+  - `packages/core/src/session` → 会话管理（prompt 准入/执行分离、compaction）——新功能借鉴重点
+  - `packages/core/src/plugin/loader.ts` → 插件装载管线与 Hooks 生命周期
+  - `packages/app` → 产品 Web 端（SolidJS，被 Electron 壳复用；`packages/web` 只是营销站）
+  - `packages/enterprise` → 商业化扩展形态
+- **调研状态**：已完成
+
+## 9. spacedrive-[desk-ui]
+- **文件目录**：`E:\Workdata\Git_repositories\deepseek\reference\spacedrive-[desk-ui]`
+- **描述**：Spacedrive v2（2.0.0-alpha.2）——本地优先的跨设备文件/数据平台（VDFS 虚拟分布式文件系统 + BLAKE3 内容寻址 + Iroh/QUIC P2P 同步 + AI 数据安全层），「Rust core 守护进程 + Tauri 2 桌面壳 + React 前端」daemon-client 架构，完整可用的 Tauri 2 参考工程。对 dsh-hub Tauri 迁移的具体参考价值：① **壳层保持薄**——窗口/菜单/快捷键/守护进程生命周期全放 `apps/tauri/src-tauri`，业务逻辑留独立 Rust core（与 dsh-hub「壳层重写、插件层保留」方向一致；注意它用 daemon socket 探活做单实例，非 single-instance 插件，可对比取舍）；② **多窗口范式**——`windows.rs` 的 `SpacedriveWindow` 枚举（17 类窗口）统一生成 label，`WebviewWindowBuilder` + `WebviewUrl::App(route)` 动态建多 webview 窗口（transparent/always_on_top/skip_taskbar 组合），capabilities 按窗口 label 白名单授权；③ **主题**——Windows DWM 暗色标题栏（`DwmSetWindowAttribute`：immersive dark mode + caption/border color）与 macOS `ns_window` 私有 API 样式，可直接借鉴；④ **发布链路**——`externalBin` 把 sd-daemon 伴生二进制打进安装包 + updater 接 GitHub Release + Windows `embedBootstrapper` + macOS entitlements。⚠️ 仓库体量巨大，参考时只看 `apps/tauri` 与 `core` 的桥接边界。
+- **关键目录要点**：
+  - `apps/tauri/` → Tauri 2 桌面壳本体（src-tauri 配置/ACL/Rust 壳 + React 前端 + sd-tauri-core 桥接）——dsh-hub 迁移核心参照
+  - `core/` → Rust 业务核心（CQRS/DDD、SQLite/SeaORM、specta 生成 TS 类型、daemon TCP JSON-RPC 127.0.0.1:6969）
+  - `packages/interface` + `packages/ts-client` → 平台无关 React UI（Platform 抽象接口）与自动生成 TS 客户端
+  - `apps/tauri/src-tauri/src/windows.rs` → 多窗口枚举 + DWM 暗色标题栏实现
+- **调研状态**：已完成
+
+## 10. surrealist-[desk-ui]
+- **文件目录**：`E:\Workdata\Git_repositories\deepseek\reference\surrealist-[desk-ui]`
+- **描述**：SurrealDB 官方桌面 GUI（Tauri 2 + React 19/Vite 5/Mantine 9，**bun 工程**，构建走 `bun run tauri:dev/build`）。⚠️ 该应用已被 SurrealDB Studio 取代、仓库仅作历史参考（README 明确），但 Tauri 2 工程结构完整可用。对 dsh-hub Tauri 迁移最有价值：① **单实例+深链+二次启动传参三合一**：`single-instance` 回调 + `deep-link`（`surrealist://` scheme）+ `RunEvent::Opened` 统一走"存 URL → emit `open-resource` → 聚焦最后窗口"；② **自动更新闭环**：tauri.conf 配 pubkey/endpoints + 前端 `check()`/`downloadAndInstall`（带进度）/`relaunch()`，大版本升级前备份配置；③ **localhost 插件**（端口 24454）生产环境 HTTP 伺服前端——dsh-hub 本地服务场景直接适用；④ **外部子进程托管**：spawn `surreal start` 子进程，stderr 管道逐行回灌前端事件，`RunEvent::Exit` 清理——"桌面壳托管本地服务"范式；⑤ **窗口/标题栏**：多窗口动态创建、macOS overlay 标题栏/非 macOS 无边框 + 前端 CSS 变量自绘、last-focused 跟踪、devtools 切换。两个诚实提示：capabilities 里有 `core:tray:default` 但全仓库**无托盘实现代码**（有权限未使用，勿照抄）；单实例/深链/更新等核心插件用法以本仓库 Cargo.toml 插件清单为准。
+- **关键目录要点**：
+  - `src-tauri/Cargo.toml` → Tauri 2 插件清单（tauri 2.4.0 + fs/os/log/shell/dialog/process/updater/deep-link/localhost/single-instance）
+  - `src-tauri/src/` → 单实例/深链/子进程托管/窗口管理实现
+  - `tauri.conf.json` → 更新 pubkey/endpoints、deep-link scheme、localhost 端口配置
+- **调研状态**：已完成
+
+## 11. tauri-[desk-ui-core]
+- **文件目录**：`E:\Workdata\Git_repositories\deepseek\reference\tauri-[desk-ui-core]`
+- **描述**：Tauri 2.x 框架官方源码 monorepo（tauri-apps/tauri，workspace 内 tauri=2.11.5，dev 分支 HEAD=8b67a47a）。Rust workspace + pnpm 双包管理，分层：配置解析/构建宏（tauri-build/codegen/macros）→ 核心运行时（tauri，依赖 tauri-runtime 抽象）→ 平台实现（tauri-runtime-wry 对接 wry，wry 再调 WebView2/WKWebView/WebKitGTK；窗口与托盘经 tao/muda/tray-icon 落到 OS）。对 dsh-hub Tauri 迁移是 **Rust 侧权威参考**：窗口 API 在 `crates/tauri/src/window/mod.rs`（show/hide/close/theme/set_theme/set_title_bar_style 等），托盘 `crates/tauri/src/tray/mod.rs`（TrayIconBuilder），菜单 `crates/tauri/src/menu/`，事件 `crates/tauri/src/event/`（Emitter/Listener + event-system-spec.md），命令/IPC `crates/tauri/src/ipc/`（invoke_handler + generate_handler!、Channel 流式、ACL）。重点看 `examples/api/src-tauri/src/lib.rs`：create_tray、MenuBuilder、WebviewWindowBuilder、`RunEvent::ExitRequested` 用 `prevent_exit()` 保托盘常驻、`CloseRequested` 拦截后 destroy——正是桌面壳的典型模式。两点提醒：① **tao/wry 源码不在此仓库**（独立仓库，仅锁定版本），读窗口/WebView2 底层须另查；② **single-instance 不在核心**，是外部插件 `tauri-plugin-single-instance`，迁移时需查插件仓库。
+- **关键目录要点**：
+  - `crates/tauri/src/` → 核心 API（window/tray/menu/event/ipc/webview/vibrancy）
+  - `crates/tauri-runtime` + `tauri-runtime-wry` → 运行时抽象与 WRY 实现（Windows=WebView2）
+  - `examples/api/src-tauri/` → 旗舰示例（托盘/菜单/窗口/事件/ExitRequested 保活）
+  - `packages/api` + `packages/cli` → JS 侧 @tauri-apps/api / @tauri-apps/cli
+  - `ARCHITECTURE.md` → 架构总纲（TAO/WRY 为外部 crate 的依赖关系说明）
+- **调研状态**：已完成
