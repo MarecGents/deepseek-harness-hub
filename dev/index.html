@@ -33,7 +33,9 @@
         tauri.event.emit('m1-hello', 'ok')
       } catch (e) { console.warn('event smoke skipped', e) }
     } else {
-      document.getElementById('ipc').textContent = '非 Tauri 环境（浏览器预览）'
+      // tauri dev 的 devUrl 是远程页（http://127.0.0.1:17891）——Tauri 不注入 IPC。
+      // 这正是 M4 主桥（HTTP/SSE）要解决的；本地窗口（cargo run / 安装产物）才有 IPC。
+      document.getElementById('ipc').textContent = 'dev 远程页：IPC 仅在本地窗口可用（M4 主桥后经 HTTP/SSE 验证）'
     }
   </script>
 </body>
