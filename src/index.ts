@@ -36,6 +36,8 @@ import type {} from '@deepseek-ai/dsh-agent'
 import { installSettingsSection, settingsNamespace } from '@deepseek-ai/dsh-settings'
 import z from '@deepseek-ai/schemastery'
 import { openDesktopShell, type DesktopShellHandle } from './desktop.ts'
+import { openDesktopShellTauri, type TauriShellHandle } from './tauri-shell.ts'
+import { makeBridgeRoutes } from './services/bridge-server.ts'
 import { makeConfigRoutes, hasStoredWindowSize, migrateLegacyPaths, readShellConfig, storedNotifyOnTaskComplete, storedSoundEnabled, type ShellConfig } from './services/config-api.js'
 import { setAppUserModelId } from './services/app-id.js'
 import { dshHome } from './services/state-store.js'
@@ -43,6 +45,11 @@ import { openFolderInExplorer } from './services/explorer.js'
 import { makeWorkspaceRoutes } from './services/workspace-api.js'
 import { makePinsRoutes } from './services/pins-api.js'
 import { makeBackgroundsRoutes } from './services/backgrounds-api.js'
+
+/** True when this sidecar was spawned by the Tauri shell (Rust lib.rs). */
+function isTauriShell(): boolean {
+  return process.env.DSH_HUB_SHELL === 'tauri'
+}
 
 /** Stable Cordis plugin name (referenced by cordis.patch.yml's insert row). */
 export const name = '@marecgents/dsh-hub'
@@ -217,7 +224,7 @@ export function apply(ctx: Context, config: Config): void {
   // Runtime"), and the whale icon set on the window never sticks.
   setAppUserModelId()
 
-  let shell: DesktopShellHandle | undefined
+  let shell: DesktopShellHandle | TauriShellHandle | undefined
   let opened = false
   let routesDisposed: (() => void) | undefined
 
@@ -296,6 +303,15 @@ export function apply(ctx: Context, config: Config): void {
       ...makeWorkspaceRoutes(),
       ...makePinsRoutes(),
       ...makeBackgroundsRoutes(),
+      // T4.9 bridge-server routes (Tauri mode only): SSE/POST endpoints for
+      // Tauri shell ↔ dsh-hub page communication.
+      ...(isTauriShell() ? makeBridgeRoutes({
+        getBearerToken: () => process.env.DSH_HUB_BRIDGE_TOKEN ?? '',
+        onWorkspaceReported: (path) => { activeCwd = path },
+        onTaskNotify: (payload) => {
+          console.log(`[dsh-hub] bridge notify: ${payload.message ?? payload.status ?? 'task-event'}`)
+        },
+      }) : []),
     ].map((route) => server.register(route))
     routesDisposed = () => {
       for (const dispose of disposers) void dispose()
@@ -313,32 +329,60 @@ export function apply(ctx: Context, config: Config): void {
     registerRoutes()
     opened = true
     const effective = effectiveConfig(config)
-    try {
-      shell = openDesktopShell(server.port, {
+
+    if (isTauriShell()) {
+      // ── Tauri 模式（T4.6 接入）：用 tauri-shell.ts 的 TauriShellHandle 替代 desktop.ts ──
+      // Tauri 壳已由 Rust lib.rs 创建窗口（WebviewUrl::External 指向 sidecar 端口），
+      // 此处只建立 IPC 桥接层（invoke / bridge / HTMLAudio），不再 spawn 窗口。
+      console.log('[dsh-hub] Tauri shell mode detected (DSH_HUB_SHELL=tauri); using tauri-shell.ts')
+      const h = openDesktopShellTauri(ctx, {
         title: config.title,
         width: effective.width,
         height: effective.height,
         theme: effective.theme,
         openWorkspace: () => {
-          void openWorkspaceDir(ctx, (cb) => {
-            if (shell === undefined) {
-              cb(null)
-              return
-            }
-            shell.getCurrentWorkspacePath(cb)
-          })
+          void openWorkspaceDir(ctx, (cb) => { shell?.getCurrentWorkspacePath(cb) ?? cb(null) })
         },
         newTask: () => { newTaskInWeb(ctx, (name, detail) => shell?.dispatchEvent(name, detail)) },
-        // Live tray behavior: read the persisted config at every decision
-        // point so a settings change applies without restarting.
         getTrayBehavior: () => {
           const stored = readShellConfig()
           return { minimizeToTray: stored.minimizeToTray, closeToTray: stored.closeToTray }
         },
       }, () => exitProcess(ctx))
-      console.log(`[dsh-hub] desktop shell opened on http://127.0.0.1:${server.port}`)
-    } catch (error) {
-      console.error('[dsh-hub] failed to open desktop shell:', error)
+      if (h) {
+        shell = h
+        console.log('[dsh-hub] Tauri shell handle connected')
+        h.applyTheme(effective.theme)
+        if (effective.width && effective.height) {
+          h.applySize(effective.width, effective.height)
+        }
+      } else {
+        console.warn('[dsh-hub] Tauri shell handle unavailable; page-only mode')
+      }
+    } else {
+      // ── WebView2 模式（原有 desktop.ts 路径）──
+      try {
+        shell = openDesktopShell(server.port, {
+          title: config.title,
+          width: effective.width,
+          height: effective.height,
+          theme: effective.theme,
+          openWorkspace: () => {
+            void openWorkspaceDir(ctx, (cb) => {
+              if (shell === undefined) { cb(null); return }
+              shell.getCurrentWorkspacePath(cb)
+            })
+          },
+          newTask: () => { newTaskInWeb(ctx, (name, detail) => shell?.dispatchEvent(name, detail)) },
+          getTrayBehavior: () => {
+            const stored = readShellConfig()
+            return { minimizeToTray: stored.minimizeToTray, closeToTray: stored.closeToTray }
+          },
+        }, () => exitProcess(ctx))
+        console.log(`[dsh-hub] desktop shell opened on http://127.0.0.1:${server.port}`)
+      } catch (error) {
+        console.error('[dsh-hub] failed to open desktop shell:', error)
+      }
     }
   }
 

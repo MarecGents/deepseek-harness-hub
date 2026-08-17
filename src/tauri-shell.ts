@@ -58,7 +58,7 @@ async function invoke<T = unknown>(cmd: string, args?: Record<string, unknown>):
   if (isTauriWebview()) {
     // The Tauri API exposes `window.__TAURI_INTERNALS__.invoke(cmd, args)`.
     try {
-      const internals = (globalThis as Record<string, { invoke: (cmd: string, args?: Record<string, unknown>) => Promise<T> }>).__TAURI_INTERNALS__
+      const internals = (globalThis as unknown as Record<string, { invoke: (cmd: string, args?: Record<string, unknown>) => Promise<T> }>).__TAURI_INTERNALS__
       return await internals.invoke(cmd, args)
     } catch (error) {
       console.warn(`[dsh-hub] tauri invoke "${cmd}" failed:`, error)
