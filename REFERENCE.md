@@ -97,11 +97,13 @@
 
 ## 10. surrealist-[desk-ui]
 - **文件目录**：`E:\Workdata\Git_repositories\deepseek\reference\surrealist-[desk-ui]`
-- **描述**：SurrealDB 官方桌面 GUI（Tauri 2 + React 19/Vite 5/Mantine 9，**bun 工程**，构建走 `bun run tauri:dev/build`）。⚠️ 该应用已被 SurrealDB Studio 取代、仓库仅作历史参考（README 明确），但 Tauri 2 工程结构完整可用。对 dsh-hub Tauri 迁移最有价值：① **单实例+深链+二次启动传参三合一**：`single-instance` 回调 + `deep-link`（`surrealist://` scheme）+ `RunEvent::Opened` 统一走"存 URL → emit `open-resource` → 聚焦最后窗口"；② **自动更新闭环**：tauri.conf 配 pubkey/endpoints + 前端 `check()`/`downloadAndInstall`（带进度）/`relaunch()`，大版本升级前备份配置；③ **localhost 插件**（端口 24454）生产环境 HTTP 伺服前端——dsh-hub 本地服务场景直接适用；④ **外部子进程托管**：spawn `surreal start` 子进程，stderr 管道逐行回灌前端事件，`RunEvent::Exit` 清理——"桌面壳托管本地服务"范式；⑤ **窗口/标题栏**：多窗口动态创建、macOS overlay 标题栏/非 macOS 无边框 + 前端 CSS 变量自绘、last-focused 跟踪、devtools 切换。两个诚实提示：capabilities 里有 `core:tray:default` 但全仓库**无托盘实现代码**（有权限未使用，勿照抄）；单实例/深链/更新等核心插件用法以本仓库 Cargo.toml 插件清单为准。
+- **描述**：SurrealDB 官方桌面 GUI（Tauri 2 + React 19/Vite 5/Mantine 9，**bun 工程**，构建走 `bun run tauri:dev/build`），「WebView 壳 + 本地服务」形态与 dsh-hub 高度同构。⚠️ 已被 SurrealDB Studio 取代、仓库仅作历史参考（README 明确），但 Tauri 2 工程结构完整可用。对 dsh-hub Tauri 迁移最有价值：① **单实例+深链+二次启动传参三合一**：`single-instance` 回调把第二实例 args 转 URL 存入 `OpenResourceState` → emit `open-resource` → 聚焦最后窗口；macOS `RunEvent::Opened` 走同路；deep-link 注册 `surrealist://` scheme（OAuth 回跳 + 意图分发）；② **自动更新闭环**：tauri.conf 配 pubkey/endpoints + 前端 `check()`/`downloadAndInstall`（带进度）/`relaunch()`（plugin-process），大版本升级前 `backup_config` 备份；③ **localhost 插件**（端口 24454）生产环境 HTTP 伺服前端——dsh-hub 本地服务场景直接适用；④ **外部子进程托管**：`std::process::Command` spawn `surreal start`，stderr 管道逐行 emit `database:output` 回前端，`RunEvent::Exit` kill——"桌面壳托管本地服务"范式；⑤ **窗口/标题栏**：`window.rs` 动态多窗口（label 带时间戳）、macOS overlay 标题栏/非 macOS 无边框 + 前端 `--titlebar-offset` CSS 变量自绘、last-focused 跟踪；⑥ **adapter 双跑模式**（新增亮点）：前端 `"__TAURI_INTERNALS__" in window` 探测桌面环境，Browser/Docker/Mini/Desktop 四套适配器切换，`desktop.tsx` 是 Tauri API 调用唯一集中点——dsh-hub 同一前端 Web/桌面双跑可照搬；⑦ **安全模型**：文件打开白名单（深链/参数带入文件须先入 whitelist 才可 read/write，单文件限 5MB）；`config.rs` 写 `dirs::config_dir()/SurrealDB/config.json` 并版本备份/恢复。两个诚实提示：capabilities 有 `core:tray:default` 但全仓库**无托盘实现代码**（有权限未使用，勿照抄）；单实例/深链/更新等用法以 Cargo.toml 插件清单为准。
 - **关键目录要点**：
-  - `src-tauri/Cargo.toml` → Tauri 2 插件清单（tauri 2.4.0 + fs/os/log/shell/dialog/process/updater/deep-link/localhost/single-instance）
-  - `src-tauri/src/` → 单实例/深链/子进程托管/窗口管理实现
-  - `tauri.conf.json` → 更新 pubkey/endpoints、deep-link scheme、localhost 端口配置
+  - `src-tauri/Cargo.toml` → Tauri 2 插件清单（tauri 2.4.0 + fs/os/log/shell/dialog/process/updater/deep-link/localhost/single-instance，macOS cocoa/objc）
+  - `src-tauri/src/` → 单实例/深链/子进程托管/窗口管理/config 备份实现
+  - `src/adapter/` → 环境适配器模式（`__TAURI_INTERNALS__` 探测、Desktop 适配器集中 Tauri API）
+  - `src-tauri/capabilities/surrealist.json` → Tauri 2 权限清单按需授权写法（window/menu/tray/deep-link/updater/shell/dialog/os/fs）
+  - `tauri.conf.json` → 更新 pubkey/endpoints、deep-link scheme、localhost 端口
 - **调研状态**：已完成
 
 ## 11. tauri-[desk-ui-core]
