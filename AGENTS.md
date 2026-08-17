@@ -117,10 +117,10 @@ npm run build:client   # client（tsdown + SDK junction）
 
 ### 5.1 分支策略（2026-08-16 更新）
 
-- `main` = **发布分支**。保护：`enforce_admins=false` + `required_approving_review_count=1` → 发布合并用 `gh pr merge N --merge --admin`。
-- `dev-v1` = **冻结存档**（WebView2 时代收尾：rc.13 / rc.14）。仅紧急修复破例，修复后必须同步 main 与 dev-v2。
-- `dev-v2` = **当前开发分支**（Tauri 2.x 壳迁移）。
-- 发布流程：功能开发在 dev-v2（紧急修复可在 dev-v1）→ PR 合并 main → main 上 bump/重建/发布 → **三分支同步**（main 与 dev-v1 用 ff；dev-v2 有独有提交时用普通 merge）。
+- `main` = **发布分支，唯一合并目标**。保护：`enforce_admins=false` + `required_approving_review_count=1` → 发布合并用 `gh pr merge N --merge --admin`。
+- `dev-v2` = **唯一开发分支**（Tauri 2.x 壳迁移）。**所有更新（功能/文档/修复/脚本）只在 dev-v2 开发，merge 只到 main**（PR → admin merge），不再做"三分支同步"。
+- `dev-v1` = **永久冻结存档**（WebView2 时代收尾：rc.13 / rc.14）。**不再接收任何更新与同步**；如未来确需改动，经用户明确同意后以 PR 形式合入 main（dev-v1 本身不改）。
+- 发布流程：dev-v2 → PR → main（admin merge）→ main 上 bump/重建/发布 → **main ff 回灌 dev-v2**（保持开发分支最新）；dev-v1 冻结不动。
 
 ### 5.2 发布铁律（硬约束，任一 FAIL 禁止 publish）
 
@@ -131,7 +131,7 @@ npm run build:client   # client（tsdown + SDK junction）
 4. **dist-tags 直查 registry**：发布后 `Invoke-RestMethod 'https://registry.npmjs.org/-/package/@marecgents/dsh-hub/dist-tags'` 必须 `latest == rc == 当前版本`。**`npm view` 有镜像缓存，不可信**。
 5. **registry 显式官方**：publish / dist-tag 一律 `--registry=https://registry.npmjs.org/`（本机默认是华为镜像）。
 6. **版本不可覆盖**：`npm version <bump>` 每次升版本，同版本 publish 会被拒绝。
-7. **三分支同步 + tag**：main / dev-v1（ff）/ dev-v2（merge）全部推送，`v0.0.1-rc.<N>` tag 推送。
+7. **main 发布 + dev-v2 回灌 + tag**：push main 与 `v0.0.1-rc.<N>` tag；dev-v2 ff 到 main；**dev-v1 冻结不动**（§5.1）。
 8. **发布后真机验证**：测试电脑 `npm i -g @marecgents/dsh-hub --allow-scripts=@marecgents/dsh-hub,koffi` 首启冒烟（含 postinstall 快捷方式；`--allow-scripts` 防 npm 安全机制拦截 postinstall/koffi 构建）——脚本隔离验证用 `--ignore-scripts`，不覆盖 postinstall 链路。
 
 ### 5.3 发布命令（rc 流程，逐步执行）
@@ -140,8 +140,8 @@ npm run build:client   # client（tsdown + SDK junction）
 # 0. 门禁（必须 ALL PASS，FAIL 禁止继续）
 node scripts/verify-release.mjs
 
-# 1. 合并开发分支 → main（gh pr merge --merge --admin）
-gh pr create --base main --head <dev-v1|dev-v2> --title "..."
+# 1. 合并 dev-v2 → main（唯一开发/合并路径；gh pr merge --merge --admin）
+gh pr create --base main --head dev-v2 --title "..."
 gh pr merge <N> --merge --admin
 
 # 2. main 上 bump + 重建
@@ -156,12 +156,11 @@ npm dist-tag add @marecgents/dsh-hub@0.0.1-rc.<N+1> latest --registry=https://re
 # 4. 校验（registry 直查，勿用 npm view）
 (Invoke-RestMethod 'https://registry.npmjs.org/-/package/@marecgents/dsh-hub/dist-tags').latest   # 必须 = 0.0.1-rc.<N+1>
 
-# 5. 推送 main + tag + 三分支同步
+# 5. 推送 main + tag + 回灌 dev-v2（dev-v1 冻结不动）
 git push origin main && git push origin v0.0.1-rc.<N+1>
-git checkout dev-v1 && git merge main --ff-only && git push origin dev-v1
-git checkout dev-v2 && git merge main && git push origin dev-v2   # dev-v2 有独有提交时用 merge
+git checkout dev-v2 && git merge main --ff-only && git push origin dev-v2
 
-# 6. 发布记录 docs/发布记录-rc<N>-YYYY-MM-DD-HHmm.md → commit → 三分支同步
+# 6. 发布记录 docs/发布记录-rc<N>-YYYY-MM-DD-HHmm.md → commit（main）→ 回灌 dev-v2
 ```
 
 - **发布版本号策略**：当前 rc 预览期（`0.0.1-rc.x`）；正式版需在 **Tauri 2.x 迁移完成并达到良好体验后**再发布（见 [docs/dsh桌面端技术路线-2026-08-16.md](../../docs/dsh桌面端技术路线-2026-08-16.md)）。
