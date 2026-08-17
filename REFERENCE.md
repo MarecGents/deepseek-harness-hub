@@ -66,12 +66,13 @@
 
 ## 7. dsh-web-ui-[dsh-ui,dsh-plugin]
 - **文件目录**：`E:\Workdata\Git_repositories\deepseek\reference\dsh-web-ui-[dsh-ui,dsh-plugin]`
-- **描述**：dsh 的插件/皮肤全家桶 monorepo（npm 名 `dsh-web-ui`，Apache-2.0）——13 个 cordis bundle 插件包 + 12 款主题皮肤 + 皮肤画廊静态站（任务看板、Git 图谱、右侧面板、移动端远程、SSH 运维、agent 预设等），全部经 `cordis.patch.yml` + profile 机制挂载，不修改 dsh 源码、只基于 `@deepseek-ai/*` 官方 SDK。插件为 host/client 双半区：host（cordis 插件，`inject: ['webServer','settings']`，mount-once 防重，schemastery Config，`ctx.effect` 挂路由）；client（类型层 `declare module '@deepseek-ai/dsh-client-ui-slots'` 扩展槽位，运行时 `ctx.slots.inject('settings.section')` + `ctx.locale.register` 中英词典）。UI 定制两条路：功能插件走官方 slots 系统（跨插件协作只走 cordis 服务，禁 value import）；皮肤绕开 token/slot 直接 DOM 层叠加（body attribute + CSS Modules 作用域 + effect 撤销）——说明官方主题 API 未暴露 token 级定制接口。client 构建统一走 `shared/tsdown.client.ts`（tsdown + lightningcss，`__ModuleLoader__.load` 注册，外部依赖冻结种子表）。参考价值：bundle 插件全生命周期样板（脚手架→patch→注入→聚合→发版门禁）、client slots/多语言/设置卡注入规范、tsdown client 构建预设与冻结模块表、多包聚合防 duplicate-id 命名空间方案（`web-ui-` 前缀）。
+- **描述**：dsh 的插件/皮肤全家桶 monorepo（npm 名 `dsh-web-ui`，Apache-2.0，git remote `zhu1090093659/dsh-web-ui`）——13 个 cordis bundle 插件包（dsh-web-ui-settings / dsh-task-board / dsh-git-graph / dsh-ssh / dsh-remote-web-ui / dsh-pet / dsh-live-stats / dsh-aionui-panel / dsh-tool-describe-image / dsh-liangshen / dsh-community-plugins 等：任务看板、Git 图谱、右侧面板、移动端远程(SSE+扫码)、SSH 运维、实时吞吐、图像理解、宠物、agent 预设）+ 12 款主题皮肤（miku/qq98/matrix/dragon-heir/trading/whale-mom 等）+ 皮肤画廊静态站，全部经 `cordis.patch.yml` + profile 机制挂载，不修改 dsh 源码、只基于 `@deepseek-ai/*` 官方 SDK。插件为 host/client 双半区：host（cordis 插件，`inject: ['webServer','settings']`，mount-once 防重，schemastery Config，`ctx.effect` 挂路由）；client（类型层 `declare module '@deepseek-ai/dsh-client-ui-slots'` 扩展槽位，运行时 `ctx.slots.inject('settings.section')` + `ctx.locale.register` 中英词典）。UI 定制两条路：功能插件走官方 slots 系统（跨插件协作只走 cordis 服务，禁 value import）；皮肤绕开 token/slot 直接 DOM 层叠加（body attribute `data-dsh-<id>` 作用域 + CSS Modules + effect 撤销 + skin.json 元数据，`dsh-skin use` 写 profile patch managed 区段实现互斥）——说明官方主题 API 未暴露 token 级定制接口。client 构建统一走 `shared/tsdown.client.ts`（tsdown + lightningcss，`__ModuleLoader__.load` 注册，外部依赖冻结种子表 web-platform.ts，另有 `mobileBundle()` 移动端自包含页）。参考价值：bundle 插件全生命周期样板（脚手架→patch→注入→聚合→发版门禁）、client slots/多语言/设置卡注入规范、tsdown client 构建预设与冻结模块表、多包聚合防 duplicate-id 命名空间方案（`web-ui-` 前缀）。附：仓库自带 `.dsh/skills/`（skin-developer / pet-developer / community-plugin-developer / dsh-web-ui-release 四个 agent skill）与 `docs/plugins.md` 入桶流程，CI 全部门禁（typecheck/test/docs/aggregate/gallery/skin-center）。
 - **关键目录要点**：
-  - `packages/dsh-*` → dsh 插件开发路径活体样板（patch + host/client + tsdown 共享预设）
+  - `packages/dsh-*` → dsh 插件开发路径活体样板（patch + host/client + tsdown 共享预设）；按功能名挑包看
   - `shared/tsdown.client.ts` + `web-platform.ts` → client 构建唯一事实源、externals 冻结模块表
   - `packages/skins/<id>` + `dsh-skins` → 皮肤定制样板（skin.json + client apply() DOM 叠加 + 互斥启用）
-  - `packages/dsh-web-ui-all` + `scripts/` → 聚合机制（aggregate.yml → 聚合 patch，`web-ui-` 前缀防 duplicate id）
+  - `packages/dsh-web-ui-all` + `scripts/` → 聚合机制（aggregate.yml → 聚合 patch，`web-ui-` 前缀防 duplicate id）+ 插件/皮肤脚手架
+  - `.dsh/skills/` + `docs/plugins.md` → 4 个 agent skill 与新插件入桶流程
 - **调研状态**：已完成
 
 ## 8. opencode-[plugin]
