@@ -77,10 +77,10 @@
 
 ## 8. opencode-[plugin]
 - **文件目录**：`E:\Workdata\Git_repositories\deepseek\reference\opencode-[plugin]`
-- **描述**：成熟商业化开源 agent（anomalyco/opencode，v1.18.18，MIT，累计下载约 1020 万，社区一线）。技术栈：Bun workspaces + Turbo + TypeScript + Effect 4（Service/Layer/Schema/HttpApi）+ Drizzle/SQLite + Vercel AI SDK（约 20 家 provider）；TUI 用 @opentui(Solid)，Web/桌面 UI 用 SolidJS + Vite + Tailwind，**桌面壳是 Electron 42（非 Tauri）**。架构：CLI 跑本地 HTTP Server（Effect HttpApi + WebSocket + mdns + auth + 事件投影），TUI/桌面/SDK 均经 `@opencode-ai/sdk` 客户端连接；分层 schema → core → protocol → server。对 dsh-hub 最相关：① **插件体系**——config 驱动装载管线（按需 npm 安装 → 入口解析 → 版本兼容 → 动态 import），插件返回 `Hooks` 对象（tool/auth/provider/event/config + 约 20 个生命周期钩子：chat.message、permission.ask、tool.execute.before·after 等），是"钩子面"扩展模式，可对照 Cordis 依赖注入容器借鉴钩子粒度划分；② **会话管理**——SQLite 持久化 + 父子 fork + 摘要 + share/revert + compaction，SessionExecution 按 sessionID 全局调度，System Context 用 Context Source/Epoch 代数化管理；③ 商业化形态——MIT 核心 + Electron 桌面（BETA）+ enterprise 包 + 云组件。
+- **描述**：成熟商业化开源 agent（anomalyco/opencode，v1.18.18，MIT，累计下载约 1020 万，社区一线）。技术栈：Bun workspaces + Turbo + TypeScript + Effect 4（Service/Layer/Schema/HttpApi）+ Drizzle/SQLite + Vercel AI SDK（约 20 家 provider）；TUI 用 @opentui(Solid)，Web/桌面 UI 用 SolidJS + Vite + Tailwind，**桌面壳是 Electron 42（非 Tauri）**。架构：CLI 跑本地 HTTP Server（Effect HttpApi + WebSocket + mdns 发现 + auth + projectors 事件投影），TUI/桌面/SDK 均经 `@opencode-ai/sdk` 客户端连接；分层 schema → core → protocol → server，client 由 HttpApi 代码生成。对 dsh-hub 最相关：① **插件体系**——config 驱动（opencode.json 的 plugin 数组），`packages/opencode/src/plugin/loader.ts` 按需 npm 安装 → server/tui 入口解析 → 版本兼容检查 → 动态 import，插件返回 `Hooks` 对象（tool/auth/provider/event/config + chat.*/permission.ask/command.execute.before/tool.execute.before·after/shell.env/compacting/text.complete/tool.definition 等约 20 个生命周期钩子），另有 v2 effect/promise 双形态 API——"钩子面"扩展模式，可对照 Cordis 依赖注入容器借鉴钩子粒度划分；② **会话管理**——SQLite 持久化 + 父子 fork + 摘要 + share/revert(snapshot) + compaction，V2 核心（`packages/core/src/session`）把 prompt 准入（落库 session_input 收件箱）与模型执行分离，SessionExecution 按 sessionID 全局调度，System Context 用 Context Source/Context Epoch 代数化管理；③ 商业化形态——MIT 核心 + Electron 桌面（BETA）+ enterprise 包 + control-plane/identity/stats 云组件。另可借鉴：事件投影 projectors、工具注册表与输出截断、Electron preload IPC + i18n 分层（对照 Tauri 迁移）。
 - **关键目录要点**：
-  - `packages/core/src/session` → 会话管理（prompt 准入/执行分离、compaction）——新功能借鉴重点
-  - `packages/core/src/plugin/loader.ts` → 插件装载管线与 Hooks 生命周期
+  - `packages/core/src/session` → 会话管理（prompt 准入/执行分离、compaction、Context Epoch）——新功能借鉴重点
+  - `packages/opencode/src/plugin/loader.ts` → 插件装载管线与 Hooks 生命周期（注：在 opencode 包内，非 core）
   - `packages/app` → 产品 Web 端（SolidJS，被 Electron 壳复用；`packages/web` 只是营销站）
   - `packages/enterprise` → 商业化扩展形态
 - **调研状态**：已完成
