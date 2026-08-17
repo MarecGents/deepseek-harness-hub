@@ -357,11 +357,27 @@ async function main() {
       log(`booting via hub exe: ${appExe} ${dshEntry} web --port 0`)
       child = spawn(appExe, [dshEntry, 'web', '--port', '0'], spawnOpts)
     } catch (error) {
-      log(`hub exe path unavailable (${error.message}); using cmd shim`)
-      child = spawn(process.env.ComSpec, ['/d', '/s', '/c', `"${dshCmd}" web --port 0`], {
-        ...spawnOpts,
-        windowsVerbatimArguments: true,
-      })
+      // Fallback without a cmd.exe wrapper: a `cmd /c "dsh.cmd"` zombie can
+      // outlive the dsh process and hold the single-instance lock — the
+      // "已在运行但无窗口" symptom fixed in the mg-dsh-desktop downstream.
+      // Prefer a direct child (Node runtime + JS entry, or the explicit
+      // binary), and keep the cmd shim only as the last resort for exotic
+      // layouts that resolve to neither.
+      log(`hub exe path unavailable (${error.message}); falling back to direct spawn`)
+      const fallbackEntry = resolveDshEntry(dshCmd)
+      if (fallbackEntry !== null) {
+        log(`boot fallback via node: ${process.execPath} ${fallbackEntry} web --port 0`)
+        child = spawn(process.execPath, [fallbackEntry, 'web', '--port', '0'], spawnOpts)
+      } else if (dshCmd.toLowerCase().endsWith('.exe')) {
+        log(`boot fallback via exe: ${dshCmd} web --port 0`)
+        child = spawn(dshCmd, ['web', '--port', '0'], spawnOpts)
+      } else {
+        log(`no direct fallback for ${dshCmd}; using cmd shim last resort`)
+        child = spawn(process.env.ComSpec, ['/d', '/s', '/c', `"${dshCmd}" web --port 0`], {
+          ...spawnOpts,
+          windowsVerbatimArguments: true,
+        })
+      }
     }
     const logStream = (chunk) => {
       try { appendFileSync(LOG_FILE, chunk.toString()) } catch { /* ignore */ }
