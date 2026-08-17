@@ -38,6 +38,7 @@ fn state_path() -> PathBuf {
 }
 
 /// 校验下界（防止 0 尺寸退化——SOP T2.2 / 关键踩坑记录 #7）。
+#[allow(dead_code)] // M4 起用于验证持久化格式兼容性
 fn validate(_state: &WindowState) -> bool {
     // 只关心 maximized 标志有效（width/height 是参考值，非恢复用）。
     // maximized 布尔值天然有效（serde 默认 false）。
@@ -45,6 +46,7 @@ fn validate(_state: &WindowState) -> bool {
 }
 
 /// 加载窗口状态（rc.14 遗留兼容：文件不存在则返回默认）。
+#[allow(dead_code)] // M2 验证用；M4 sidecar 启动后窗口走 External URL 不再需要读状态恢复
 pub fn load_window_state() -> WindowState {
     let path = state_path();
     let Ok(content) = std::fs::read_to_string(&path) else {

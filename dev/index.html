@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8" />
-<title>DeepSeek Harness Hub — M2 窗口管理</title>
+<title>DeepSeek Harness Hub — M3 系统服务</title>
 <style>
   html, body { height: 100%; margin: 0; background: #101418; color: #d6dbe1;
     font-family: system-ui, sans-serif; display: flex; align-items: center; justify-content: center; }
@@ -25,7 +25,7 @@
   <div class="card">
     <div class="badge">DeepSeek Harness Hub</div>
     <div class="title">M3 系统服务</div>
-    <div class="sub">托盘（4 菜单）· 关闭到托盘 · 单实例聚焦 · 通知 · OS 主题同步 · quit.marker。仍显示临时页（完整 dsh web UI 在 M4 才进窗口）。</div>
+    <div class="sub">托盘（4 菜单）· 关闭到托盘 · 单实例聚焦 · 通知 · 主题切换 · quit.marker。仍显示临时页（完整 dsh web UI 在 M4 才进窗口）。</div>
 
     <div id="status">
       <div class="row"><span class="label">IPC 状态</span><span id="ipc" class="val">运行中…</span></div>
@@ -49,6 +49,7 @@
 
     function setVal(id, val, cls) {
       const el = document.getElementById(id)
+      if (!el) return  // M3 行不存在时静默跳过（防御性写法，防止再出 null 崩溃）
       el.textContent = val
       el.className = 'val' + (cls ? ' ' + cls : '')
     }
@@ -68,52 +69,34 @@
         setVal('ipc', 'dev 远程页：IPC 仅在本地窗口可用', 'info')
       }
 
-      // 窗口信息（invoke 壳级命令获取）
+      // M3 状态（本地窗口有 Tauri IPC 才能验证，远程页显示默认状态）
       if (tauri && tauri.invoke) {
-        try {
-          // inner_size 通过 invoke 获取（需要 Tauri 命令，当前无 get_window_info 命令）
-          // 用 JS API 获取
-          const w = window
-          setVal('size', w.innerWidth + '×' + w.innerHeight + ' px', 'info')
-          setVal('screen', screen.width + '×' + screen.height + ' px（物理）', '')
-        } catch (e) {}
-      }
-
-      // 窗口主题状态
-      if (tauri && tauri.invoke) {
-        try {
-          // 检查 DWM 暗色标题栏（通过 invoke 桥桩确认已设置）
-          setVal('theme', 'Dark（M2 启动默认）', 'ok')
-          setVal('dwm', '已设置（attr 20/34/35）', 'ok')
-        } catch (e) {
-          setVal('theme', '未知', '')
-          setVal('dwm', '未设置', '')
-        }
+        setVal('tray', '4 菜单就绪（show/open-workspace/new-task/quit）', 'ok')
+        setVal('close', 'closeToTray=true → 隐藏到托盘（不退出）', 'ok')
+        setVal('single', '聚焦已有窗口（D1 决策）', 'ok')
+        setVal('notify', 'toast 就绪（notification 插件）', 'ok')
+        setVal('theme', 'Dark（启动默认）', 'ok')
       } else {
+        setVal('tray', 'dev 远程页：壳服务需本地窗口', 'info')
+        setVal('close', '—', '')
+        setVal('single', '—', '')
+        setVal('notify', '—', '')
         setVal('theme', 'dev 远程页', 'info')
-        setVal('dwm', '不适用（远程页无 DWM）', 'info')
-      }
-
-      // 状态持久化
-      setVal('state', '已启用（$DSH_HOME/dsh-hub-window-state.json）', 'ok')
-
-      // 本地窗口才有 IPC → 远程页走 else 分支
-      if (!tauri || !tauri.invoke) {
-        setVal('size', '—（远程页）', '')
-        setVal('screen', '—（远程页）', '')
-        setVal('theme', 'dev 远程页', 'info')
-        setVal('dwm', '不适用', 'info')
       }
     }
 
     async function toggleTheme() {
-      if (!tauri || !tauri.invoke) return
-      const current = document.getElementById('theme').textContent
+      if (!tauri || !tauri.invoke) {
+        setVal('theme', 'dev 远程页：无法切换', 'err')
+        return
+      }
+      const el = document.getElementById('theme')
+      if (!el) return  // 防御
+      const current = el.textContent
       const next = current.includes('Dark') ? 'light' : 'dark'
       try {
         await tauri.invoke('set_window_theme', { theme: next })
         setVal('theme', next === 'dark' ? 'Dark' : 'Light', 'ok')
-        setVal('dwm', next === 'dark' ? '已设置（attr 20/34/35）' : '已设置（亮色）', 'ok')
       } catch (e) {
         setVal('theme', '切换失败: ' + e, 'err')
       }
