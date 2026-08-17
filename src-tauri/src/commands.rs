@@ -94,3 +94,29 @@ pub fn get_workspace_path() -> String {
     std::env::var("DSH_HUB_WORKSPACE")
         .unwrap_or_else(|_| crate::state::dsh_home().to_string_lossy().to_string())
 }
+
+/// 托盘菜单「退出」（自绘 HTML 菜单 → invoke 上行）。
+/// 写 quit.marker + 退出（launcher quit 语义；不依赖事件系统）。
+#[tauri::command]
+pub fn tray_quit() -> Result<(), String> {
+    log::info!("tray_quit invoked from page");
+    crate::quit::write_quit_marker();
+    std::process::exit(0);
+}
+
+/// 打开工作区目录（client 托盘「打开工作区」→ invoke 上行）。
+/// 平台命令：Windows explorer / macOS open / Linux xdg-open。
+#[tauri::command]
+pub fn open_workspace_path(path: String) -> Result<(), String> {
+    log::info!("open_workspace_path invoked from page: {path}");
+    if path.is_empty() {
+        return Err("empty workspace path".to_string());
+    }
+    #[cfg(target_os = "windows")]
+    let result = std::process::Command::new("explorer").arg(&path).spawn();
+    #[cfg(target_os = "macos")]
+    let result = std::process::Command::new("open").arg(&path).spawn();
+    #[cfg(target_os = "linux")]
+    let result = std::process::Command::new("xdg-open").arg(&path).spawn();
+    result.map(|_| ()).map_err(|e| e.to_string())
+}

@@ -23,6 +23,8 @@ mod notify;
 mod quit;
 mod node;
 mod commands;
+#[cfg(debug_assertions)]
+mod e2e;
 
 use log::{info, warn};
 use tauri::{Listener, Manager};
@@ -67,13 +69,23 @@ fn wait_for_ready(port: u16) -> Result<(), String> {
 
 /// 读取 closeToTray 配置（M3 直读 $DSH_HOME/dsh-hub/config.json）。
 fn read_close_to_tray() -> bool {
+    read_shell_config_bool("closeToTray", true)
+}
+
+/// 读取 minimizeToTray 配置（默认 true，与 rc.14 一致）。
+fn read_minimize_to_tray() -> bool {
+    read_shell_config_bool("minimizeToTray", true)
+}
+
+/// 读 $DSH_HOME/dsh-hub/config.json 的布尔字段。
+fn read_shell_config_bool(key: &str, default: bool) -> bool {
     let config_path = state::dsh_home().join("dsh-hub").join("config.json");
     match std::fs::read_to_string(&config_path) {
         Ok(content) => serde_json::from_str::<serde_json::Value>(&content)
             .ok()
-            .and_then(|json| json.get("closeToTray").and_then(|v| v.as_bool()))
-            .unwrap_or(true),
-        Err(_) => true,
+            .and_then(|json| json.get(key).and_then(|v| v.as_bool()))
+            .unwrap_or(default),
+        Err(_) => default,
     }
 }
 
@@ -98,6 +110,8 @@ pub fn run() {
         // T3.3：单实例插件。
         .plugin(single_instance::single_instance_plugin())
         .plugin(tauri_plugin_shell::init())
+        // T3.5：通知插件（notify.rs 经 NotificationExt 弹系统 toast）。
+        .plugin(tauri_plugin_notification::init())
         .invoke_handler(tauri::generate_handler![
             ping,
             commands::diag_report,
@@ -107,6 +121,8 @@ pub fn run() {
             commands::window_minimize,
             commands::window_toggle_maximize,
             commands::window_close,
+            commands::tray_quit,
+            commands::open_workspace_path,
             notify::notify_task_complete,
         ])
         .setup(|app| {
@@ -179,24 +195,85 @@ pub fn run() {
                 window.__DSH_SHELL = 'tauri';
                 window.__DSH_HUB_LAUNCHED = '1';
 
-                // ── Tauri 事件 → 页面 CustomEvent 桥（托盘菜单 mg:shell-command）──
-                // tray.rs 用 app.emit("mg:shell-command", payload) 下行；
-                // dsh-hub client 监听 window 'mg:shell-command' CustomEvent。
-                // __mgShellReady 让壳的重试探针直到此监听就位。
-                if (window.__TAURI_INTERNALS__ && window.__TAURI_INTERNALS__.event) {
-                    window.__TAURI_INTERNALS__.event.listen('mg:shell-command', (e) => {
-                        window.dispatchEvent(new CustomEvent('mg:shell-command', { detail: e.payload }));
-                    }).catch(() => {});
-                    window.__TAURI_INTERNALS__.event.listen('mg:workspace-path', (e) => {
-                        window.dispatchEvent(new CustomEvent('mg:workspace-path', { detail: e.payload }));
-                    }).catch(() => {});
-                }
+                // ── 通道决策（D-2 实测）──
+                // `__TAURI_INTERNALS__` 只注入 invoke/transformCallback/runCallback/
+                // plugins，**没有 `.event` 对象**（事件 API 在 @tauri-apps/api 包里，
+                // 页面不打包它）——event.listen/emit 全链路不可用（E2E 实测：
+                // Rust app.emit、页面 emit 均不送达）。因此壳桥只用两个已验证通道：
+                //   页面 → Rust：invoke 命令（ACL allow-*）
+                //   Rust → 页面：win.eval（tray.rs 右键 → __mgTrayMenuToggle）
+                // 菜单项 打开工作区/新建任务 = 同页 CustomEvent（client 已监听）；
+                // 退出 = invoke('tray_quit')。__mgShellReady 标记保留（client 设置）。
 
                 // ── 自绘标题栏（Tauri frameless 窗口窗口控制）──
-                if (document.readyState === 'loading') {
-                    document.addEventListener('DOMContentLoaded', injectTitleBar);
-                } else {
+                // 皮肤跟随：body（浅色皮肤）→ 深色标题栏；body[data-ds-dark-theme]
+                // （深色皮肤）→ 浅色标题栏。transition 保证切换快速且人眼无感。
+                //
+                // 注意：初始化脚本在「文档创建时」（HTML 尚未解析）执行——此时
+                // document.head/body 均为 null，任何解析期 DOM 访问都会抛错杀死
+                // 整个脚本（标题栏/菜单全失效）。故样式注入与标题栏构建全部推迟
+                // 到 DOMContentLoaded（initShell）。
+                function ensureShellStyles() {
+                    if (!document.getElementById('dsh-hub-titlebar-style')) {
+                        const st = document.createElement('style');
+                        st.id = 'dsh-hub-titlebar-style';
+                        st.textContent = [
+                            '#dsh-hub-titlebar{position:fixed;top:0;left:0;right:0;height:32px;z-index:99999;',
+                            'display:flex;align-items:center;justify-content:space-between;user-select:none;',
+                            '-webkit-user-select:none;pointer-events:auto;',
+                            'background:#181c24;color:#8b9bb5;border-bottom:1px solid #252a36;',
+                            'transition:background .2s ease,color .2s ease,border-color .2s ease;}',
+                            '#dsh-hub-titlebar .tb-title{padding-left:12px;font-size:12px;color:inherit;',
+                            'font-family:system-ui,sans-serif;flex:1;-webkit-app-region:drag;height:100%;',
+                            'display:flex;align-items:center;cursor:default;}',
+                            '#dsh-hub-titlebar .tb-controls{display:flex;height:100%;-webkit-app-region:no-drag;}',
+                            '#dsh-hub-titlebar .tb-btn{width:46px;height:100%;border:none;background:transparent;',
+                            'color:inherit;font-size:14px;cursor:pointer;display:flex;align-items:center;',
+                            'justify-content:center;transition:background .15s;font-family:system-ui,sans-serif;}',
+                            '#dsh-hub-titlebar .tb-btn:hover{background:rgba(128,128,128,.18);}',
+                            // 深色皮肤：标题栏反转为浅色（深色内容 + 浅色 chrome，对比清晰）。
+                            'body[data-ds-dark-theme] #dsh-hub-titlebar{background:#f0f2f7;color:#3a4356;border-bottom-color:#d5dae3;}',
+                            'body[data-ds-dark-theme] #dsh-hub-titlebar .tb-btn:hover{background:rgba(0,0,0,.08);}',
+                        ].join('');
+                        document.head.appendChild(st);
+                    }
+                    if (!document.getElementById('dsh-hub-tray-menu-style')) {
+                        const mst = document.createElement('style');
+                        mst.id = 'dsh-hub-tray-menu-style';
+                        mst.textContent = [
+                            '#dsh-hub-tray-menu{position:fixed;right:12px;bottom:40px;z-index:100000;',
+                            'width:200px;border-radius:10px;padding:6px;display:none;',
+                            'background:#181c24;color:#8b9bb5;border:1px solid #252a36;',
+                            'box-shadow:0 8px 24px rgba(0,0,0,.4);font-family:system-ui,sans-serif;',
+                            'font-size:13px;user-select:none;-webkit-user-select:none;',
+                            'transition:background .2s ease,color .2s ease,border-color .2s ease;}',
+                            '#dsh-hub-tray-menu.mg-open{display:block;}',
+                            '#dsh-hub-tray-menu .tm-item{display:flex;align-items:center;height:34px;',
+                            'padding:0 12px;border-radius:6px;cursor:pointer;color:inherit;gap:8px;',
+                            'transition:background .15s;}',
+                            '#dsh-hub-tray-menu .tm-item:hover{background:rgba(128,128,128,.16);}',
+                            '#dsh-hub-tray-menu .tm-item .tm-glyph{width:16px;text-align:center;opacity:.75;}',
+                            '#dsh-hub-tray-menu .tm-sep{height:1px;margin:5px 8px;background:rgba(128,128,128,.18);}',
+                            '#dsh-hub-tray-menu .tm-quit:hover{background:rgba(200,60,60,.22);color:#ff7b7b;}',
+                            // 深色皮肤：菜单反转为浅色（与标题栏同色系 chrome 反转）。
+                            'body[data-ds-dark-theme] #dsh-hub-tray-menu{background:#f0f2f7;color:#3a4356;border-color:#d5dae3;}',
+                            'body[data-ds-dark-theme] #dsh-hub-tray-menu .tm-item:hover{background:rgba(0,0,0,.08);}',
+                            'body[data-ds-dark-theme] #dsh-hub-tray-menu .tm-sep{background:rgba(0,0,0,.12);}',
+                            'body[data-ds-dark-theme] #dsh-hub-tray-menu .tm-quit:hover{background:rgba(200,60,60,.16);color:#c03038;}',
+                        ].join('');
+                        document.head.appendChild(mst);
+                    }
+                }
+
+                function initShell() {
+                    ensureShellStyles();
                     injectTitleBar();
+                }
+
+                if (document.readyState === 'loading') {
+                    document.addEventListener('DOMContentLoaded', initShell);
+                } else {
+                    initShell();
                 }
 
                 function injectTitleBar() {
@@ -204,33 +281,14 @@ pub fn run() {
 
                     const bar = document.createElement('div');
                     bar.id = 'dsh-hub-titlebar';
-                    bar.style.cssText = [
-                        'position:fixed', 'top:0', 'left:0', 'right:0', 'height:32px',
-                        'z-index:99999', 'display:flex', 'align-items:center',
-                        'justify-content:space-between', 'background:#181c24',
-                        'border-bottom:1px solid #252a36', 'user-select:none',
-                        '-webkit-user-select:none', 'pointer-events:auto',
-                    ].join(';');
 
                     const title = document.createElement('div');
+                    title.className = 'tb-title';
                     title.textContent = 'DeepSeek Harness Hub';
-                    title.style.cssText = [
-                        'padding-left:12px', 'font-size:12px', 'color:#8b9bb5',
-                        'font-family:system-ui,sans-serif', 'flex:1',
-                        '-webkit-app-region:drag', 'height:100%', 'display:flex',
-                        'align-items:center', 'cursor:default',
-                    ].join(';');
                     bar.appendChild(title);
 
                     const controls = document.createElement('div');
-                    controls.style.cssText = 'display:flex;height:100%;-webkit-app-region:no-drag;';
-
-                    const btnStyle = [
-                        'width:46px', 'height:100%', 'border:none', 'background:transparent',
-                        'color:#8b9bb5', 'font-size:14px', 'cursor:pointer', 'display:flex',
-                        'align-items:center', 'justify-content:center',
-                        'transition:background 0.15s', 'font-family:system-ui,sans-serif',
-                    ].join(';');
+                    controls.className = 'tb-controls';
 
                     const invoke = (cmd) => {
                         if (window.__TAURI_INTERNALS__ && window.__TAURI_INTERNALS__.invoke) {
@@ -242,17 +300,14 @@ pub fn run() {
 
                     function makeBtn(label, cmd) {
                         const b = document.createElement('button');
+                        b.className = 'tb-btn';
                         b.textContent = label;
-                        b.style.cssText = btnStyle;
-                        b.onmouseenter = () => { b.style.background = '#252a36' };
-                        b.onmouseleave = () => { b.style.background = 'transparent' };
                         b.onclick = () => invoke(cmd);
                         return b;
                     }
 
                     controls.appendChild(makeBtn('─', 'window_minimize'));
-                    const maxBtn = makeBtn('□', 'window_toggle_maximize');
-                    controls.appendChild(maxBtn);
+                    controls.appendChild(makeBtn('□', 'window_toggle_maximize'));
                     controls.appendChild(makeBtn('✕', 'window_close'));
 
                     bar.appendChild(controls);
@@ -264,6 +319,76 @@ pub fn run() {
                         root.style.boxSizing = 'border-box';
                     }
                 }
+
+                // ── 自绘托盘菜单（原生 Tauri 托盘菜单无法自定义样式 → 自绘 HTML 浮层）──
+                // tray.rs 右键 → app.emit("mg:tray-menu-open") → 此处打开菜单浮层。
+                // 皮肤跟随：与标题栏同色系双块（浅色皮肤→深色菜单；深色皮肤→浅色菜单），
+                // 背景/文字/边框均跟随皮肤，transition 保证切换平滑。
+                // 样式注入见 ensureShellStyles()（DOMContentLoaded 后执行）。
+
+                function hideTrayMenu() {
+                    const menu = document.getElementById('dsh-hub-tray-menu');
+                    if (menu) menu.classList.remove('mg-open');
+                }
+
+                function openTrayMenu() {
+                    let menu = document.getElementById('dsh-hub-tray-menu');
+                    if (!menu) {
+                        menu = document.createElement('div');
+                        menu.id = 'dsh-hub-tray-menu';
+                        function item(glyph, label, action) {
+                            const el = document.createElement('div');
+                            el.className = 'tm-item';
+                            const g = document.createElement('span');
+                            g.className = 'tm-glyph';
+                            g.textContent = glyph;
+                            const t = document.createElement('span');
+                            t.textContent = label;
+                            el.appendChild(g);
+                            el.appendChild(t);
+                            el.onclick = () => { hideTrayMenu(); action(); };
+                            return el;
+                        }
+
+                        // 「显示主界面」= 关闭菜单（窗口已由托盘点击显示/聚焦）。
+                        menu.appendChild(item('▣', '显示主界面', () => {}));
+                        // 打开工作区 / 新建任务：与原生菜单事件同一路径
+                        // （CustomEvent mg:shell-command → dsh-hub client 处理）。
+                        menu.appendChild(item('▤', '打开工作区', () => {
+                            window.dispatchEvent(new CustomEvent('mg:shell-command', { detail: { command: 'open-workspace' } }));
+                        }));
+                        menu.appendChild(item('＋', '新建任务', () => {
+                            window.dispatchEvent(new CustomEvent('mg:shell-command', { detail: { command: 'new-task' } }));
+                        }));
+                        const sep = document.createElement('div');
+                        sep.className = 'tm-sep';
+                        menu.appendChild(sep);
+                        const quitItem = item('✕', '退出', () => {
+                            // 上行 invoke('tray_quit') → Rust 写 quit.marker + 退出。
+                            if (window.__TAURI_INTERNALS__ && window.__TAURI_INTERNALS__.invoke) {
+                                window.__TAURI_INTERNALS__.invoke('tray_quit').catch(() => {});
+                            }
+                        });
+                        quitItem.classList.add('tm-quit');
+                        menu.appendChild(quitItem);
+
+                        document.body.appendChild(menu);
+                        // 点击菜单外部关闭（capture 阶段：先于 item.onclick 判断，菜单内点击不误关）。
+                        document.addEventListener('click', (e) => {
+                            if (!menu.contains(e.target)) hideTrayMenu();
+                        }, true);
+                    }
+                    // 切换语义：已开 → 关闭（右键再次触发时收起）。
+                    if (menu.classList.contains('mg-open')) {
+                        menu.classList.remove('mg-open');
+                        return;
+                    }
+                    menu.classList.add('mg-open');
+                }
+
+                // tray.rs 右键 → win.eval("window.__mgTrayMenuToggle()")（Rust→页面
+                // 用 eval，见 D-2 通道决策；菜单构建/打开逻辑独立，无事件依赖）。
+                window.__mgTrayMenuToggle = openTrayMenu;
             "#;
 
             let win = tauri::WebviewWindowBuilder::new(app, "main", external_url)
@@ -297,49 +422,40 @@ pub fn run() {
             // Rust 侧 win.listen 不满足该条件，窗口会真正关闭导致进程退出。
             let win_handle = win.clone();
             let close_to_tray = read_close_to_tray();
+            let minimize_to_tray = read_minimize_to_tray();
             let on_close_win = win.clone();
+            let on_min_win = win.clone();
             win.on_window_event(move |event| {
-                if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                    if close_to_tray {
-                        api.prevent_close();
-                        let _ = on_close_win.hide();
-                        info!("close-requested: closeToTray=true, prevent_close + hiding window");
-                    } else {
-                        quit::write_quit_marker();
-                        info!("close-requested: closeToTray=false, writing quit.marker and exiting");
-                        std::process::exit(0);
+                match event {
+                    tauri::WindowEvent::CloseRequested { api, .. } => {
+                        if close_to_tray {
+                            api.prevent_close();
+                            let _ = on_close_win.hide();
+                            info!("close-requested: closeToTray=true, prevent_close + hiding window");
+                        } else {
+                            quit::write_quit_marker();
+                            info!("close-requested: closeToTray=false, writing quit.marker and exiting");
+                            std::process::exit(0);
+                        }
                     }
+                    // 最小化到托盘：Tauri 无独立 Minimized 事件，用 Resized + is_minimized 检测。
+                    tauri::WindowEvent::Resized(_)
+                        if minimize_to_tray && on_min_win.is_minimized().unwrap_or(false) => {
+                            let _ = on_min_win.hide();
+                            info!("resized: minimized → hide to tray (minimizeToTray=true)");
+                        }
+                    _ => {}
                 }
             });
             let _ = win_handle;
 
-            // Tray "Open workspace" 路径回传：client 经 __TAURI_INTERNALS__.event.emit
-            // 上行 mg:workspace-path → 此处监听 → 平台命令打开 Explorer（跨平台，避免
-            // tauri-plugin-shell open 弃用警告）。
-            {
-                app.listen("mg:workspace-path", move |event| {
-                    let path: Option<String> = serde_json::from_str::<serde_json::Value>(event.payload()).ok()
-                        .and_then(|v| v.get("path").and_then(|p| p.as_str()).map(String::from))
-                        .filter(|p| !p.is_empty());
-                    if let Some(path) = path {
-                        info!("tray: open-workspace path received: {path}");
-                        #[cfg(target_os = "windows")]
-                        {
-                            let _ = std::process::Command::new("explorer").arg(&path).spawn();
-                        }
-                        #[cfg(target_os = "macos")]
-                        {
-                            let _ = std::process::Command::new("open").arg(&path).spawn();
-                        }
-                        #[cfg(target_os = "linux")]
-                        {
-                            let _ = std::process::Command::new("xdg-open").arg(&path).spawn();
-                        }
-                    } else {
-                        info!("tray: open-workspace path empty, skipped");
-                    }
-                });
-            }
+            // Tray "Open workspace" 路径回传：client 经 invoke('open_workspace_path')
+            // 上行（D-2：事件系统在 remote origin 不可用，页面→Rust 走命令）。
+            // 平台打开命令在 commands::open_workspace_path 实现。
+
+            // E2E 验证钩子（仅 debug 构建，DSH_HUB_E2E=1 启用；见 e2e.rs）。
+            #[cfg(debug_assertions)]
+            e2e::maybe_run_e2e(win.clone());
 
             info!("dsh-hub shell started (M4: full dsh web UI on port {port})");
             Ok(())

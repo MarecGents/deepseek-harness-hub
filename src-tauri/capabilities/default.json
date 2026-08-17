@@ -32,6 +32,8 @@
     "allow-window-minimize",
     "allow-window-toggle-maximize",
     "allow-window-close",
+    "allow-tray-quit",
+    "allow-open-workspace-path",
     "allow-notify-task-complete"
   ]
 }

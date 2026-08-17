@@ -13,6 +13,8 @@ fn main() {
                 "window_minimize",
                 "window_toggle_maximize",
                 "window_close",
+                "tray_quit",
+                "open_workspace_path",
                 "notify_task_complete",
             ]),
         ),

@@ -136,7 +136,8 @@ function handleShellCommand(ctx: ClientContext, event: Event): void {
   }
   if (detail?.command === 'open-workspace') {
     // Tray "Open workspace": report the current workspace path to the shell.
-    // Tauri 壳：经 __TAURI_INTERNALS__.event.emit 上行 → Rust app.listen → Explorer。
+    // Tauri 壳：invoke('open_workspace_path') → Rust 平台命令打开 Explorer
+    //   （D-2 实测：__TAURI_INTERNALS__ 无 event 对象，页面→Rust 走命令）。
     // WebView2 壳：window.ipc.postMessage（rc.14 路径，保留）。
     const path = currentWorkspace(ctx)?.path
     const ipc = (window as unknown as { ipc?: { postMessage(message: string): void } }).ipc
@@ -145,9 +146,9 @@ function handleShellCommand(ctx: ClientContext, event: Event): void {
     } else {
       try {
         const internals = (window as unknown as {
-          __TAURI_INTERNALS__?: { event?: { emit?: (e: string, p: unknown) => Promise<void> } }
+          __TAURI_INTERNALS__?: { invoke?: (c: string, a?: Record<string, unknown>) => Promise<unknown> }
         }).__TAURI_INTERNALS__
-        internals?.event?.emit?.('mg:workspace-path', { path: path ?? '' }).catch?.(() => {})
+        internals?.invoke?.('open_workspace_path', { path: path ?? '' }).catch?.(() => {})
       } catch {
         // Best-effort; the shell falls back to its own cwd tracking.
       }

@@ -11,7 +11,7 @@
  * 退出码：0 = 装配成功（或已就绪），1 = 装配失败
  */
 
-import { existsSync, lstatSync, mkdirSync, readFileSync, readlinkSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { lstatSync, mkdirSync, readFileSync, readlinkSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { homedir } from 'node:os'
 
@@ -101,15 +101,14 @@ function assemble() {
     }
   } catch {}
 
-  // 5. Copy cordis.patch.yml into profile (dsh reads it from profile root).
-  const patchSrc = join(packageRoot, 'cordis.patch.yml')
-  const patchDst = join(profileDir, 'cordis.patch.yml')
-  if (existsSync(patchSrc) && !existsSync(patchDst)) {
-    try {
-      writeFileSync(patchDst, readFileSync(patchSrc))
-      log(`copied cordis.patch.yml to profile root`)
-    } catch {}
-  }
+  // 5. NOTE: 不复制 cordis.patch.yml 到 profile。
+  //    包的 cordis.patch.yml 含 `- insert: - id: dsh-hub` 行；bundles 条目
+  //    （步骤 2）与 patch insert 是同一插件的两条装载路径，同时存在 =
+  //    dsh 启动即崩 "duplicate loader entry id: dsh-hub"。
+  //    launcher.ensureBundleInstalled（bin/launcher.mjs）从不复制 patch，
+  //    bundles 是唯一装载机制（rc.14+ 实测），此处保持一致。
+  //    若用户 profile 需要自定义 patch（如 MCP 配置），自行维护
+  //    profiles/web/cordis.patch.yml，本脚本不覆盖。
 
   log('assembly complete')
   return true

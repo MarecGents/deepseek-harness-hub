@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-tray-quit"
+description = "Enables the tray_quit command without any pre-configured scope."
+commands.allow = ["tray_quit"]
+
+[[permission]]
+identifier = "deny-tray-quit"
+description = "Denies the tray_quit command without any pre-configured scope."
+commands.deny = ["tray_quit"]
