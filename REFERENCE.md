@@ -35,12 +35,13 @@
 
 ## 4. cordis-[dsh-plugin]
 - **文件目录**：`E:\Workdata\Git_repositories\deepseek\reference\cordis-[dsh-plugin]`
-- **描述**：Cordis 官方 monorepo（cordiverse/cordis，main @ 8cc9e33，9 包）——dsh-hub 插件层依赖的 Cordis v4 核心实现（`cordis@4.0.0-rc.8`，API 未稳定）。定位「时空可组合性元框架」：**Fiber 管时间维（插件生命周期）、Context 的 isolate/intercept 管空间维（上下文作用域）**。核心：`new Context()` 建根，`ctx.plugin(fn|class|{apply}, config)` 装配插件，每个插件实例是一个 Fiber，生命周期由 `ctx.effect()` 管理（dispose 可同步/异步/生成器，epoch 驱动状态机自动卸载/重载）；事件系统提供 `on/once/emit/parallel/serial/bail/waterfall` 六种派发 + `internal/*` 扩展点；服务经 `Service` 基类 + `ctx.provide/reflect` 注册，Proxy 化 Context 惰性解析 + `@Inject` 声明依赖，服务上下线自动触发依赖 fiber 刷新；装配由 `plugin-loader`（EntryTree 条目管理）+ `plugin-include`（YAML 配置 + 按 id 打 patches：override/insert/disabled、原子写回）构成——**dsh-hub 的 profile/cordis.patch.yml/dev_fix_patch 机制是它的直系对应**，`include/tests/patch.spec.ts` 可当行为规范读；`plugin-hmr` 提供插件级热重载。参考方式：查 API 直接读 `packages/core/src/*.ts`，以 `packages/core/tests/*.spec.ts` 为可运行范例；装配/配置写法看 `loader/src/config/entry.ts` 与 `include/`。⚠️ 仓库无 docs/（README 链接的 cordis-primer 由 dsh-hub 自家托管，可作配套文档源）。
+- **描述**：Cordis 官方 monorepo（cordiverse/cordis，main @ 8cc9e33，9 包）——dsh-hub 插件层依赖的 Cordis v4 核心实现（`cordis@4.0.0-rc.8`，API 未稳定，peer 依赖 loader/include）。定位「时空可组合性元框架」：**Fiber 管时间维（插件生命周期）、Context 的 isolate/intercept 管空间维（上下文作用域）**。核心：`new Context()` 建根，`ctx.plugin(fn|class|{apply}, config)` 装配插件，每个插件实例是一个 Fiber，生命周期由 `ctx.effect(execute, label)` 管理（dispose 可同步/异步/生成器），Fiber 经 epoch 与依赖（inject）驱动六态状态机（PENDING/LOADING/ACTIVE/FAILED/DISPOSED/UNLOADING）自动卸载/重载；事件系统提供 `on/once/emit/parallel/serial/bail/waterfall` 六种派发 + `internal/plugin|service|update|listener|dispatch` 扩展点；服务经 `Service` 基类 + `ctx.provide/reflect`（get/set/provide/mixin/accessor）注册，Proxy 化 Context 惰性解析（`ctx.get`）+ `@Inject` 声明依赖，服务上下线自动触发依赖 fiber 刷新；装配由 `plugin-loader`（Entry/EntryTree/EntryGroup：按 id 管理、baseUrl 相对 import、`cordis:` 内置前缀、isolate LocalRealm/GlobalRealm）+ `plugin-include`（YAML 配置 + 按 id patches：override/insert/disabled、`.tmp+rename` 原子写回、只读检测）构成——**dsh-hub 的 profile/cordis.patch.yml/dev_fix_patch 机制是它的直系对应**（`loader.create`/`ctx.loader` 即源于 loader 包），`include/tests/patch.spec.ts` 可当行为规范读；`plugin-hmr` 基于 Node ModuleLoader 内部钩子做插件级热重载；`timer` 提供 `ctx.timeout/interval/throttle/debounce`（effect 式自动清理）。参考方式：查 API 直接读 `packages/core/src/*.ts`（9 文件即全部核心 API：fiber/events/context/registry/service/reflect/logger），以 `packages/core/tests/*.spec.ts`（plugin/service/events/dispose/associate）为可运行范例；装配/配置写法看 `loader/src/config/entry.ts` 与 `include/`。⚠️ 仓库无 docs/（README 链接的 cordis-primer 由 deepseek-harness.github.io 托管，可作配套文档源）。
 - **关键目录要点**：
-  - `packages/core/src/` → 内核全部源码（fiber.ts 生命周期状态机、events.ts 六种派发、registry.ts 插件/注入、context.ts Proxy 化 Context）
-  - `packages/core/tests/` → 每个概念的可用示例（比 README 实用）
-  - `packages/loader/src/config/` → Entry/EntryTree/EntryGroup（按 id 管理、baseUrl、`cordis:` 前缀、isolate realm）
-  - `packages/include/` → 配置驱动 + patches（override/insert/disabled、原子写回）
+  - `packages/core/src/` → 内核全部源码（fiber.ts 生命周期状态机 + FiberState、events.ts 六种派发、registry.ts Plugin 三种形态 + @Inject、context.ts Proxy + isolate/intercept、service.ts/reflect.ts）
+  - `packages/core/tests/` → 每个概念的可用示例（plugin/service/events/dispose/associate.spec.ts，比 README 实用）
+  - `packages/loader/src/config/` → Entry/EntryTree/EntryGroup（按 id 管理、baseUrl、`cordis:` 前缀、isolate realm）+ internal.ts（Node ModuleLoader 钩子）
+  - `packages/include/` → 配置驱动 + patches（override/insert/disabled、.tmp+rename 原子写回、只读检测；patch.spec.ts 当行为规范）
+  - `packages/timer` / `hmr` / `create` / `utils` → ctx 定时器（effect 式清理）/ 插件热重载 / 脚手架 / effect 化 List
 - **调研状态**：已完成
 
 ## 5. DeepSeek-Reasonix-[ui,plugin]
