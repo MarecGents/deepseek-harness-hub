@@ -55,11 +55,13 @@
 
 ## 6. DSH-better-sidebar-[dsh-ui,dsh-plugin]
 - **文件目录**：`E:\Workdata\Git_repositories\deepseek\reference\DSH-better-sidebar-[dsh-ui,dsh-plugin]`
-- **描述**：已发布 npm 的官方外生态 dsh 插件（v0.12.3，源码态）。单包 host/client 双半结构：`cordis.patch.yml` 单条 insert 装配（`better-sidebar`），双安装通道（官方 profile bundle 与 plugin-registry），双 client bundle 同源编译；对外暴露 `ctx.betterSidebar` 服务（`registerTab`/`registerFileViewer`），内置 7 tab + 6 viewer 也走同一服务（吃狗粮）。UI：React 18 + CSS Modules，令牌驱动（`--dsw-alias-*`），官方 client 包走模块表 externals；侧边栏 DOM portal 挂 `document.body`（`[data-dsh-better-sidebar]` 锚点），slots 只用于 `settings.section` 与 `conversation.chat.turnTail` 两处注入；CodeMirror/xterm 走 `/sidebar/bundle` 懒加载 chunk。参考价值：完整插件开发路径样板（patch 装配、双半划分、HMR-safe disposer、CI 真实挂载门禁）、官方 UI token/组件用法（含 `tests/theme.spec.ts` 守护）、slot 与 portal 边界划分、服务化扩展点 + 类型合并模式；`platform: web` 的 client 挂载方式对 dsh-hub Tauri 2.x webview 迁移可直接沿用。
+- **描述**：已发布 npm 的官方外生态 dsh 插件（v0.12.3，源码态）。VSCode 风格「右侧栏 + 底部面板」双工作台（文件管理器/CodeMirror 编辑器/内嵌沙箱浏览器/xterm+node-pty 真实终端/Git 面板/subagent 后台任务），按会话隔离持久化，核心启动约 325KB、重依赖懒加载。单包 host/client 双半结构：`cordis.patch.yml` 单条 insert 装配（`better-sidebar`），双安装通道（官方 profile bundle 与 plugin-registry），双 client bundle 同源编译。host 半（`src/index.ts`）注册 `/sidebar/api/*` JSON API、`/sidebar/file` 媒体、`/sidebar/html` 预览、`/sidebar/bundle` 懒加载 chunk、`/sidebar/ws/terminal` WebSocket（node-pty），按 sessionId 隔离 + Host 头信任围栏，并 `ctx.tools` 注册 `terminal_*` 工具；client 半 React 18 挂 `document.body` 的 `[data-dsh-better-sidebar]` portal（非 slot），slots 仅 `settings.section` 与 `conversation.chat.turnTail` 两处注入，i18n 走 `ctx.locale` 词典。对外暴露 `ctx.betterSidebar` 服务（`registerTab`/`registerFileViewer`），内置 7 tab + 6 viewer 走同一服务（吃狗粮）。UI 令牌驱动（`--dsw-alias-*`，与皮肤中心 10 款皮肤自动兼容）；构建：host ESM + 2 个 CJS 浏览器 bundle（`__ModuleLoader__.load` banner、10 项 externals）+ 2 个懒加载 chunk（`globalThis.__dshChunks__`）+ 纯度门（禁 client value-import 其他 `@deepseek-ai/*`，跨插件协作只走 cordis 服务）；`src/context-types.ts` 用 `declare module 'cordis'/'@deepseek-ai/cordis'` 类型合并（client 零 Node 依赖）。工程规范：仓库内 AGENTS.md 接入文档、18 份 docs/plans/ 设计文档、~60 vitest + `mount.e2e.ts` 真实挂载 CI 门禁、OIDC 自动发版。参考价值：dsh 插件开发完整样板（双通道声明/patch 装配/双半划分/HMR-safe disposer/CI 门禁/发版流水线）、官方 UI token 正确姿势（`tests/theme.spec.ts` 守护）、slot 与 portal 边界、懒加载 chunk 路由、服务化扩展点（registerTab + 类型合并 + 能力探测）；`platform: web` 的挂载方式对 dsh-hub Tauri 2.x webview 迁移可直接沿用。
 - **关键目录要点**：
-  - `cordis.patch.yml` + `src/`（host/client 半区）→ 插件装配与双半结构样板
-  - `tests/theme.spec.ts` → 主题 token 守护测试
-  - client portal 注入 → body 锚点挂载（`[data-dsh-better-sidebar]`）
+  - `cordis.patch.yml` + `package.json`（dsh.bundle.patch/dsh.client.inject）→ 双通道装配声明样板
+  - `src/index.ts`（host）+ `src/client/`（React portal 侧边栏）→ 双半结构 + /sidebar 路由全家 + 信任围栏
+  - `src/context-types.ts` → 双 cordis 实例类型合并技巧（declare module）
+  - `tsdown.config.ts` → client bundle 形态（ModuleLoader banner/externals/懒加载 chunk/纯度门）
+  - `tests/theme.spec.ts` + `tests/e2e/mount.e2e.ts` → 令牌守护 + 真实挂载 CI 门禁
 - **调研状态**：已完成
 
 ## 7. dsh-web-ui-[dsh-ui,dsh-plugin]
