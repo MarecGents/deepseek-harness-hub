@@ -246,4 +246,5 @@ npm publish --access public --tag rc --registry=https://registry.npmjs.org/
 ## 文档
 
 - [开发约束（AGENTS.md，开发前必读）](AGENTS.md) —— 全部开发 harness 总纲 + 分层子 harness 索引
-- [关键踩坑记录（勿重蹈）](docs/关键踩坑记录.md)
+- [关键踩坑记录（勿重蹈）](docs/关键踩坑记录.md) —— 39 条排错经验，含桌面壳崩溃、WebView2 权限、僵尸锁等
+- [桌面壳排错经验全记录](docs/桌面壳排错经验-2026-08-16.md) —— 5 种崩溃 + ZCode 配置陷阱 + 排错方法论
