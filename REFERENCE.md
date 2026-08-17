@@ -45,12 +45,12 @@
 
 ## 5. DeepSeek-Reasonix-[ui,plugin]
 - **文件目录**：`E:\Workdata\Git_repositories\deepseek\reference\DeepSeek-Reasonix-[ui,plugin]`
-- **描述**：以 Go 单二进制为内核、深度适配 DeepSeek API（OpenAI 兼容 + Anthropic Messages 双协议 + prefix-cache 优化）的 cache-first 自主编码 agent（v1.26.0，MIT）。同一内核提供 CLI/TUI、桌面应用、浏览器、ACP 编辑器四种前端。⚠️ **桌面栈是 Wails v2.13（Go 绑定 + WebView2），非 Tauri**——但其 WebView2 平台经验与整套前端 UI 设计可直接借鉴（dsh-hub 当前壳同 WebView2 路线）。桌面壳 `desktop/`：React 19 + TS + Vite + pnpm，`bridge.ts` 以 `window.go.main.App` 绑定 + `runtime.EventsOn("agent:event")` 事件流直连 Go 内核，含 WebView2 诊断/恢复、窗口状态、自动更新、托盘、8 套官方主题包。DeepSeek 适配关键：thinking 模式流式 `reasoning_content`（`RequiresToolCallReasoning` 策略）、missing-reasoning 静默重试、长思考取消、系统提示前缀字节稳定保持 prefix-cache 命中、内置成本账本。插件体系两层：声明式（skills/agents/commands/prompts/hooks/MCP servers/themes）+ Manifest v2 代码扩展（sidecar Extension Protocol v2，可拦截/替换事件、贡献流式模型、结构化 UI、只读主题），运行时 fail-atomic 快照 reload。参考价值：① settings 面板体系（SettingsPanel/ProviderAccessSettings/ThemeGallery）、三种 desktop layout、命令面板、en/zh/zh-TW i18n、transcript 虚拟化滚动仲裁；② agent 功能（传输无关 Controller 分层、权限审批、plan mode/checkpoint、子代理 profile、上下文预算环）；③ DeepSeek API 双协议适配与成本账单。
+- **描述**：以 Go 单二进制为内核、深度适配 DeepSeek API（OpenAI 兼容 + Anthropic Messages 双协议 + prefix-cache 优化）的 cache-first 自主编码 agent（约 v1.26.0，MIT，remote esengine/DeepSeek-Reasonix）。同一内核提供 CLI/TUI、桌面应用、浏览器（HTTP/SSE）、ACP 编辑器四种前端。⚠️ **桌面栈是 Wails v2.13（Go 绑定 + WebView2），非 Tauri**——但其 WebView2 平台经验与整套前端 UI 设计可直接借鉴（dsh-hub 当前壳同 WebView2 路线）。桌面壳 `desktop/`：React 19 + TS + Vite + pnpm（zustand / react-virtuoso 虚拟化 transcript / @xterm/xterm 内置终端 / mermaid·katex），`bridge.ts` 以 `window.go.main.App` 绑定 + `runtime.EventsOn("agent:event")` 类型化事件流**直连 Go 内核（无 HTTP 中转）**，含 WebView2 平台诊断/恢复、窗口状态、自动更新、托盘、8 套官方主题包。DeepSeek 适配关键：thinking 模式流式 `reasoning_content`（`RequiresToolCallReasoning` 策略）、missing-reasoning 静默重试、长思考（官方最高 384K tokens）取消处理、系统提示前缀字节稳定保持 prefix-cache 命中、官方访问可一键迁移 Anthropic Messages 端点（`/anthropic` 带服务端 web search）、内置价格/成本账本（cache_hit/input/output、CNY/USD、闲时半价）。插件体系两层：声明式（skills/agents/commands/prompts/hooks/MCP servers/themes 随包分发）+ Manifest v2 代码扩展（sidecar 跑 Extension Protocol v2，可拦截/替换事件、贡献流式模型 `plugin/<plugin>/<provider>/<model>`、结构化 UI 与斜杠命令、只读主题），运行时 fail-atomic 快照 reload。参考价值：① settings 面板体系（SettingsPanel/ProviderAccessSettings/ThemeGallery）、三种 desktop layout、命令面板、en/zh/zh-TW i18n、transcript 虚拟化单写者滚动仲裁；② agent 功能（传输无关 Controller 分层、权限审批、plan mode/checkpoint、子代理 profile、上下文预算环 ContextWindowRing）；③ DeepSeek API 双协议适配与成本账单。分发参考：`npm/reasonix` 仅做原生二进制分发（optionalDependencies 分平台 `@reasonix/cli-*`）。
 - **关键目录要点**：
-  - `desktop/` → Wails 桌面壳（WebView2 平台诊断/更新/托盘/主题包）
-  - `internal/` → Go 内核（control 控制器/provider 多协议/plugin 插件体系）
-  - `docs/` → EXTENSIONS.md / PLUGIN_PACKAGES.md / EXTENSION_PROTOCOL.md（插件规范一手文档）
-  - `npm/reasonix` → 原生二进制分发的 npm 模式（可选依赖分发）
+  - `desktop/` → Wails 桌面壳（WebView2 平台诊断/更新/托盘/主题包，React 19 前端）
+  - `internal/` → Go 内核 80+ 包（control 控制器 / provider 三协议 / plugin 插件体系 / billing·i18n）
+  - `docs/` → EXTENSIONS.md / PLUGIN_PACKAGES.md / EXTENSION_PROTOCOL.md / ACP.md / SPEC.md（17 个 hook、单属主替换槽、流式 provider 贡献、结构化 UI 规范）
+  - `cmd/` + `sdk/go` + `npm/reasonix` → 多入口（reasonix / -launcher / -plugin-example / extension-protocol-gen）、零依赖 Go SDK、二进制 npm 分发模式
 - **调研状态**：已完成
 
 ## 6. DSH-better-sidebar-[dsh-ui,dsh-plugin]
