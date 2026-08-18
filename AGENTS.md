@@ -28,13 +28,21 @@ dsh-hub 是**双 half** 结构，且**套壳代码与插件代码必须严格模
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│ host half（dsh 进程内，Node）                                  │
+│ host half（dsh 进程内，Node）——分层结构见 src/AGENTS.md         │
 │   src/index.ts          Controller：插件入口，编排装配          │
-│   src/desktop.ts        Manager：桌面壳生命周期（WebView2）     │
-│   src/services/*        Services / Helper / Server：业务能力    │
+│   src/core/             Core：命令注册表 / 生命周期（registry）  │
+│   src/managers/         壳 Manager：desktop / tauri-shell / tray│
+│   src/server/           Server：HTTP 路由工厂（/api/dsh-hub/*） │
+│   src/services/         Services：纯领域业务（theme-sync）      │
+│   src/helpers/          Helper：无状态工具（state/dwm/os/screen…）│
+│   src/{controllers,models,utils}/  预留层（见 src/AGENTS.md）  │
 ├─────────────────────────────────────────────────────────────┤
 │ client half（浏览器内，React）                                 │
 │   src/client/*          插件 UI：设置卡片 + 右侧栏（body portal）│
+├─────────────────────────────────────────────────────────────┤
+│ Tauri 原生壳（Rust，src-tauri/src/）——见 src-tauri/src/AGENTS.md│
+│   lib.rs / main.rs      Controller：壳入口                    │
+│   commands/ managers/ services/ helpers/（SPT 分层）          │
 ├─────────────────────────────────────────────────────────────┤
 │ 启动器（独立进程）                                             │
 │   bin/*                launcher / tray-helper / lock / vbs    │
@@ -42,19 +50,27 @@ dsh-hub 是**双 half** 结构，且**套壳代码与插件代码必须严格模
 ```
 
 **隔离边界（为 Tauri 2.x 迁移做准备）**：
-- **壳层**（desktop.ts + services 中 Windows 专属能力：dwm-theme / tray / explorer / screen / state-store）——未来 Tauri 迁移时整体重写为 Rust 壳；**不得**让插件逻辑渗入壳层。
-- **插件层**（client/* + config-api + workspace-api + settings-card）——与壳解耦，通过**明确定义的接口**（HTTP 路由 / IPC 桥 / 事件）通信；Tauri 迁移时保留。
+- **壳层**（`src/managers/*` + `src/helpers/` 中 Windows 专属能力：dwm-theme / explorer / screen / state-store + `src-tauri/src/` 整个 Rust 壳）——未来 Tauri 迁移时整体重写为 Rust 壳；**不得**让插件逻辑渗入壳层。
+- **插件层**（client/* + `src/server/*` 路由 + settings-card）——与壳解耦，通过**明确定义的接口**（HTTP 路由 / IPC 桥 / 事件）通信；Tauri 迁移时保留。
 - 新增代码时，先判断属于壳还是插件，落入对应目录；**禁止在壳层写插件业务、在插件层写窗口/托盘/系统调用**。
 
 **模块化分级**（大厂级代码组织，新增文件必须归类）：
 
 | 类别 | 职责 | 命名示例 |
 |---|---|---|
-| **Controller** | 入口编排、装配、生命周期挂钩 | `index.ts`、`launcher.mjs` |
-| **Manager** | 管理复杂对象的生命周期/状态机 | `desktop.ts`（壳）、`tray.ts` |
-| **Services** | 业务服务，对外提供能力 | `config-api.ts`、`workspace-api.ts`、`theme-sync.ts` |
-| **Server** | HTTP 路由 / 对外端口 | `config-api.ts`、`workspace-api.ts`（route 部分） |
-| **Helper** | 纯工具函数，无状态、无副作用 | `icons.ts`、`png-decode.ts`、`screen.ts`、`lock.mjs` |
+| **Controller** | 入口编排、装配、生命周期挂钩 | `index.ts`、`launcher.mjs`、`lib.rs` |
+| **Manager** | 管理复杂对象的生命周期/状态机 | `managers/desktop.ts`（壳）、`managers/tray.rs` |
+| **Services** | 业务服务，对外提供能力 | `services/theme-sync.ts`、`services/notify.rs` |
+| **Server** | HTTP 路由 / 对外端口 | `server/config-api.ts`、`server/workspace-api.ts` |
+| **Helper** | 纯工具函数，无状态、无副作用 | `helpers/icons.ts`、`helpers/screen.ts`、`lock.mjs` |
+| **Core** | 全局注册表 / 生命周期顺序 | `core/registry.ts` |
+
+**分层依赖红线（SPT 单向依赖，2026-08-18 重构确立，防"改一处坏一处"）**：
+
+- **单向依赖**：上层可依赖下层，下层**禁止**依赖上层。层级：`index.ts → core → managers/server/services → helpers → models/utils`（host half）；`lib.rs → commands → managers/services → helpers`（Rust 壳 half）。
+- 跨层引用违规 = 审查必纠项；新增文件先归类（Core/Controller/Manager/Services/Server/Helper/Model/Utils），命名清晰表达职能。
+- **命令分发**：托盘/管道命令一律走 `core/registry.ts` 注册表（新增命令 = `trayCommands.register(...)`），禁止在 index.ts 散落 if/else 分发链。
+- **双向管道协议同步**：壳→host 走 stdin `MG_TRAY`；host→壳走 stdout `DSH_CMD`。帧格式与命令名变更必须同步 `src-tauri/src/managers/node.rs` 分发表 ↔ `src/managers/tauri-shell.ts`（sendDshCmd）↔ `src/index.ts`（MG_TRAY 读取）。
 
 ---
 
@@ -72,7 +88,7 @@ dsh-hub 是**双 half** 结构，且**套壳代码与插件代码必须严格模
   - **单点豁免（置顶 pin 图标，到期条款）**：官方图标库无 pin/bookmark/star，`src/client/pin-conversations.ts` 自绘 **1 个** 24 视口填充路径 pin glyph（`currentColor`、`aria-hidden`）——限定 1 个 glyph / 1 个模块 / 不扩散；**官方提供 pin 图标后立即切换**（见 src/client/AGENTS.md §UI 铁律 2）。
 - 遵循 dsh 官方组件样式：设置卡片参照 `ui-settings-plugins` 的 `PluginCard.module.css` / `fields.module.css`；tab 参照 `ConversationRoot.module.css`；tooltip 参照 `ui-primitives/Tooltip.module.css`。
 - 右侧栏用 **body portal** 挂载（不占用官方 details slot），自管宽度；收起 rail 与左弹 tooltip 逻辑保持。
-- **背景图（background image）豁免（与皮肤并列的新视觉层）**：`src/client/backgrounds.ts` 通过注入 `<style id="mg-dsh-background">` 给**应用 frame 层**（锚点 `#root div[style*="grid-template-columns"]`，结构契约非 CSS-module hash）叠加 `linear-gradient(蒙层) + url()` 双层背景，并把**左/中/右三栏表面设为 75% 半透明**（`color-mix(原 token 75%, transparent)`，背景图透出 ~25%；左栏 token `--dsw-specific-sidebar-fill`，中/右栏内容根 `--dsw-alias-bg-base`；锚点为 `[data-slot="sidebar"/"conversation"/"details"] > div` 官方 slot 契约）；**自研右侧栏（body portal）因 fixed 合成不透出背后，改为把背景图画在自身上**（多层背景 `[fill 75% 渐变] + [黑蒙] + [url]` + `background-attachment: fixed` 对齐 + 内部 `[class*="mg-rs-"]` 透明）——允许 `!important` 图片层（类比皮肤豁免），但禁止硬编码 hex 颜色；`'none'` 哨兵清空注入；图片资产放 `assets/backgrounds/`，由 `src/services/backgrounds-api.ts` 静态路由 `/api/dsh-hub/backgrounds/*` 服务（正则白名单防穿越）；蒙层 + 75% 表面双重保证文字可读；锚点均为升级冒烟项（见 docs/关键踩坑记录.md #32）。
+- **背景图（background image）豁免（与皮肤并列的新视觉层）**：`src/client/backgrounds.ts` 通过注入 `<style id="mg-dsh-background">` 给**应用 frame 层**（锚点 `#root div[style*="grid-template-columns"]`，结构契约非 CSS-module hash）叠加 `linear-gradient(蒙层) + url()` 双层背景，并把**左/中/右三栏表面设为 75% 半透明**（`color-mix(原 token 75%, transparent)`，背景图透出 ~25%；左栏 token `--dsw-specific-sidebar-fill`，中/右栏内容根 `--dsw-alias-bg-base`；锚点为 `[data-slot="sidebar"/"conversation"/"details"] > div` 官方 slot 契约）；**自研右侧栏（body portal）因 fixed 合成不透出背后，改为把背景图画在自身上**（多层背景 `[fill 75% 渐变] + [黑蒙] + [url]` + `background-attachment: fixed` 对齐 + 内部 `[class*="mg-rs-"]` 透明）——允许 `!important` 图片层（类比皮肤豁免），但禁止硬编码 hex 颜色；`'none'` 哨兵清空注入；图片资产放 `assets/backgrounds/`，由 `src/server/backgrounds-api.ts` 静态路由 `/api/dsh-hub/backgrounds/*` 服务（正则白名单防穿越）；蒙层 + 75% 表面双重保证文字可读；锚点均为升级冒烟项（见 docs/关键踩坑记录.md #32）。
 - 产品文案用中文；代码注释用英文（与 dsh 官方一致）。
 
 ### 3.1 皮肤（skins）风格豁免
@@ -196,7 +212,7 @@ git checkout dev-v2 && git merge main --ff-only && git push origin dev-v2
 ## 6. 未来技术路线（约束方向，不立即实施）
 
 - **目标**：Tauri 2.x 壳（自定义壳 UI、Windows/macOS/Linux 三端、~10MB、官方插件生态）。详细决策见 `docs/dsh桌面端技术路线-2026-08-16.md`。
-- **迁移时**：壳层（desktop.ts + Windows 专属 services）重写；插件层（client + config/workspace API）保留；dsh 生态通过 HTTP/WS 对接，client half 零改动。
+- **迁移时**：壳层（`src/managers/*` + Windows 专属 `src/helpers/*` + `src-tauri/src/` 全部）重写/落地；插件层（client + `src/server/*` API）保留；dsh 生态通过 HTTP/WS 对接，client half 零改动。
 - **现在**：保持当前架构可运行，代码按本 harness 的隔离边界组织，为迁移留好切口（壳/插件接口清晰、不混层）。
 
 ---
@@ -205,9 +221,14 @@ git checkout dev-v2 && git merge main --ff-only && git push origin dev-v2
 
 | 目录 | 子 harness | 覆盖内容 |
 |---|---|---|
-| `src/` | [src/AGENTS.md](src/AGENTS.md) | host 架构红线、壳/插件隔离、Controller/Manager 规范 |
-| `src/services/` | [src/services/AGENTS.md](src/services/AGENTS.md) | Services/Server/Helper 规范、接口文档要求 |
+| `src/` | [src/AGENTS.md](src/AGENTS.md) | host 分层总纲：层级表、单向依赖红线、registry 路由、管道协议、日志 |
+| `src/core/` | [src/core/AGENTS.md](src/core/AGENTS.md) | Core 层：命令注册表、生命周期、无业务 |
+| `src/managers/` | [src/managers/AGENTS.md](src/managers/AGENTS.md) | 壳 Manager 红线、壳/插件隔离、命令上行通道 |
+| `src/server/` | [src/server/AGENTS.md](src/server/AGENTS.md) | Server 路由规范、配置三处一致、请求体校验 |
+| `src/services/` | [src/services/AGENTS.md](src/services/AGENTS.md) | Services 层（theme-sync）规范 |
+| `src/helpers/` | [src/helpers/AGENTS.md](src/helpers/AGENTS.md) | Helper 纯函数规范、零依赖、Windows 专属标记 |
 | `src/client/` | [src/client/AGENTS.md](src/client/AGENTS.md) | UI 风格强制、client 注册规范、body portal 约束 |
+| `src-tauri/src/` | [src-tauri/src/AGENTS.md](src-tauri/src/AGENTS.md) | Rust 壳红线：双向管道协议、ACL 三处一致、退出语义、E2E |
 | `bin/` | [bin/AGENTS.md](bin/AGENTS.md) | 启动器流程、进程管理、快捷方式/VBS 约束 |
 
-> **规则**：改动 `src/` 下文件先读 `src/AGENTS.md`；改动 `src/services/` 先读 `src/services/AGENTS.md`；改动 `src/client/` 先读 `src/client/AGENTS.md`；改动 `bin/` 先读 `bin/AGENTS.md`；全部改动先读本文件。
+> **规则**：改动任何目录先读根 `AGENTS.md`；`src/` 各子目录（core/managers/server/services/helpers/controllers/models/utils）先读 `src/AGENTS.md` + 对应子目录 AGENTS.md；`src/client/` 读 `src/client/AGENTS.md`；`src-tauri/src/` 读 `src-tauri/src/AGENTS.md`；`bin/` 读 `bin/AGENTS.md`；全部改动先读本文件。

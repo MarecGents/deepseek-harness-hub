@@ -13,18 +13,24 @@
 //   4. READY 先验证再导航（HTTP 探测确认）
 //   5. WebviewUrl::External("http://127.0.0.1:N") 建窗
 
-mod window;
-mod state;
-mod theme;
-mod tray;
-mod single_instance;
-mod os_theme;
-mod notify;
-mod quit;
-mod node;
-mod commands;
+// 分层（SPT 架构借鉴，2026-08-18 重构）：
+//   managers/ = 壳 Manager（tray/node/window/single_instance）
+//   helpers/  = 无状态 Helper（theme/state/quit/os_theme/e2e）
+//   services/ = 领域 Services（notify）
+//   commands/ = Tauri 命令薄胶水（Callback 层）
+// #[path] 保留模块名（crate::tray 等），避免引用链改动。
+#[path = "managers/window.rs"] mod window;
+#[path = "helpers/state.rs"] mod state;
+#[path = "helpers/theme.rs"] mod theme;
+#[path = "managers/tray.rs"] mod tray;
+#[path = "managers/single_instance.rs"] mod single_instance;
+#[path = "helpers/os_theme.rs"] mod os_theme;
+#[path = "services/notify.rs"] mod notify;
+#[path = "helpers/quit.rs"] mod quit;
+#[path = "managers/node.rs"] mod node;
+#[path = "commands/commands.rs"] mod commands;
 #[cfg(debug_assertions)]
-mod e2e;
+#[path = "helpers/e2e.rs"] mod e2e;
 
 use log::{info, warn};
 use tauri::{Listener, Manager};

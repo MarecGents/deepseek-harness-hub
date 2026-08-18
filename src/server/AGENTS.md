@@ -1,0 +1,25 @@
+# AGENTS.md — src/server/（Server 路由层）开发约束
+
+> 本目录是 dsh-hub host half 的 **Server（HTTP/WS 路由工厂）层**。2026-08-18 重构由 `src/services/*-api.ts` 迁入。
+> 改动本目录任何文件前，**必须**先读根 [../../AGENTS.md](../../AGENTS.md) 与 [../AGENTS.md](../AGENTS.md) 与本文件。
+
+## 文件归类
+
+| 文件 | 模块类别 | 职责 | Tauri 迁移 |
+|---|---|---|---|
+| `config-api.ts` | **Server + Services** | 配置读写 `/api/dsh-hub/config`（GET/POST）、`ShellConfig` 持久化、旧名迁移 `migrateLegacyPaths` | 保留 |
+| `workspace-api.ts` | **Server + Services** | 工作区 `/api/dsh-hub/workspace/{list,git}`（文件树 + Git 检测） | 保留 |
+| `pins-api.ts` | **Server + Services** | 置顶会话 `/api/dsh-hub/pins`（GET/PUT）、pins.json 原子写（renameSync） | 保留 |
+| `backgrounds-api.ts` | **Server + Services** | 背景图静态路由 `/api/dsh-hub/backgrounds/*`（正则白名单防穿越，服务 assets/backgrounds） | 保留 |
+| `sounds-api.ts` | **Server + Services** | 提示音静态路由 `/api/dsh-hub/sounds/*` | 保留 |
+| `bridge-server.ts` | **Server** | 桥路由（WebView2 IPC ↔ HTTP） | **废弃**（Tauri invoke 替代） |
+
+## Server 层规范
+
+1. **路由工厂**：一律 `makeXxxRoutes(): WebRoute[]`，由 `src/index.ts` 统一 `ctx.webServer.register`；**同一 path 只注册一次**（GET/POST 合并进一个 handler 按 method 分发）——重复注册会崩。
+2. **前缀统一**：`/api/dsh-hub/*`；路径/请求结构变更必须同步 client 调用方。
+3. **请求体校验**：`readJsonBody` 限 64KB；字段白名单收窄（未知字段丢弃）；数值 clamp 到合法范围。
+4. **配置三处一致**：新增 `ShellConfig` 字段必须同步 ① 接口 ② `DEFAULT_SHELL_CONFIG` ③ POST 白名单——漏一处 = 前端保存被静默丢弃（真实事故：allowMultipleInstances 曾漏白名单）。
+5. **单向依赖**：Server 只调 `../helpers/*` 与纯库；**禁止** import `../index.ts`、`../managers/*`。
+6. **错误处理**：空 catch 必须注释吞掉什么、为何无碍；错误返回 `{ ok: false, error }` 而非抛到进程。
+7. **Build 前推演**：改完先推演（路由唯一、配置三处一致、catch 覆盖、白名单防穿越），再 `npm run build`。
