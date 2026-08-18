@@ -1,44 +1,42 @@
 // tray.rs — M3 系统托盘（T3.1）
 //
 // 模块类别：Manager（壳）
-// 职责：系统托盘（TrayIconBuilder + 事件处理）。
-//   - 左键单击/双击 → 显示窗口（Q7：左键单/双可打开界面）。
-//   - 右键 → 自绘皮肤菜单状态机（Q5/Q7）：窗口移到光标所在显示器工作区
-//     右下角（贴托盘）→ 置顶 → eval 打开 HTML 菜单；关闭后还原原位置/
-//     隐藏态。菜单本身由 shell-init.js 渲染（原生菜单无法样式化）。
+// 职责：系统托盘（TrayIconBuilder + 原生菜单）。
+//   - 左键单击/双击 → 显示窗口（Q7：左键可打开界面）。
+//   - 右键 → **原生菜单**（Q1：系统渲染、出现在鼠标位置；放弃自绘 HTML 菜单）。
+//     菜单项：显示/隐藏主界面（label 随窗口可见性动态）、打开工作区、新建会话、
+//     退出。打开工作区/新建会话经 win.eval 派发同页 CustomEvent → client 处理
+//     （D-2：事件系统在 remote origin 不可用，Rust→页面用 eval）。
 //
-// 外部接口：setup_tray(app)；TrayMenuState / close_menu（commands.rs 复用）。
+// 外部接口：setup_tray(app)；sync_toggle_label(app)（窗口可见性变化时刷新菜单 label）。
 
 use std::sync::Mutex;
 use tauri::{
     App, Manager, WebviewWindow,
+    menu::{Menu, MenuItem, MenuEvent},
     tray::{MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent},
 };
-use log::{info, warn};
+use log::info;
 
-/// 托盘菜单弹出状态（右键菜单打开期间窗口被移到托盘角）。
-pub struct TrayMenuState {
-    /// 菜单当前是否打开。
-    pub open: bool,
-    /// 打开菜单前窗口是否可见（关闭菜单后据此还原隐藏态）。
-    pub was_visible: bool,
-    /// 打开菜单前窗口位置（关闭菜单后还原）。
-    pub original_pos: Option<(i32, i32)>,
-}
+/// 菜单项 ID 常量。
+const MENU_TOGGLE: &str = "toggle";
+const MENU_OPEN_WORKSPACE: &str = "open-workspace";
+const MENU_NEW_TASK: &str = "new-task";
+const MENU_QUIT: &str = "quit";
 
-impl Default for TrayMenuState {
-    fn default() -> Self {
-        Self {
-            open: false,
-            was_visible: true,
-            original_pos: None,
-        }
-    }
+/// 托盘菜单句柄（供 sync_toggle_label 动态改「显示/隐藏主界面」label）。
+pub struct TrayMenuHandles {
+    pub toggle: MenuItem<tauri::Wry>,
 }
 
 /// 设置托盘（T3.1）。
 pub fn setup_tray(app: &App) -> Result<TrayIcon, Box<dyn std::error::Error>> {
-    app.manage(Mutex::new(TrayMenuState::default()));
+    let toggle_item = MenuItem::with_id(app, MENU_TOGGLE, "显示主界面", true, None::<&str>)?;
+    let open_ws = MenuItem::with_id(app, MENU_OPEN_WORKSPACE, "打开工作区", true, None::<&str>)?;
+    let new_task = MenuItem::with_id(app, MENU_NEW_TASK, "新建会话", true, None::<&str>)?;
+    let quit_item = MenuItem::with_id(app, MENU_QUIT, "退出", true, None::<&str>)?;
+    let menu = Menu::with_items(app, &[&toggle_item, &open_ws, &new_task, &quit_item])?;
+    app.manage(Mutex::new(TrayMenuHandles { toggle: toggle_item }));
 
     // 内嵌 PNG 图标（tauri `image` feature 解码 PNG）。
     let icon_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("icons").join("32x32.png");
@@ -46,6 +44,8 @@ pub fn setup_tray(app: &App) -> Result<TrayIcon, Box<dyn std::error::Error>> {
 
     let tray = TrayIconBuilder::new()
         .icon(icon)
+        .menu(&menu)
+        .on_menu_event(handle_menu_event)
         .on_tray_icon_event(|tray, event| {
             let app_handle = tray.app_handle();
 
@@ -63,6 +63,7 @@ pub fn setup_tray(app: &App) -> Result<TrayIcon, Box<dyn std::error::Error>> {
                     let _ = win.set_always_on_top(true);
                     let _ = win.set_focus();
                     let _ = win.set_always_on_top(false);
+                    sync_toggle_label(app_handle);
                     info!("tray: left-click → show + focus main window");
                 }
             }
@@ -71,78 +72,60 @@ pub fn setup_tray(app: &App) -> Result<TrayIcon, Box<dyn std::error::Error>> {
                 if let Some(win) = app_handle.get_webview_window("main") {
                     restore(&win);
                     let _ = win.set_focus();
+                    sync_toggle_label(app_handle);
                     info!("tray: double-click → show + focus main window");
                 }
             }
-            // 右键 → 自绘皮肤菜单状态机（Q5：跟随鼠标/置顶；Q7：不强行唤醒）。
-            if let TrayIconEvent::Click { button: MouseButton::Right, button_state: MouseButtonState::Up, .. } = event {
-                if let Some(win) = app_handle.get_webview_window("main") {
-                    let st = app_handle.state::<Mutex<TrayMenuState>>();
-                    let mut s = st.lock().unwrap();
-                    if s.open {
-                        // 已开 → 关闭并还原（再右键 = 收起菜单）。
-                        let _ = win.eval("window.__mgTrayMenuClose && window.__mgTrayMenuClose()");
-                        close_menu(&win, &mut s);
-                        info!("tray: right-click → menu closed");
-                    } else {
-                        // 打开：记录原状态 → 移托盘角（跟随鼠标）→ 置顶 → eval 打开。
-                        s.was_visible = win.is_visible().unwrap_or(true);
-                        s.original_pos = win.outer_position().ok().map(|p| (p.x, p.y));
-                        if !s.was_visible {
-                            let _ = win.show();
-                        }
-                        move_to_tray_corner(&win);
-                        let _ = win.set_always_on_top(true);
-                        let label = if s.was_visible { "hide" } else { "show" };
-                        let js = format!(
-                            "window.__mgTrayMenuOpen && window.__mgTrayMenuOpen('{}')",
-                            label
-                        );
-                        let _ = win.eval(&js);
-                        s.open = true;
-                        info!("tray: right-click → menu open (label={}, was_visible={})", label, s.was_visible);
-                    }
-                }
-            }
+            // 右键：原生菜单由系统在鼠标位置弹出（无需处理；菜单事件走 on_menu_event）。
         })
+        .show_menu_on_left_click(false)
         .tooltip("DeepSeek Harness Hub")
         .build(app)?;
 
-    info!("tray: setup complete (left-click=show, right-click=custom skin menu)");
+    // 初始 label 同步。
+    sync_toggle_label(app.handle());
+    info!("tray: setup complete (native menu, left-click=show)");
     Ok(tray)
 }
 
-/// 关闭托盘菜单后还原窗口（还原位置/去置顶/恢复隐藏态）。
-/// 页面任意关闭路径（外部点击/Esc/菜单项）都会 invoke tray_menu_closed 触发。
-pub fn close_menu(win: &WebviewWindow, s: &mut TrayMenuState) {
-    s.open = false;
-    let _ = win.set_always_on_top(false);
-    if let Some((x, y)) = s.original_pos.take() {
-        let _ = win.set_position(tauri::PhysicalPosition::new(x, y));
-    }
-    if !s.was_visible {
-        let _ = win.hide();
+/// 刷新「显示/隐藏主界面」菜单项 label（Q1）。
+/// 定义：窗口可见且在前端（可直视内容、叠加于所有窗口之上）→「隐藏主界面」；
+/// 否则（含任务栏最小化/最小化到托盘/关闭到托盘）→「显示主界面」。
+pub fn sync_toggle_label(app: &tauri::AppHandle) {
+    let text = match app.get_webview_window("main") {
+        Some(win) if win.is_visible().unwrap_or(false) && !win.is_minimized().unwrap_or(true) => "隐藏主界面",
+        _ => "显示主界面",
+    };
+    if let Some(st) = app.try_state::<Mutex<TrayMenuHandles>>() {
+        let handles = st.lock().unwrap();
+        let _ = handles.toggle.set_text(text);
     }
 }
 
-/// 把窗口移到光标所在显示器的工作区右下角（贴托盘图标，Q5 跟随鼠标）。
-fn move_to_tray_corner(win: &WebviewWindow) {
-    let monitor = match win.cursor_position() {
-        Ok(cursor) => win.monitor_from_point(cursor.x, cursor.y).ok().flatten(),
-        Err(_) => None,
+/// 处理原生菜单事件。
+fn handle_menu_event(app: &tauri::AppHandle, event: MenuEvent) {
+    match event.id().as_ref() {
+        MENU_TOGGLE => {
+            // 显示/隐藏主界面（由 window_toggle_visible 按当前可见性判断）。
+            let _ = crate::commands::window_toggle_visible(app.clone());
+        }
+        MENU_OPEN_WORKSPACE | MENU_NEW_TASK => {
+            // D-2：Rust→页面走 win.eval 派发同页 CustomEvent → client handleShellCommand。
+            let command = if event.id().as_ref() == MENU_OPEN_WORKSPACE { "open-workspace" } else { "new-task" };
+            if let Some(win) = app.get_webview_window("main") {
+                let js = format!(
+                    "window.dispatchEvent(new CustomEvent('mg:shell-command',{{detail:{{command:'{}'}}}}))",
+                    command
+                );
+                let _ = win.eval(&js);
+            }
+            info!("tray: menu '{}' → dispatch mg:shell-command", command);
+        }
+        MENU_QUIT => {
+            info!("tray: quit requested");
+            crate::quit::write_quit_marker();
+            std::process::exit(0);
+        }
+        _ => {}
     }
-    .or_else(|| win.primary_monitor().ok().flatten());
-
-    let Some(monitor) = monitor else {
-        warn!("tray: no monitor found for tray-corner placement");
-        return;
-    };
-    let area = monitor.work_area();
-    let size = win.outer_size().unwrap_or_default();
-    let x = area.position.x + area.size.width as i32 - size.width as i32 - 8;
-    let y = area.position.y + area.size.height as i32 - size.height as i32 - 8;
-    let _ = win.set_position(tauri::PhysicalPosition::new(
-        x.max(area.position.x),
-        y.max(area.position.y),
-    ));
 }

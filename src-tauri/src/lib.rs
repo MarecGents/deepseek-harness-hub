@@ -89,15 +89,20 @@ fn read_shell_config_bool(key: &str, default: bool) -> bool {
     }
 }
 
-/// Q4：Windows 未打包应用的系统 toast 需要注册 AUMID 才会显示
+/// Q3/Q4：Windows 未打包应用的系统 toast 需要 AUMID 才会显示
 /// （tauri-plugin-notification 用 config identifier = com.marecgents.dsh-hub）。
-/// 注册 HKCU\Software\Classes\AppUserModelId\{AUMID}（DisplayName/IconUri），
-/// 幂等（reg add /f），失败仅告警；打包安装（M5）后快捷方式自带 AUMID。
+/// 三管齐下（幂等，失败仅告警；M5 打包后 NSIS 自带快捷方式）：
+///   1. 注册表 HKCU\Software\Classes\AppUserModelId\{AUMID}（DisplayName/IconUri）
+///   2. 开始菜单快捷方式 + AUMID 属性（微软文档最可靠的未打包 toast 显示方式）
+///   3. 桌面快捷方式（用户手动启动测试入口）
 #[cfg(target_os = "windows")]
 fn register_toast_aumid() {
     use std::os::windows::process::CommandExt;
+
+    // 1) 注册表 AUMID。
     let key = "HKCU\\Software\\Classes\\AppUserModelId\\com.marecgents.dsh-hub";
-    let exe = std::env::current_exe().unwrap_or_default().to_string_lossy().to_string();
+    let exe = std::env::current_exe().unwrap_or_default();
+    let exe_str = exe.to_string_lossy().to_string();
     let add = |name: &str, value: &str| {
         let mut c = std::process::Command::new("reg");
         c.args(["add", key, "/v", name, "/t", "REG_SZ", "/d", value, "/f"]);
@@ -109,7 +114,104 @@ fn register_toast_aumid() {
         }
     };
     add("DisplayName", "DeepSeek Harness Hub");
-    add("IconUri", &exe);
+    add("IconUri", &exe_str);
+
+    // 2+3) 开始菜单 + 桌面快捷方式（带 AUMID 属性）。
+    create_toast_shortcuts(&exe);
+}
+
+/// 用 IShellLink 创建开始菜单 + 桌面快捷方式并写入 AppUserModelID（Q3/Q4）。
+#[cfg(target_os = "windows")]
+fn create_toast_shortcuts(exe: &std::path::Path) {
+    use windows::core::{Interface, PCWSTR};
+    use windows::Win32::Foundation::PROPERTYKEY;
+    use windows::Win32::System::Com::{
+        CoCreateInstance, CoInitializeEx, CoUninitialize, IPersistFile, CLSCTX_INPROC_SERVER, COINIT_MULTITHREADED,
+    };
+    use windows::Win32::System::Com::StructuredStorage::{PROPVARIANT, PropVariantClear};
+    use windows::Win32::UI::Shell::PropertiesSystem::IPropertyStore;
+    use windows::Win32::UI::Shell::{IShellLinkW, ShellLink};
+
+    // PKEY_AppUserModel_ID（windows crate 未生成该常量，手写 GUID+pid）。
+    const PKEY_APP_USER_MODEL_ID: PROPERTYKEY = PROPERTYKEY {
+        fmtid: windows::core::GUID::from_u128(0x9F4C2855_9F79_4B39_A8D0_E1D42DE1D5F3),
+        pid: 3,
+    };
+
+    let Some(appdata) = std::env::var_os("APPDATA") else { return };
+    let start_menu = std::path::Path::new(&appdata)
+        .join("Microsoft").join("Windows").join("Start Menu").join("Programs");
+    // 桌面路径（处理 OneDrive 重定向）：SHGetKnownFolderPath(FOLDERID_Desktop)。
+    let desktop = known_desktop_path();
+
+    let targets: Vec<(std::path::PathBuf, &str)> = vec![
+        (start_menu, "start-menu"),
+        (desktop, "desktop"),
+    ];
+
+    for (dir, tag) in targets {
+        if dir.as_os_str().is_empty() {
+            continue;
+        }
+        let _ = std::fs::create_dir_all(&dir);
+        let lnk = dir.join("DeepSeek Harness Hub.lnk");
+        unsafe {
+            let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
+            let link: IShellLinkW = match CoCreateInstance(&ShellLink, None, CLSCTX_INPROC_SERVER) {
+                Ok(l) => l,
+                Err(e) => { warn!("shortcut({tag}): CoCreateInstance failed: {e}"); CoUninitialize(); continue; }
+            };
+            let exe_w = wide(&exe.to_string_lossy());
+            let _ = link.SetPath(PCWSTR(exe_w.as_ptr()));
+            let wd = wide(&exe.parent().unwrap_or(std::path::Path::new("")).to_string_lossy());
+            let _ = link.SetWorkingDirectory(PCWSTR(wd.as_ptr()));
+            let _ = link.SetDescription(PCWSTR(wide("DeepSeek Harness Hub").as_ptr()));
+            let persist: IPersistFile = match link.cast() {
+                Ok(p) => p,
+                Err(_) => { CoUninitialize(); continue; }
+            };
+            let path_w = wide(&lnk.to_string_lossy());
+            if let Err(e) = persist.Save(PCWSTR(path_w.as_ptr()), true) {
+                warn!("shortcut({tag}): save failed: {e}");
+                CoUninitialize();
+                continue;
+            }
+            // 写 AppUserModelID 属性（toast 显示必需）。
+            let props: IPropertyStore = match link.cast() {
+                Ok(p) => p,
+                Err(_) => { CoUninitialize(); continue; }
+            };
+            let mut pv = PROPVARIANT::from("com.marecgents.dsh-hub");
+            let _ = props.SetValue(&PKEY_APP_USER_MODEL_ID, &pv);
+            let _ = PropVariantClear(&mut pv);
+            CoUninitialize();
+            info!("shortcut({tag}): created {} with AUMID", lnk.display());
+        }
+    }
+}
+
+/// 宽字符串辅助（含结尾 NUL）。
+#[cfg(target_os = "windows")]
+fn wide(s: &str) -> Vec<u16> {
+    s.encode_utf16().chain(std::iter::once(0)).collect()
+}
+
+/// 解析桌面路径（FOLDERID_Desktop，处理 OneDrive 重定向）。
+#[cfg(target_os = "windows")]
+fn known_desktop_path() -> std::path::PathBuf {
+    use windows::Win32::System::Com::CoTaskMemFree;
+    use windows::Win32::UI::Shell::{FOLDERID_Desktop, KNOWN_FOLDER_FLAG, SHGetKnownFolderPath};
+    unsafe {
+        if let Ok(p) = SHGetKnownFolderPath(&FOLDERID_Desktop, KNOWN_FOLDER_FLAG(0), None) {
+            let s = p.to_string().unwrap_or_default();
+            CoTaskMemFree(Some(p.as_ptr() as _));
+            if !s.is_empty() {
+                return std::path::PathBuf::from(s);
+            }
+        }
+    }
+    // 兜底：%USERPROFILE%\Desktop。
+    std::env::var_os("USERPROFILE").map(|u| std::path::Path::new(&u).join("Desktop")).unwrap_or_default()
 }
 
 
@@ -145,7 +247,6 @@ pub fn run() {
             commands::window_toggle_maximize,
             commands::window_close,
             commands::tray_quit,
-            commands::tray_menu_closed,
             commands::window_toggle_visible,
             commands::play_sound,
             commands::open_workspace_path,
@@ -258,12 +359,14 @@ pub fn run() {
             let minimize_to_tray = read_minimize_to_tray();
             let on_close_win = win.clone();
             let on_min_win = win.clone();
+            let on_sync_app = win.app_handle().clone();
             win.on_window_event(move |event| {
                 match event {
                     tauri::WindowEvent::CloseRequested { api, .. } => {
                         if close_to_tray {
                             api.prevent_close();
                             let _ = on_close_win.hide();
+                            crate::tray::sync_toggle_label(&on_sync_app);
                             info!("close-requested: closeToTray=true, prevent_close + hiding window");
                         } else {
                             quit::write_quit_marker();
@@ -275,6 +378,7 @@ pub fn run() {
                     tauri::WindowEvent::Resized(_)
                         if minimize_to_tray && on_min_win.is_minimized().unwrap_or(false) => {
                             let _ = on_min_win.hide();
+                            crate::tray::sync_toggle_label(&on_sync_app);
                             info!("resized: minimized → hide to tray (minimizeToTray=true)");
                         }
                     _ => {}

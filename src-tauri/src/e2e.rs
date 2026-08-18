@@ -65,45 +65,28 @@ fn run_e2e(win: WebviewWindow) {
     );
     sleep(2);
 
-    // ── ④ 自绘托盘菜单（Q5/Q7 新 API：__mgTrayMenuOpen/Close + 切换项）──
-    info!("e2e: opening tray menu (label=show)");
-    let _ = win.eval("window.__mgTrayMenuOpen && window.__mgTrayMenuOpen('show')");
-    sleep(1);
+    // ── ④ 原生托盘菜单派发路径（Q1：tray.rs 菜单事件 → win.eval 派发
+    //    CustomEvent → client handleShellCommand → invoke）──
+    // 诊断：client 是否挂载（__mgShellReady）+ invoke 可用性。
     let _ = win.eval(
-        r#"(function(){
-            var m = document.getElementById('dsh-hub-tray-menu');
-            var open = m !== null && m.classList.contains('mg-open');
-            var items = m ? m.querySelectorAll('.tm-item').length : 0;
-            var first = m && m.querySelector('.tm-item span:last-child') ? m.querySelector('.tm-item span:last-child').textContent : 'none';
-            var bg = m ? getComputedStyle(m).backgroundColor : 'none';
-            window.__TAURI_INTERNALS__.invoke('diag_report', {
-                msg: 'E2E:tray-menu open=' + open + ' items=' + items + ' first=' + first + ' bg=' + bg
-            }).catch(function(){});
-        })();"#,
+        "window.__TAURI_INTERNALS__.invoke('diag_report', { msg: 'E2E:client-ready=' + (window.__mgShellReady === true) + ' invoke=' + typeof (window.__TAURI_INTERNALS__||{}).invoke }).catch(function(){});",
     );
     sleep(1);
-
-    // 标签随可见性更新：可见态 → '隐藏主界面'。
-    let _ = win.eval("window.__mgTrayMenuOpen && window.__mgTrayMenuOpen('hide')");
+    // 与原生菜单「打开工作区」完全相同的 JS（tray.rs handle_menu_event 生成）。
+    info!("e2e: dispatching mg:shell-command open-workspace (same JS the native menu runs)");
+    let _ = win.eval("window.dispatchEvent(new CustomEvent('mg:shell-command',{detail:{command:'open-workspace'}}))");
+    sleep(2);
+    // 直接 invoke 探针：验证命令+ACL 链路本身（绕开 client）。
+    let _ = win.eval("window.__TAURI_INTERNALS__.invoke('open_workspace_path', { path: '' }).catch(function(){});");
     sleep(1);
-    let _ = win.eval(
-        "window.__TAURI_INTERNALS__.invoke('diag_report', { msg: 'E2E:tray-first=' + ((document.querySelector('#dsh-hub-tray-menu .tm-item span:last-child')||{}).textContent || 'none') }).catch(function(){});",
-    );
-    sleep(1);
-
-    // 关闭 → tray_menu_closed 上行（Rust 还原，幂等）。
-    let _ = win.eval("window.__mgTrayMenuClose && window.__mgTrayMenuClose()");
-    sleep(1);
-
-    // 重开 → 点击「打开工作区」→ 断言 mg:shell-command CustomEvent 派发（同页）。
-    let _ = win.eval("window.__mgTrayMenuOpen && window.__mgTrayMenuOpen('hide')");
-    sleep(1);
+    // client 应触发 invoke('open_workspace_path')（隔离 profile 无工作区 → 兜底 $DSH_HOME，
+    // Rust 会记录 open_workspace_path invoked from page: <path>）。
+    // 「新建会话」同路径（new-task → startSession），这里只验证事件到达页面。
     let _ = win.eval(
         r#"(function(){
             window.__e2eLastCmd = null;
             window.addEventListener('mg:shell-command', function(e){ window.__e2eLastCmd = e.detail && e.detail.command; }, { once: true });
-            var items = document.querySelectorAll('#dsh-hub-tray-menu .tm-item');
-            if (items.length >= 2) items[1].click();
+            window.dispatchEvent(new CustomEvent('mg:shell-command',{detail:{command:'new-task'}}));
         })();"#,
     );
     sleep(1);
@@ -117,24 +100,39 @@ fn run_e2e(win: WebviewWindow) {
     let _ = win.eval("window.__TAURI_INTERNALS__.invoke('play_sound', { kind: 'success' }).catch(function(){});");
     sleep(1);
 
-    // 显示/隐藏切换（Q7）：window_toggle_visible → 隐藏到托盘。
+    // 显示/隐藏切换（Q7）：window_toggle_visible —— 可见未最小化→隐藏；否则→显示。
     info!("e2e: invoking window_toggle_visible");
     let _ = win.eval("window.__TAURI_INTERNALS__.invoke('window_toggle_visible').catch(function(){});");
     sleep(2);
-    info!("e2e: after toggle visible={} (expect false)", win.is_visible().unwrap_or(true));
+    info!("e2e: after toggle visible={} minimized={}", win.is_visible().unwrap_or(true), win.is_minimized().unwrap_or(false));
     let _ = win.show();
     sleep(1);
 
-    // 最后：菜单「退出」→ invoke('tray_quit') → Rust 写 quit.marker 并退出（预期行为）。
-    info!("e2e: clicking quit item (expect clean exit)");
+    // 外壳主题覆盖（Q2）：data-mg-shell-theme dark→黑 / light→白 / 移除→token。
+    info!("e2e: checking shell theme override");
     let _ = win.eval(
         r#"(function(){
-            var items = document.querySelectorAll('#dsh-hub-tray-menu .tm-item');
-            for (var i = 0; i < items.length; i++) {
-                if (items[i].textContent.indexOf('退出') !== -1) { items[i].click(); break; }
-            }
+            var bar = document.getElementById('dsh-hub-titlebar');
+            if (!bar) { window.__TAURI_INTERNALS__.invoke('diag_report', { msg: 'E2E:titlebar missing' }).catch(function(){}); return; }
+            document.body.setAttribute('data-mg-shell-theme','dark');
+            setTimeout(function(){
+                var d = getComputedStyle(bar).backgroundColor;
+                document.body.setAttribute('data-mg-shell-theme','light');
+                setTimeout(function(){
+                    var l = getComputedStyle(bar).backgroundColor;
+                    document.body.removeAttribute('data-mg-shell-theme');
+                    window.__TAURI_INTERNALS__.invoke('diag_report', {
+                        msg: 'E2E:shelltheme dark=' + d + ' light=' + l
+                    }).catch(function(){});
+                }, 400);
+            }, 400);
         })();"#,
     );
+    sleep(2);
+
+    // 最后：退出 → invoke('tray_quit') → Rust 写 quit.marker 并退出（预期行为）。
+    info!("e2e: invoking tray_quit (expect clean exit)");
+    let _ = win.eval("window.__TAURI_INTERNALS__.invoke('tray_quit').catch(function(){});");
     // 不 sleep：进程即将退出。
 }
 

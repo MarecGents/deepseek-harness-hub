@@ -81,15 +81,8 @@ fn dispatch_dsh_cmd(app: &tauri::AppHandle, cmd_json: &str) {
         // tauri-shell.ts 经 invoke() 发出的命令名（= Rust #[tauri::command] 名）。
         "set_window_theme" => {
             if let Some(theme) = value.get("theme").and_then(|t| t.as_str()) {
-                let tauri_theme = match theme {
-                    "dark" => Some(tauri::Theme::Dark),
-                    "light" => Some(tauri::Theme::Light),
-                    _ => None,
-                };
-                if let Some(win) = app.get_webview_window("main") {
-                    let _ = win.set_theme(tauri_theme);
-                    let _ = crate::theme::apply_theme(&win, tauri_theme.unwrap_or(tauri::Theme::Dark));
-                }
+                // 统一走命令：DWM + 外壳 chrome 覆盖属性（Q2）。
+                let _ = crate::commands::set_window_theme(app.clone(), theme.to_string());
             }
         }
         "set_window_size" => {

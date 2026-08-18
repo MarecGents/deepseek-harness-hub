@@ -59,15 +59,25 @@ pub fn window_close(app: tauri::AppHandle) -> Result<(), String> {
 }
 
 /// 主题切换命令（桥桩，M2 bridge.rs 也实现过，这里统一）。
+/// Q2：外壳主题只控 chrome——跟随 dsh（system）不设属性（标题栏走皮肤 token）；
+/// 深色/浅色 → eval 设置 body[data-mg-shell-theme]（标题栏默认黑/白覆盖）。
 #[tauri::command]
 pub fn set_window_theme(app: tauri::AppHandle, theme: String) -> Result<(), String> {
     let tauri_theme = match theme.as_str() {
         "dark" => tauri::Theme::Dark,
         "light" => tauri::Theme::Light,
-        _ => return Err(format!("unknown theme: {theme}")),
+        _ => tauri::Theme::Dark,
     };
     if let Some(win) = app.get_webview_window("main") {
-        crate::theme::apply_theme(&win, tauri_theme).map_err(|e| e.to_string())
+        crate::theme::apply_theme(&win, tauri_theme).map_err(|e| e.to_string())?;
+        // 外壳 chrome 强制覆盖（Q2）：dark/light → 设属性；system → 移除（跟随 dsh token）。
+        let js = match theme.as_str() {
+            "dark" => "document.body.setAttribute('data-mg-shell-theme','dark')",
+            "light" => "document.body.setAttribute('data-mg-shell-theme','light')",
+            _ => "document.body.removeAttribute('data-mg-shell-theme')",
+        };
+        let _ = win.eval(js);
+        Ok(())
     } else {
         Err("main window not found".to_string())
     }
@@ -104,54 +114,23 @@ pub fn tray_quit() -> Result<(), String> {
     std::process::exit(0);
 }
 
-/// 托盘菜单关闭回调（页面任意关闭路径 → 还原窗口位置/隐藏态，Q5/Q7）。
+/// 托盘菜单第一项「显示/隐藏主界面」切换（Q1/Q7）。
+/// 判断：窗口可见且未最小化 → 隐藏到托盘；否则 → 显示并置顶到最前。
+/// （按可见性而非聚焦：点击托盘会夺走焦点，用聚焦判断会误「显示」。）
 #[tauri::command]
-pub fn tray_menu_closed(app: tauri::AppHandle) -> Result<(), String> {
-    let st = app.state::<std::sync::Mutex<crate::tray::TrayMenuState>>();
-    let mut s = st.lock().unwrap();
-    if s.open {
-        if let Some(win) = app.get_webview_window("main") {
-            crate::tray::close_menu(&win, &mut s);
-        } else {
-            s.open = false;
-        }
-        log::info!("tray_menu_closed: menu closed, window restored");
-    }
-    Ok(())
-}
-
-/// 托盘菜单第一项「显示/隐藏主界面」切换（Q7）。
-/// label 来自菜单打开时的上下文：'show'（窗口此前隐藏 → 显示并还原位置）
-/// / 'hide'（窗口此前可见 → 隐藏到托盘）。缺省按当前可见性反切。
-#[tauri::command]
-pub fn window_toggle_visible(app: tauri::AppHandle, label: Option<String>) -> Result<(), String> {
+pub fn window_toggle_visible(app: tauri::AppHandle) -> Result<(), String> {
     let win = app.get_webview_window("main").ok_or("main window not found")?;
-    let st = app.state::<std::sync::Mutex<crate::tray::TrayMenuState>>();
-    let mut s = st.lock().unwrap();
-    let show = match label.as_deref() {
-        Some("show") => true,
-        Some("hide") => false,
-        _ => !win.is_visible().unwrap_or(true), // 无上下文：按可见性反切
-    };
-    if show {
-        // 显示：还原到打开菜单前的位置。
-        if let Some((x, y)) = s.original_pos.take() {
-            let _ = win.set_position(tauri::PhysicalPosition::new(x, y));
-        }
-        s.open = false;
-        let _ = win.set_always_on_top(false);
+    let front = win.is_visible().unwrap_or(false) && !win.is_minimized().unwrap_or(true);
+    if front {
+        let _ = win.hide();
+        log::info!("window_toggle_visible: hidden to tray");
+    } else {
+        let _ = win.unminimize();
         let _ = win.show();
         let _ = win.set_focus();
-        log::info!("window_toggle_visible: shown");
-    } else {
-        // 隐藏到托盘（菜单随窗口一起消失；无需还原位置）。
-        s.open = false;
-        let _ = win.set_always_on_top(false);
-        let _ = win.hide();
-        // 清除页面侧菜单打开态（否则再显示窗口时菜单残留打开）。
-        let _ = win.eval("window.__mgTrayMenuClose && window.__mgTrayMenuClose()");
-        log::info!("window_toggle_visible: hidden to tray");
+        log::info!("window_toggle_visible: shown to front");
     }
+    crate::tray::sync_toggle_label(&app);
     Ok(())
 }
 

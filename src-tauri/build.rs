@@ -14,7 +14,6 @@ fn main() {
                 "window_toggle_maximize",
                 "window_close",
                 "tray_quit",
-                "tray_menu_closed",
                 "window_toggle_visible",
                 "play_sound",
                 "open_workspace_path",

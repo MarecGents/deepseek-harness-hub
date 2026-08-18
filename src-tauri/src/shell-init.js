@@ -1,6 +1,6 @@
 // shell-init.js — dsh-hub Tauri 壳初始化脚本（include_str! 注入 webview）
 //
-// 职责：自绘标题栏（42px，皮肤 token 同向配色）、自绘托盘菜单（皮肤 token）、
+// 职责：自绘标题栏（42px，皮肤 token 同向配色 + 外壳主题覆盖白/黑）、
 //       浏览器侧声音播放（__mgPlaySound）、页面→Rust 命令桥（invoke）。
 //
 // 通道决策（D-2 实测）：`__TAURI_INTERNALS__` 只注入 invoke/transformCallback/
@@ -46,20 +46,12 @@ function ensureShellStyles() {
     '#dsh-hub-titlebar .tb-btn:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(128,128,128,.15));}',
     // 右侧栏（body portal, top:0/bottom:0）整体下移标题栏高度，底对齐不变。
     '#dsh-hub-right-sidebar-root .mg-rs-root{top:42px;}',
-    // 托盘菜单：皮肤 token 同向配色（与标题栏同表面 bg-layer-1）。
-    '#dsh-hub-tray-menu{position:fixed;right:12px;bottom:44px;z-index:100000;width:200px;',
-    'border-radius:10px;padding:6px;display:none;',
-    'background:var(--dsw-alias-bg-layer-1,#1e222b);color:var(--dsw-alias-label-primary,#e6ebf2);',
-    'border:1px solid var(--dsw-alias-border-l1,#262b36);',
-    'box-shadow:0 8px 24px rgba(0,0,0,.4);font-family:system-ui,sans-serif;',
-    'font-size:13px;user-select:none;-webkit-user-select:none;}',
-    '#dsh-hub-tray-menu.mg-open{display:block;}',
-    '#dsh-hub-tray-menu .tm-item{display:flex;align-items:center;height:34px;padding:0 12px;',
-    'border-radius:6px;cursor:pointer;color:inherit;gap:8px;transition:background .15s;}',
-    '#dsh-hub-tray-menu .tm-item:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(128,128,128,.16));}',
-    '#dsh-hub-tray-menu .tm-item .tm-glyph{width:16px;text-align:center;opacity:.75;}',
-    '#dsh-hub-tray-menu .tm-sep{height:1px;margin:5px 8px;background:var(--dsw-alias-border-l2,rgba(128,128,128,.18));}',
-    '#dsh-hub-tray-menu .tm-quit:hover{background:rgba(200,60,60,.22);color:#ff7b7b;}',
+    // 外壳主题强制覆盖（Q2）：设置→DSH HUB 设置→主题 的 浅色/深色 只控外壳
+    // chrome（标题栏），默认白/黑；跟随 dsh = 不设属性，走上面 token。
+    'body[data-mg-shell-theme="dark"] #dsh-hub-titlebar{background:#000000;color:#ffffff;border-bottom-color:#222222;}',
+    'body[data-mg-shell-theme="dark"] #dsh-hub-titlebar .tb-btn:hover{background:rgba(255,255,255,.15);}',
+    'body[data-mg-shell-theme="light"] #dsh-hub-titlebar{background:#ffffff;color:#000000;border-bottom-color:#d8d8d8;}',
+    'body[data-mg-shell-theme="light"] #dsh-hub-titlebar .tb-btn:hover{background:rgba(0,0,0,.08);}',
   ].join('');
   document.head.appendChild(st);
 }
@@ -140,82 +132,7 @@ function mgPlaySound(kind) {
 }
 window.__mgPlaySound = mgPlaySound;
 
-// ── 自绘托盘菜单（Rust 状态机驱动：tray.rs 右键 → eval __mgTrayMenuOpen）──
-function hideTrayMenu() {
-  const menu = document.getElementById('dsh-hub-tray-menu');
-  if (menu && menu.classList.contains('mg-open')) {
-    menu.classList.remove('mg-open');
-    // 菜单关闭 → 通知 Rust 还原/隐藏窗口（仅打开→关闭上报一次）。
-    if (window.__TAURI_INTERNALS__ && window.__TAURI_INTERNALS__.invoke) {
-      window.__TAURI_INTERNALS__.invoke('tray_menu_closed').catch(() => {});
-    }
-  }
-}
-
-function openTrayMenu(label) {
-  let menu = document.getElementById('dsh-hub-tray-menu');
-  if (!menu) {
-    menu = document.createElement('div');
-    menu.id = 'dsh-hub-tray-menu';
-
-    function item(glyph, text, action) {
-      const el = document.createElement('div');
-      el.className = 'tm-item';
-      const g = document.createElement('span');
-      g.className = 'tm-glyph';
-      g.textContent = glyph;
-      const t = document.createElement('span');
-      t.textContent = text;
-      el.appendChild(g);
-      el.appendChild(t);
-      el.onclick = () => { hideTrayMenu(); action(); };
-      return el;
-    }
-
-    // 第一项：显示/隐藏主界面（文案与动作由 label 决定：'hide'/'show'）。
-    const firstItem = item('▣', label === 'hide' ? '隐藏主界面' : '显示主界面', () => {
-      if (window.__TAURI_INTERNALS__ && window.__TAURI_INTERNALS__.invoke) {
-        const lab = (menu && menu.__mgLabel) || label;
-        window.__TAURI_INTERNALS__.invoke('window_toggle_visible', { label: lab }).catch(() => {});
-      }
-    });
-    menu.appendChild(firstItem);
-    // 打开工作区 / 新建任务：同页 CustomEvent → dsh-hub client 处理。
-    menu.appendChild(item('▤', '打开工作区', () => {
-      window.dispatchEvent(new CustomEvent('mg:shell-command', { detail: { command: 'open-workspace' } }));
-    }));
-    menu.appendChild(item('＋', '新建任务', () => {
-      window.dispatchEvent(new CustomEvent('mg:shell-command', { detail: { command: 'new-task' } }));
-    }));
-    const sep = document.createElement('div');
-    sep.className = 'tm-sep';
-    menu.appendChild(sep);
-    const quitItem = item('✕', '退出', () => {
-      if (window.__TAURI_INTERNALS__ && window.__TAURI_INTERNALS__.invoke) {
-        window.__TAURI_INTERNALS__.invoke('tray_quit').catch(() => {});
-      }
-    });
-    quitItem.classList.add('tm-quit');
-    menu.appendChild(quitItem);
-
-    document.body.appendChild(menu);
-    // 点击菜单外部 / Esc 关闭（菜单首次创建时注册一次）。
-    document.addEventListener('click', (e) => {
-      if (!menu.contains(e.target)) hideTrayMenu();
-    }, true);
-    document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') hideTrayMenu();
-    }, true);
-    menu.__mgFirstItem = firstItem;
-  }
-  // 更新第一项文案与动作上下文（显示/隐藏主界面随窗口可见性切换）。
-  menu.__mgLabel = label;
-  if (menu.__mgFirstItem) {
-    const t = menu.__mgFirstItem.querySelector('span:last-child');
-    if (t) t.textContent = (label === 'hide' ? '隐藏主界面' : '显示主界面');
-  }
-  if (!menu.classList.contains('mg-open')) menu.classList.add('mg-open');
-}
-
-window.__mgTrayMenuOpen = openTrayMenu;
-window.__mgTrayMenuClose = hideTrayMenu;
+// ── 托盘菜单（Q1）：已回退原生 Tauri 菜单（系统渲染、出现在鼠标位置）。
+//    菜单事件在 tray.rs 处理：显示/隐藏主界面 → window_toggle_visible；
+//    打开工作区/新建会话 → win.eval 派发 CustomEvent（同页，client 监听）；
+//    退出 → tray_quit。不再需要自绘 HTML 菜单。
