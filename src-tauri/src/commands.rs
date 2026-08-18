@@ -104,14 +104,84 @@ pub fn tray_quit() -> Result<(), String> {
     std::process::exit(0);
 }
 
-/// 打开工作区目录（client 托盘「打开工作区」→ invoke 上行）。
+/// 托盘菜单关闭回调（页面任意关闭路径 → 还原窗口位置/隐藏态，Q5/Q7）。
+#[tauri::command]
+pub fn tray_menu_closed(app: tauri::AppHandle) -> Result<(), String> {
+    let st = app.state::<std::sync::Mutex<crate::tray::TrayMenuState>>();
+    let mut s = st.lock().unwrap();
+    if s.open {
+        if let Some(win) = app.get_webview_window("main") {
+            crate::tray::close_menu(&win, &mut s);
+        } else {
+            s.open = false;
+        }
+        log::info!("tray_menu_closed: menu closed, window restored");
+    }
+    Ok(())
+}
+
+/// 托盘菜单第一项「显示/隐藏主界面」切换（Q7）。
+/// label 来自菜单打开时的上下文：'show'（窗口此前隐藏 → 显示并还原位置）
+/// / 'hide'（窗口此前可见 → 隐藏到托盘）。缺省按当前可见性反切。
+#[tauri::command]
+pub fn window_toggle_visible(app: tauri::AppHandle, label: Option<String>) -> Result<(), String> {
+    let win = app.get_webview_window("main").ok_or("main window not found")?;
+    let st = app.state::<std::sync::Mutex<crate::tray::TrayMenuState>>();
+    let mut s = st.lock().unwrap();
+    let show = match label.as_deref() {
+        Some("show") => true,
+        Some("hide") => false,
+        _ => !win.is_visible().unwrap_or(true), // 无上下文：按可见性反切
+    };
+    if show {
+        // 显示：还原到打开菜单前的位置。
+        if let Some((x, y)) = s.original_pos.take() {
+            let _ = win.set_position(tauri::PhysicalPosition::new(x, y));
+        }
+        s.open = false;
+        let _ = win.set_always_on_top(false);
+        let _ = win.show();
+        let _ = win.set_focus();
+        log::info!("window_toggle_visible: shown");
+    } else {
+        // 隐藏到托盘（菜单随窗口一起消失；无需还原位置）。
+        s.open = false;
+        let _ = win.set_always_on_top(false);
+        let _ = win.hide();
+        // 清除页面侧菜单打开态（否则再显示窗口时菜单残留打开）。
+        let _ = win.eval("window.__mgTrayMenuClose && window.__mgTrayMenuClose()");
+        log::info!("window_toggle_visible: hidden to tray");
+    }
+    Ok(())
+}
+
+/// 提示音播放（Q4）：Node 侧（tauri-shell.ts）经 DSH_CMD 上行 →
+/// 此处 eval 到浏览器执行 HTMLAudio（Node 进程无 Audio，D-2 通道）。
+#[tauri::command]
+pub fn play_sound(app: tauri::AppHandle, kind: String) -> Result<(), String> {
+    let valid = matches!(kind.as_str(), "start" | "success" | "attention" | "error");
+    if !valid {
+        return Err(format!("unknown sound kind: {kind}"));
+    }
+    if let Some(win) = app.get_webview_window("main") {
+        let js = format!("window.__mgPlaySound && window.__mgPlaySound('{}')", kind);
+        win.eval(&js).map_err(|e| e.to_string())?;
+        log::info!("play_sound: '{}' dispatched to page", kind);
+    }
+    Ok(())
+}
+
+/// 打开工作区目录（client 托盘「打开工作区」→ invoke 上行，Q6）。
 /// 平台命令：Windows explorer / macOS open / Linux xdg-open。
+/// 空路径兜底：打开 $DSH_HOME（无工作区时至少"有反应"）。
 #[tauri::command]
 pub fn open_workspace_path(path: String) -> Result<(), String> {
+    let path = if path.trim().is_empty() {
+        crate::state::dsh_home().to_string_lossy().to_string()
+    } else {
+        path
+    };
     log::info!("open_workspace_path invoked from page: {path}");
-    if path.is_empty() {
-        return Err("empty workspace path".to_string());
-    }
     #[cfg(target_os = "windows")]
     let result = std::process::Command::new("explorer").arg(&path).spawn();
     #[cfg(target_os = "macos")]

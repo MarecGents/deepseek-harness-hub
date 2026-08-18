@@ -106,6 +106,12 @@ fn dispatch_dsh_cmd(app: &tauri::AppHandle, cmd_json: &str) {
             let body = value.get("body").and_then(|v| v.as_str()).unwrap_or("任务完成");
             let _ = crate::notify::notify_task_complete(app.clone(), Some(title.to_string()), Some(body.to_string()), None);
         }
+        // Q4：提示音 — Node 进程无 Audio，经 eval 到浏览器 HTMLAudio 播放。
+        "play_sound" => {
+            if let Some(kind) = value.get("kind").and_then(|k| k.as_str()) {
+                let _ = crate::commands::play_sound(app.clone(), kind.to_string());
+            }
+        }
         // 兼容旧名（早期实现）。
         "applyTheme" | "applySize" | "notify" => {
             warn!("node: DSH_CMD legacy name '{}' ignored (use set_window_theme/set_window_size/notify_task_complete)", cmd);
@@ -170,14 +176,19 @@ pub fn start_dsh(state: Arc<NodeState>, app: tauri::AppHandle) -> Result<(), Str
     let assemble_script = repo_root.join("scripts").join("assemble-profile.mjs");
     if assemble_script.exists() {
         info!("node: assembling profile via {}", assemble_script.display());
-        let asm = Command::new("cmd")
-            .args(["/d", "/s", "/c", &format!("node {}", assemble_script.display())])
+        let mut asm = Command::new("cmd");
+        asm.args(["/d", "/s", "/c", &format!("node {}", assemble_script.display())])
             .env("DSH_HOME", dsh_home())
-            .env("DSH_HUB_PACKAGE_ROOT", repo_root)
-            .output()
-            .map_err(|e| format!("assemble-profile failed: {e}"))?;
-        if !asm.status.success() {
-            warn!("node: assemble-profile stderr: {}", String::from_utf8_lossy(&asm.stderr));
+            .env("DSH_HUB_PACKAGE_ROOT", repo_root);
+        // Q3：子进程 CREATE_NO_WINDOW，防控制台闪现。
+        #[cfg(target_os = "windows")]
+        {
+            use std::os::windows::process::CommandExt;
+            asm.creation_flags(0x08000000);
+        }
+        let asm_output = asm.output().map_err(|e| format!("assemble-profile failed: {e}"))?;
+        if !asm_output.status.success() {
+            warn!("node: assemble-profile stderr: {}", String::from_utf8_lossy(&asm_output.stderr));
         }
     }
 
@@ -192,6 +203,12 @@ pub fn start_dsh(state: Arc<NodeState>, app: tauri::AppHandle) -> Result<(), Str
         .env("DSH_HOME", dsh_home())
         .env("DSH_HUB_LAUNCHED", "1")
         .env("DSH_HUB_SHELL", "tauri");
+    // Q3：dsh.cmd 经 cmd.exe 解析会闪控制台，加 CREATE_NO_WINDOW。
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x08000000);
+    }
 
     let mut child = cmd.spawn().map_err(|e| format!("spawn dsh web failed: {e}"))?;
 

@@ -154,38 +154,12 @@ export interface TauriShellHandle {
 export type TaskSoundKind = 'start' | 'success' | 'attention' | 'error'
 
 /**
- * Sound asset paths relative to the web asset root.
- * These correspond to the WAV files in assets/sounds/ (synthesized by
- * scripts/synthesize-sounds.mjs). In Tauri mode they are served as
- * static assets by the webview; HTMLAudioElement handles playback.
- */
-const SOUND_URLS: Record<TaskSoundKind, string> = {
-  start: '/api/dsh-hub/sounds/dsh-hub-start.wav',
-  success: '/api/dsh-hub/sounds/dsh-hub-success.wav',
-  attention: '/api/dsh-hub/sounds/dsh-hub-attention.wav',
-  error: '/api/dsh-hub/sounds/dsh-hub-error.wav',
-}
-
-/**
- * Play a sound file via HTMLAudioElement. Fire-and-forget: errors are logged
- * but never propagate (best-effort, same policy as desktop.ts).
+ * Q4: Node 进程没有 `Audio`（历史实测 ReferenceError），提示音改走
+ * DSH_CMD 上行 → Rust eval → 浏览器侧 HTMLAudio（shell-init.js
+ * `__mgPlaySound`）。此函数仅发命令，不直接播放。
  *
- * @param kind - The event kind whose sound to play.
+ * @param kind - 声音种类（start/success/attention/error）。
  */
-function playHtmlSound(kind: TaskSoundKind): void {
-  try {
-    const url = SOUND_URLS[kind]
-    const audio = new Audio(url)
-    // Don't await — fire-and-forget like winmm SND_ASYNC.
-    void audio.play().catch((error: unknown) => {
-      // Autoplay policy or missing asset; non-fatal.
-      console.warn(`[dsh-hub] tauri sound "${kind}" play failed:`, error)
-    })
-  } catch (error) {
-    // Audio constructor failure (e.g. missing DOM); non-fatal.
-    console.warn(`[dsh-hub] tauri sound "${kind}" init failed:`, error)
-  }
-}
 
 // ─── Event dispatch (page-side, same-origin) ────────────────────────────────
 
@@ -317,14 +291,14 @@ export function openDesktopShellTauri(
 
     playSound: (kind: TaskSoundKind) => {
       if (guard()) return
-      // D3: Cross-platform HTMLAudio playback replaces Windows winmm.dll.
-      playHtmlSound(kind)
+      // Q4: Node 无 Audio → DSH_CMD 上行 → Rust eval → 浏览器 HTMLAudio。
+      void invoke('play_sound', { kind })
     },
 
     notifyTaskComplete: (body: string, opts?: { sessionId?: string }) => {
       if (guard()) return
-      // Play the completion sound (best-effort, D3).
-      playHtmlSound('success')
+      // 完成提示音（Q4：经 play_sound 通道，浏览器侧播放）。
+      void invoke('play_sound', { kind: 'success' })
 
       // Spam guard: at most one toast per cooldown window (same as desktop.ts).
       const now = Date.now()

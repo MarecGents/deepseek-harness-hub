@@ -45,6 +45,7 @@ import { openFolderInExplorer } from './services/explorer.js'
 import { makeWorkspaceRoutes } from './services/workspace-api.js'
 import { makePinsRoutes } from './services/pins-api.js'
 import { makeBackgroundsRoutes } from './services/backgrounds-api.js'
+import { makeSoundsRoutes } from './services/sounds-api.js'
 
 /** True when this sidecar was spawned by the Tauri shell (Rust lib.rs). */
 function isTauriShell(): boolean {
@@ -245,11 +246,11 @@ export function apply(ctx: Context, config: Config): void {
     const depth = session.header?.delegationDepth ?? 0
     // Event sounds: question submitted (turn/start), AI approval requested
     // (approval/asked), task complete (turn/end → completed), task error
-    // (turn/end → error). Only depth-0 user sessions; subagent turns are
-    // invisible busy work and stay silent. A value saved in the settings
-    // card (persisted) wins over the composition Config and applies live.
+    // (turn/end → error). Q4：声音永远触发（不按 depth 过滤，子任务也响）；
+    // soundEnabled 设置项仍可整体关闭。A value saved in the settings card
+    // (persisted) wins over the composition Config and applies live.
     const soundEnabled = storedSoundEnabled() ?? config.soundEnabled
-    if (soundEnabled && depth === 0) {
+    if (soundEnabled) {
       const e = event as { type?: string; data?: { reason?: { kind?: string } } } | undefined
       if (e?.type === 'turn/start') {
         shell?.playSound('start')
@@ -263,9 +264,8 @@ export function apply(ctx: Context, config: Config): void {
     }
     // Task-complete notification: fire for top-level user sessions only
     // (depth 0 — subagent turns are invisible busy work), and only when a
-    // turn actually finished (`completed` or `error`). The desktop shell
-    // suppresses the toast when the finished session is the one the user is
-    // currently looking at (the sound alone already announced it).
+    // turn actually finished (`completed` or `error`). Q4：若完成的就是当前
+    // 聚焦会话，只响提示音、不弹通知（看得见就不打扰）；非聚焦会话才弹。
     const notifyEnabled = storedNotifyOnTaskComplete() ?? config.notifyOnTaskComplete
     if (!notifyEnabled) return
     if (depth !== 0) return
@@ -273,6 +273,10 @@ export function apply(ctx: Context, config: Config): void {
     if (e?.type !== 'turn/end') return
     const kind = e.data?.reason?.kind
     if (kind === 'completed') {
+      const current = (ctx as unknown as {
+        sessions?: { list?: { getSnapshot?: () => { current?: string } } }
+      }).sessions?.list?.getSnapshot?.()?.current
+      if (current !== undefined && current === session.id) return // 聚焦中，不打扰
       shell?.notifyTaskComplete('任务完成，点击回到窗口', { sessionId: session.id })
     } else if (kind === 'error') {
       shell?.notifyTaskComplete('任务出错，点击回到窗口', { sessionId: session.id })
@@ -303,6 +307,7 @@ export function apply(ctx: Context, config: Config): void {
       ...makeWorkspaceRoutes(),
       ...makePinsRoutes(),
       ...makeBackgroundsRoutes(),
+      ...makeSoundsRoutes(),
       // T4.9 bridge-server routes (Tauri mode only): SSE/POST endpoints for
       // Tauri shell ↔ dsh-hub page communication.
       ...(isTauriShell() ? makeBridgeRoutes({

@@ -33,6 +33,9 @@
     "allow-window-toggle-maximize",
     "allow-window-close",
     "allow-tray-quit",
+    "allow-tray-menu-closed",
+    "allow-window-toggle-visible",
+    "allow-play-sound",
     "allow-open-workspace-path",
     "allow-notify-task-complete"
   ]

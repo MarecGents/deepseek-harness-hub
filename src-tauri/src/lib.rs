@@ -89,6 +89,29 @@ fn read_shell_config_bool(key: &str, default: bool) -> bool {
     }
 }
 
+/// Q4：Windows 未打包应用的系统 toast 需要注册 AUMID 才会显示
+/// （tauri-plugin-notification 用 config identifier = com.marecgents.dsh-hub）。
+/// 注册 HKCU\Software\Classes\AppUserModelId\{AUMID}（DisplayName/IconUri），
+/// 幂等（reg add /f），失败仅告警；打包安装（M5）后快捷方式自带 AUMID。
+#[cfg(target_os = "windows")]
+fn register_toast_aumid() {
+    use std::os::windows::process::CommandExt;
+    let key = "HKCU\\Software\\Classes\\AppUserModelId\\com.marecgents.dsh-hub";
+    let exe = std::env::current_exe().unwrap_or_default().to_string_lossy().to_string();
+    let add = |name: &str, value: &str| {
+        let mut c = std::process::Command::new("reg");
+        c.args(["add", key, "/v", name, "/t", "REG_SZ", "/d", value, "/f"]);
+        c.creation_flags(0x08000000); // CREATE_NO_WINDOW
+        match c.output() {
+            Ok(out) if out.status.success() => info!("notify: AUMID {} = {} registered", name, value),
+            Ok(out) => warn!("notify: AUMID {} register failed: {}", name, String::from_utf8_lossy(&out.stderr)),
+            Err(e) => warn!("notify: AUMID {} register error: {}", name, e),
+        }
+    };
+    add("DisplayName", "DeepSeek Harness Hub");
+    add("IconUri", &exe);
+}
+
 
 pub fn run() {
     let log_dir = state::dsh_home().join("dsh-hub").join("logs");
@@ -122,10 +145,17 @@ pub fn run() {
             commands::window_toggle_maximize,
             commands::window_close,
             commands::tray_quit,
+            commands::tray_menu_closed,
+            commands::window_toggle_visible,
+            commands::play_sound,
             commands::open_workspace_path,
             notify::notify_task_complete,
         ])
         .setup(|app| {
+            // Q4：toast 显示所需 AUMID 注册（Windows 未打包应用，幂等）。
+            #[cfg(target_os = "windows")]
+            register_toast_aumid();
+
             // ── M4 流程（T4.4 SOP §5.4 步骤 4）──
             // 1. 托盘。
             let _tray = tray::setup_tray(app)?;
@@ -187,209 +217,9 @@ pub fn run() {
                 format!("invalid sidecar URL: {e}")
             })?);
 
-            // 注入壳标记 + 自绘标题栏 + 托盘事件桥（Tauri frameless 窗口标准做法）。
-            // dsh web 无内置标题栏——壳层必须注入窗口控制（最小化/最大化/关闭/拖拽）。
-            // 托盘菜单经 `app.emit("mg:shell-command")` 下行 → 此桥转 CustomEvent 给页面。
-            let init_script = r#"
-                window.__MG_SHELL_READY = true;
-                window.__DSH_SHELL = 'tauri';
-                window.__DSH_HUB_LAUNCHED = '1';
-
-                // ── 通道决策（D-2 实测）──
-                // `__TAURI_INTERNALS__` 只注入 invoke/transformCallback/runCallback/
-                // plugins，**没有 `.event` 对象**（事件 API 在 @tauri-apps/api 包里，
-                // 页面不打包它）——event.listen/emit 全链路不可用（E2E 实测：
-                // Rust app.emit、页面 emit 均不送达）。因此壳桥只用两个已验证通道：
-                //   页面 → Rust：invoke 命令（ACL allow-*）
-                //   Rust → 页面：win.eval（tray.rs 右键 → __mgTrayMenuToggle）
-                // 菜单项 打开工作区/新建任务 = 同页 CustomEvent（client 已监听）；
-                // 退出 = invoke('tray_quit')。__mgShellReady 标记保留（client 设置）。
-
-                // ── 自绘标题栏（Tauri frameless 窗口窗口控制）──
-                // 皮肤跟随：body（浅色皮肤）→ 深色标题栏；body[data-ds-dark-theme]
-                // （深色皮肤）→ 浅色标题栏。transition 保证切换快速且人眼无感。
-                //
-                // 注意：初始化脚本在「文档创建时」（HTML 尚未解析）执行——此时
-                // document.head/body 均为 null，任何解析期 DOM 访问都会抛错杀死
-                // 整个脚本（标题栏/菜单全失效）。故样式注入与标题栏构建全部推迟
-                // 到 DOMContentLoaded（initShell）。
-                function ensureShellStyles() {
-                    if (!document.getElementById('dsh-hub-titlebar-style')) {
-                        const st = document.createElement('style');
-                        st.id = 'dsh-hub-titlebar-style';
-                        st.textContent = [
-                            '#dsh-hub-titlebar{position:fixed;top:0;left:0;right:0;height:32px;z-index:99999;',
-                            'display:flex;align-items:center;justify-content:space-between;user-select:none;',
-                            '-webkit-user-select:none;pointer-events:auto;',
-                            'background:#181c24;color:#8b9bb5;border-bottom:1px solid #252a36;',
-                            'transition:background .2s ease,color .2s ease,border-color .2s ease;}',
-                            '#dsh-hub-titlebar .tb-title{padding-left:12px;font-size:12px;color:inherit;',
-                            'font-family:system-ui,sans-serif;flex:1;-webkit-app-region:drag;height:100%;',
-                            'display:flex;align-items:center;cursor:default;}',
-                            '#dsh-hub-titlebar .tb-controls{display:flex;height:100%;-webkit-app-region:no-drag;}',
-                            '#dsh-hub-titlebar .tb-btn{width:46px;height:100%;border:none;background:transparent;',
-                            'color:inherit;font-size:14px;cursor:pointer;display:flex;align-items:center;',
-                            'justify-content:center;transition:background .15s;font-family:system-ui,sans-serif;}',
-                            '#dsh-hub-titlebar .tb-btn:hover{background:rgba(128,128,128,.18);}',
-                            // 深色皮肤：标题栏反转为浅色（深色内容 + 浅色 chrome，对比清晰）。
-                            'body[data-ds-dark-theme] #dsh-hub-titlebar{background:#f0f2f7;color:#3a4356;border-bottom-color:#d5dae3;}',
-                            'body[data-ds-dark-theme] #dsh-hub-titlebar .tb-btn:hover{background:rgba(0,0,0,.08);}',
-                        ].join('');
-                        document.head.appendChild(st);
-                    }
-                    if (!document.getElementById('dsh-hub-tray-menu-style')) {
-                        const mst = document.createElement('style');
-                        mst.id = 'dsh-hub-tray-menu-style';
-                        mst.textContent = [
-                            '#dsh-hub-tray-menu{position:fixed;right:12px;bottom:40px;z-index:100000;',
-                            'width:200px;border-radius:10px;padding:6px;display:none;',
-                            'background:#181c24;color:#8b9bb5;border:1px solid #252a36;',
-                            'box-shadow:0 8px 24px rgba(0,0,0,.4);font-family:system-ui,sans-serif;',
-                            'font-size:13px;user-select:none;-webkit-user-select:none;',
-                            'transition:background .2s ease,color .2s ease,border-color .2s ease;}',
-                            '#dsh-hub-tray-menu.mg-open{display:block;}',
-                            '#dsh-hub-tray-menu .tm-item{display:flex;align-items:center;height:34px;',
-                            'padding:0 12px;border-radius:6px;cursor:pointer;color:inherit;gap:8px;',
-                            'transition:background .15s;}',
-                            '#dsh-hub-tray-menu .tm-item:hover{background:rgba(128,128,128,.16);}',
-                            '#dsh-hub-tray-menu .tm-item .tm-glyph{width:16px;text-align:center;opacity:.75;}',
-                            '#dsh-hub-tray-menu .tm-sep{height:1px;margin:5px 8px;background:rgba(128,128,128,.18);}',
-                            '#dsh-hub-tray-menu .tm-quit:hover{background:rgba(200,60,60,.22);color:#ff7b7b;}',
-                            // 深色皮肤：菜单反转为浅色（与标题栏同色系 chrome 反转）。
-                            'body[data-ds-dark-theme] #dsh-hub-tray-menu{background:#f0f2f7;color:#3a4356;border-color:#d5dae3;}',
-                            'body[data-ds-dark-theme] #dsh-hub-tray-menu .tm-item:hover{background:rgba(0,0,0,.08);}',
-                            'body[data-ds-dark-theme] #dsh-hub-tray-menu .tm-sep{background:rgba(0,0,0,.12);}',
-                            'body[data-ds-dark-theme] #dsh-hub-tray-menu .tm-quit:hover{background:rgba(200,60,60,.16);color:#c03038;}',
-                        ].join('');
-                        document.head.appendChild(mst);
-                    }
-                }
-
-                function initShell() {
-                    ensureShellStyles();
-                    injectTitleBar();
-                }
-
-                if (document.readyState === 'loading') {
-                    document.addEventListener('DOMContentLoaded', initShell);
-                } else {
-                    initShell();
-                }
-
-                function injectTitleBar() {
-                    if (document.getElementById('dsh-hub-titlebar')) return; // 幂等
-
-                    const bar = document.createElement('div');
-                    bar.id = 'dsh-hub-titlebar';
-
-                    const title = document.createElement('div');
-                    title.className = 'tb-title';
-                    title.textContent = 'DeepSeek Harness Hub';
-                    bar.appendChild(title);
-
-                    const controls = document.createElement('div');
-                    controls.className = 'tb-controls';
-
-                    const invoke = (cmd) => {
-                        if (window.__TAURI_INTERNALS__ && window.__TAURI_INTERNALS__.invoke) {
-                            // 诊断：先上报按钮点击（验证 remote origin invoke 链路）。
-                            window.__TAURI_INTERNALS__.invoke('diag_report', { msg: 'btn:' + cmd }).catch(() => {});
-                            window.__TAURI_INTERNALS__.invoke(cmd).catch(() => {});
-                        }
-                    };
-
-                    function makeBtn(label, cmd) {
-                        const b = document.createElement('button');
-                        b.className = 'tb-btn';
-                        b.textContent = label;
-                        b.onclick = () => invoke(cmd);
-                        return b;
-                    }
-
-                    controls.appendChild(makeBtn('─', 'window_minimize'));
-                    controls.appendChild(makeBtn('□', 'window_toggle_maximize'));
-                    controls.appendChild(makeBtn('✕', 'window_close'));
-
-                    bar.appendChild(controls);
-                    document.body.prepend(bar);
-
-                    const root = document.getElementById('root');
-                    if (root) {
-                        root.style.paddingTop = '32px';
-                        root.style.boxSizing = 'border-box';
-                    }
-                }
-
-                // ── 自绘托盘菜单（原生 Tauri 托盘菜单无法自定义样式 → 自绘 HTML 浮层）──
-                // tray.rs 右键 → app.emit("mg:tray-menu-open") → 此处打开菜单浮层。
-                // 皮肤跟随：与标题栏同色系双块（浅色皮肤→深色菜单；深色皮肤→浅色菜单），
-                // 背景/文字/边框均跟随皮肤，transition 保证切换平滑。
-                // 样式注入见 ensureShellStyles()（DOMContentLoaded 后执行）。
-
-                function hideTrayMenu() {
-                    const menu = document.getElementById('dsh-hub-tray-menu');
-                    if (menu) menu.classList.remove('mg-open');
-                }
-
-                function openTrayMenu() {
-                    let menu = document.getElementById('dsh-hub-tray-menu');
-                    if (!menu) {
-                        menu = document.createElement('div');
-                        menu.id = 'dsh-hub-tray-menu';
-                        function item(glyph, label, action) {
-                            const el = document.createElement('div');
-                            el.className = 'tm-item';
-                            const g = document.createElement('span');
-                            g.className = 'tm-glyph';
-                            g.textContent = glyph;
-                            const t = document.createElement('span');
-                            t.textContent = label;
-                            el.appendChild(g);
-                            el.appendChild(t);
-                            el.onclick = () => { hideTrayMenu(); action(); };
-                            return el;
-                        }
-
-                        // 「显示主界面」= 关闭菜单（窗口已由托盘点击显示/聚焦）。
-                        menu.appendChild(item('▣', '显示主界面', () => {}));
-                        // 打开工作区 / 新建任务：与原生菜单事件同一路径
-                        // （CustomEvent mg:shell-command → dsh-hub client 处理）。
-                        menu.appendChild(item('▤', '打开工作区', () => {
-                            window.dispatchEvent(new CustomEvent('mg:shell-command', { detail: { command: 'open-workspace' } }));
-                        }));
-                        menu.appendChild(item('＋', '新建任务', () => {
-                            window.dispatchEvent(new CustomEvent('mg:shell-command', { detail: { command: 'new-task' } }));
-                        }));
-                        const sep = document.createElement('div');
-                        sep.className = 'tm-sep';
-                        menu.appendChild(sep);
-                        const quitItem = item('✕', '退出', () => {
-                            // 上行 invoke('tray_quit') → Rust 写 quit.marker + 退出。
-                            if (window.__TAURI_INTERNALS__ && window.__TAURI_INTERNALS__.invoke) {
-                                window.__TAURI_INTERNALS__.invoke('tray_quit').catch(() => {});
-                            }
-                        });
-                        quitItem.classList.add('tm-quit');
-                        menu.appendChild(quitItem);
-
-                        document.body.appendChild(menu);
-                        // 点击菜单外部关闭（capture 阶段：先于 item.onclick 判断，菜单内点击不误关）。
-                        document.addEventListener('click', (e) => {
-                            if (!menu.contains(e.target)) hideTrayMenu();
-                        }, true);
-                    }
-                    // 切换语义：已开 → 关闭（右键再次触发时收起）。
-                    if (menu.classList.contains('mg-open')) {
-                        menu.classList.remove('mg-open');
-                        return;
-                    }
-                    menu.classList.add('mg-open');
-                }
-
-                // tray.rs 右键 → win.eval("window.__mgTrayMenuToggle()")（Rust→页面
-                // 用 eval，见 D-2 通道决策；菜单构建/打开逻辑独立，无事件依赖）。
-                window.__mgTrayMenuToggle = openTrayMenu;
-            "#;
+            // 注入壳初始化脚本（自绘标题栏 42px + 托盘菜单 + 声音，见 shell-init.js）。
+            // D-2 通道：页面→Rust 走 invoke 命令；Rust→页面走 win.eval。
+            let init_script = include_str!("shell-init.js");
 
             let win = tauri::WebviewWindowBuilder::new(app, "main", external_url)
                 .title("DeepSeek Harness Hub")
@@ -398,6 +228,9 @@ pub fn run() {
                 .center()
                 .decorations(false)
                 .transparent(false)
+                // Q4：浏览器侧 HTMLAudio 播放提示音——WebView2 默认自动播放策略
+                // 可能拦截无用户手势的音频，放开限制（声音在 DSH_CMD 通道触发）。
+                .additional_browser_args("--autoplay-policy=no-user-gesture-required")
                 .initialization_script(init_script)
                 .build()?;
 
