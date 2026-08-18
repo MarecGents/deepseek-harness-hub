@@ -16,10 +16,11 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2.11", features = ["tray-icon"] }
+tauri = { version = "2.11", features = ["tray-icon", "image-png"] }
 tauri-plugin-log = "2"
 tauri-plugin-shell = "2"
 tauri-plugin-single-instance = "2"
+tauri-plugin-notification = "2"
 tauri-plugin-process = "2"
 tauri-plugin-dialog = "2"
 # deep-link: enabled at M5 per the deep-link decision (SOP §2.4 T1.1); kept
@@ -28,6 +29,14 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 dirs = "5"
 log = "0.4"
+
+# Windows DWM 暗色标题栏（T2.3 theme.rs，参照 spacedrive windows.rs L627-697）。
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.61", features = [
+    "Win32_Graphics_Dwm",
+    "Win32_Foundation",
+    "Win32_System_Registry",
+] }
 
 [features]
 # The custom-protocol feature is required when the frontendDist is served via

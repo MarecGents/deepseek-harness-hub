@@ -25,9 +25,10 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
         /**
          * One plugin's card inside the plugin configuration section. Declared at
          * runtime by ui-settings-plugins; this shape mirrors its contract.
+         * rc.7 起 slot 从 `list` 改为 `keyed`（卡片按 settings namespace key 派发）。
          */
         'settings.plugin.item': {
-            kind: 'list';
+            kind: 'keyed';
             scope: 'root';
             owner: SettingsPluginItemOwnerProps;
         };

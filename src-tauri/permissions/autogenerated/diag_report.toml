@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-diag-report"
+description = "Enables the diag_report command without any pre-configured scope."
+commands.allow = ["diag_report"]
+
+[[permission]]
+identifier = "deny-diag-report"
+description = "Denies the diag_report command without any pre-configured scope."
+commands.deny = ["diag_report"]

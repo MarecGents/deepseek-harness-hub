@@ -10,8 +10,10 @@ import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)))
-const html = readFileSync(join(root, 'dev', 'index.html'))
 const PORT = 17891
+
+/** 每次请求动态读取（dev 期改 html 即时生效，不缓存旧内容） */
+const html = () => readFileSync(join(root, 'dev', 'index.html'))
 
 /** IPC 冒烟结果（页面 invoke 后经 /smoke?result= 上报；ipc-smoke.mjs 轮询断言） */
 let smokeResult = null
@@ -25,7 +27,7 @@ const server = createServer((req, res) => {
     return
   }
   res.setHeader('content-type', 'text/html; charset=utf-8')
-  res.end(html)
+  res.end(html())
 })
 
 server.listen(PORT, '127.0.0.1', () => {
