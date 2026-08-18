@@ -24,6 +24,7 @@
 
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
+import { createInterface } from 'node:readline'
 import type { Context } from '@deepseek-ai/cordis'
 // Empty type imports carry the loader Context merge (settlement await), the
 // cmdline Context merge (the appExit host value), and the session/agent
@@ -357,6 +358,23 @@ export function apply(ctx: Context, config: Config): void {
       if (h) {
         shell = h
         console.log('[dsh-hub] Tauri shell handle connected')
+        // rc.14 tray-helper 模式：壳经 dsh web 进程 stdin 管道下行托盘命令
+        // （帧格式 `MG_TRAY <json>`，Rust node.rs send_tray_command 写入）。
+        // 解析后经 shell.dispatchEvent → dispatchPageEvent（__mgShellReady 重试）
+        // 派发到页面 —— 页面未就绪不丢命令（Q2 用户指定，交叉检验 dev-v1 tray-helper）。
+        const trayPipe = createInterface({ input: process.stdin })
+        trayPipe.on('line', (line) => {
+          if (!line.startsWith('MG_TRAY ')) return
+          try {
+            const payload = JSON.parse(line.slice('MG_TRAY '.length)) as { command?: string }
+            if (typeof payload?.command === 'string') {
+              shell?.dispatchEvent('mg:shell-command', { command: payload.command })
+              console.log(`[dsh-hub] tray pipe command: ${payload.command}`)
+            }
+          } catch {
+            // 畸形管道行（非本协议帧）忽略。
+          }
+        })
         h.applyTheme(effective.theme)
         if (effective.width && effective.height) {
           h.applySize(effective.width, effective.height)

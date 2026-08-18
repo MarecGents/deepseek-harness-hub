@@ -110,16 +110,12 @@ fn handle_menu_event(app: &tauri::AppHandle, event: MenuEvent) {
             let _ = crate::commands::window_toggle_visible(app.clone());
         }
         MENU_OPEN_WORKSPACE | MENU_NEW_TASK => {
-            // D-2：Rust→页面走 win.eval 派发同页 CustomEvent → client handleShellCommand。
+            // rc.14 tray-helper 模式：托盘命令经独立进程管道（dsh web stdin）下行
+            // → host 插件 → 页面 dispatchPageEvent（__mgShellReady 重试，页面未就绪
+            // 不丢命令）。比 win.eval 更可靠（Q2 用户指定）。
             let command = if event.id().as_ref() == MENU_OPEN_WORKSPACE { "open-workspace" } else { "new-task" };
-            if let Some(win) = app.get_webview_window("main") {
-                let js = format!(
-                    "window.dispatchEvent(new CustomEvent('mg:shell-command',{{detail:{{command:'{}'}}}}))",
-                    command
-                );
-                let _ = win.eval(&js);
-            }
-            info!("tray: menu '{}' → dispatch mg:shell-command", command);
+            crate::node::send_tray_command(app, command);
+            info!("tray: menu '{}' → sent via stdin pipe", command);
         }
         MENU_QUIT => {
             info!("tray: quit requested");

@@ -139,19 +139,20 @@ function handleShellCommand(ctx: ClientContext, event: Event): void {
     // Tauri 壳：invoke('open_workspace_path') → Rust 平台命令打开 Explorer
     //   （D-2 实测：__TAURI_INTERNALS__ 无 event 对象，页面→Rust 走命令）。
     // WebView2 壳：window.ipc.postMessage（rc.14 路径，保留）。
+    // 优先判 Tauri（window.ipc 在 Tauri 下可能被其他东西占用，先走 invoke）。
     const path = currentWorkspace(ctx)?.path
-    const ipc = (window as unknown as { ipc?: { postMessage(message: string): void } }).ipc
-    if (ipc) {
-      ipc.postMessage(`mg:workspace-path:${path === undefined ? '' : encodeURIComponent(path)}`)
-    } else {
-      try {
-        const internals = (window as unknown as {
-          __TAURI_INTERNALS__?: { invoke?: (c: string, a?: Record<string, unknown>) => Promise<unknown> }
-        }).__TAURI_INTERNALS__
-        internals?.invoke?.('open_workspace_path', { path: path ?? '' }).catch?.(() => {})
-      } catch {
-        // Best-effort; the shell falls back to its own cwd tracking.
+    try {
+      const internals = (window as unknown as {
+        __TAURI_INTERNALS__?: { invoke?: (c: string, a?: Record<string, unknown>) => Promise<unknown> }
+      }).__TAURI_INTERNALS__
+      if (internals?.invoke) {
+        void internals.invoke('open_workspace_path', { path: path ?? '' }).catch(() => {})
+      } else {
+        const ipc = (window as unknown as { ipc?: { postMessage(message: string): void } }).ipc
+        ipc?.postMessage(`mg:workspace-path:${path === undefined ? '' : encodeURIComponent(path)}`)
       }
+    } catch {
+      // Best-effort; the shell falls back to its own cwd tracking.
     }
   }
 }

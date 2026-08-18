@@ -275,6 +275,9 @@ pub fn run() {
                     return Ok(());
                 }
             }
+            // 成功路径也需托管 NodeState：托盘命令管道（send_tray_command）经
+            // app.state 取 stdin 句柄（rc.14 tray-helper 模式）。
+            app.manage(node_state.clone());
 
             // 3. 等 READY（dsh web: http://127.0.0.1:N）。
             //    start_dsh 里后台线程解析 stdout，state.port 在 READY 后更新。
@@ -355,15 +358,14 @@ pub fn run() {
             // tauri 才 prevent_close（manager/window.rs has_js_listener 检查），
             // Rust 侧 win.listen 不满足该条件，窗口会真正关闭导致进程退出。
             let win_handle = win.clone();
-            let close_to_tray = read_close_to_tray();
-            let minimize_to_tray = read_minimize_to_tray();
             let on_close_win = win.clone();
             let on_min_win = win.clone();
             let on_sync_app = win.app_handle().clone();
             win.on_window_event(move |event| {
                 match event {
                     tauri::WindowEvent::CloseRequested { api, .. } => {
-                        if close_to_tray {
+                        // Bug 1 修复：每次事件重读配置（设置保存后立即生效，无需重启）。
+                        if read_close_to_tray() {
                             api.prevent_close();
                             let _ = on_close_win.hide();
                             crate::tray::sync_toggle_label(&on_sync_app);
@@ -375,8 +377,9 @@ pub fn run() {
                         }
                     }
                     // 最小化到托盘：Tauri 无独立 Minimized 事件，用 Resized + is_minimized 检测。
+                    // Bug 1 修复：每次事件重读 minimizeToTray（设置保存后立即生效）。
                     tauri::WindowEvent::Resized(_)
-                        if minimize_to_tray && on_min_win.is_minimized().unwrap_or(false) => {
+                        if read_minimize_to_tray() && on_min_win.is_minimized().unwrap_or(false) => {
                             let _ = on_min_win.hide();
                             crate::tray::sync_toggle_label(&on_sync_app);
                             info!("resized: minimized → hide to tray (minimizeToTray=true)");

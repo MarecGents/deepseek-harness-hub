@@ -12,7 +12,7 @@
 use std::thread;
 use std::time::Duration;
 use log::info;
-use tauri::WebviewWindow;
+use tauri::{Manager, WebviewWindow};
 
 /// 若 DSH_HUB_E2E=1，启动脚本化验证线程（fire-and-forget）。
 pub fn maybe_run_e2e(win: WebviewWindow) {
@@ -76,6 +76,11 @@ fn run_e2e(win: WebviewWindow) {
     info!("e2e: dispatching mg:shell-command open-workspace (same JS the native menu runs)");
     let _ = win.eval("window.dispatchEvent(new CustomEvent('mg:shell-command',{detail:{command:'open-workspace'}}))");
     sleep(2);
+    // 独立进程管道全链路（Q2：rc.14 tray-helper 模式）：Rust 写 dsh web stdin →
+    // host 读 MG_TRAY → dispatchPageEvent → 页面 → client → invoke → Rust 日志。
+    info!("e2e: sending tray command via stdin pipe (rc.14 pattern)");
+    crate::node::send_tray_command(win.app_handle(), "open-workspace");
+    sleep(3);
     // 直接 invoke 探针：验证命令+ACL 链路本身（绕开 client）。
     let _ = win.eval("window.__TAURI_INTERNALS__.invoke('open_workspace_path', { path: '' }).catch(function(){});");
     sleep(1);

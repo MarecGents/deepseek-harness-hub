@@ -118,6 +118,9 @@ pub struct NodeState {
     pub child: Mutex<Option<Child>>,
     pub port: Mutex<Option<u16>>,
     pub ready: Mutex<bool>,
+    /// dsh web 进程的 stdin 管道（rc.14 tray-helper 模式：壳下行托盘命令 →
+    /// 独立进程管道 → host 插件 → 页面 dispatchPageEvent 带重试）。
+    pub stdin: Mutex<Option<std::process::ChildStdin>>,
 }
 
 impl NodeState {
@@ -126,7 +129,31 @@ impl NodeState {
             child: Mutex::new(None),
             port: Mutex::new(None),
             ready: Mutex::new(false),
+            stdin: Mutex::new(None),
         }
+    }
+}
+
+/// 托盘命令经「独立进程管道」下行到 dsh web 的 stdin（rc.14 tray-helper 模式）。
+/// 帧格式：`MG_TRAY <json>`，host 插件（src/index.ts）读 process.stdin 解析并
+/// 以 dispatchPageEvent（__mgShellReady 重试）派发到页面 —— 比 win.eval 更可靠
+/// （页面未就绪时重试，不丢命令）。
+pub fn send_tray_command(app: &tauri::AppHandle, command: &str) {
+    use std::io::Write;
+    let Some(state) = app.try_state::<Arc<NodeState>>() else {
+        warn!("node: tray command pipe unavailable (NodeState not managed)");
+        return;
+    };
+    let mut stdin = state.stdin.lock().unwrap();
+    match stdin.as_mut() {
+        Some(s) => {
+            let line = format!("MG_TRAY {}\n", serde_json::json!({ "command": command }));
+            match s.write_all(line.as_bytes()) {
+                Ok(_) => info!("node: tray command sent via stdin pipe: {}", command),
+                Err(e) => warn!("node: tray command pipe write failed: {}", e),
+            }
+        }
+        None => warn!("node: tray command pipe unavailable (dsh web stdin missing)"),
     }
 }
 
@@ -207,6 +234,8 @@ pub fn start_dsh(state: Arc<NodeState>, app: tauri::AppHandle) -> Result<(), Str
 
     let stdout = child.stdout.take().expect("stdout pipe");
     let stderr = child.stderr.take();
+    // stdin 管道保留给壳下行托盘命令（rc.14 tray-helper 模式）。
+    *state.stdin.lock().unwrap() = child.stdin.take();
 
     // 后台线程：逐行读取 stdout，解析 READY 信号 + DSH_CMD 上行请求行。
     // port/ready 写入共享 state（Arc<NodeState>）；DSH_CMD 经 AppHandle 执行窗口操作。
