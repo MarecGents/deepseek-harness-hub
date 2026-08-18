@@ -16,6 +16,24 @@ export declare function accentTile(): Icon;
 export declare function dshFaviconDark(): Icon | undefined;
 /** Convenience: the black-glyph favicon for light surfaces (window title bar). */
 export declare function dshFaviconBlack(): Icon | undefined;
+/** Sentinel id = the theme-aware DeepSeek whale (official favicon). */
+export declare const DEFAULT_DESKTOP_ICON_ID = "default";
+/** Built-in selectable desktop icons: id → bundled PNG (two levels up to assets/). */
+export declare const DESKTOP_ICON_ASSETS: Readonly<Record<string, string>>;
+/**
+ * Whether a desktop-icon id resolves ('default' is the theme-aware whale,
+ * everything else must be a bundled asset).
+ * @param id - the persisted `desktopIcon` config value.
+ */
+export declare function isKnownDesktopIcon(id: string): boolean;
+/**
+ * Load one selectable desktop icon as raw RGBA. `'default'` has no custom
+ * asset — callers fall through to the theme-aware favicon instead, so this
+ * returns `undefined` for it.
+ * @param id - a known non-default desktop-icon id.
+ * @returns the decoded icon, or undefined for `'default'` / unknown ids.
+ */
+export declare function loadDesktopIcon(id: string): Icon | undefined;
 /** The favicon as a `data:` URL — inlined into the splash page's <img>. */
 export declare function dshFaviconDataUrl(): string | undefined;
 /**

@@ -48,6 +48,11 @@ export interface ShellConfig {
     skin: string;
     /** Active background image id ('none' = no image, native background). */
     background: string;
+    /**
+     * Active desktop/app icon id ('default' = theme-aware DeepSeek whale;
+     * other ids = bundled whale-girl assets in assets/icons/).
+     */
+    desktopIcon: string;
 }
 /** Defaults (mirror the plugin Config composition values). */
 export declare const DEFAULT_SHELL_CONFIG: ShellConfig;

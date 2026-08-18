@@ -70,6 +70,11 @@ export interface ShellConfig {
   skin: string
   /** Active background image id ('none' = no image, native background). */
   background: string
+  /**
+   * Active desktop/app icon id ('default' = theme-aware DeepSeek whale;
+   * other ids = bundled whale-girl assets in assets/icons/).
+   */
+  desktopIcon: string
 }
 
 /** Defaults (mirror the plugin Config composition values). */
@@ -85,6 +90,7 @@ export const DEFAULT_SHELL_CONFIG: ShellConfig = {
   allowMultipleInstances: false,
   skin: 'default',
   background: 'none',
+  desktopIcon: 'default',
 }
 
 /** Config document path under the harness home. */
@@ -259,6 +265,9 @@ export function makeConfigRoutes(onChange?: (value: ShellConfig, changed?: { siz
               // Background id is likewise an opaque short string (same cap as
               // skin); unknown ids are ignored by the client and treated as 'none'.
               if (typeof record.background === 'string' && record.background.length > 0 && record.background.length <= 64) patch.background = record.background
+              // Desktop-icon id is an opaque short string too; the shell falls
+              // back to the DeepSeek whale for unknown ids.
+              if (typeof record.desktopIcon === 'string' && record.desktopIcon.length > 0 && record.desktopIcon.length <= 64) patch.desktopIcon = record.desktopIcon
 
               const value = writeShellConfig(patch)
               onChange?.(value, { size: sizeChanged })

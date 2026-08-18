@@ -40,6 +40,12 @@ export interface DesktopOptions {
     height: number | undefined;
     /** Title-bar theme: 'system' (default) | 'light' | 'dark'. */
     theme: 'system' | 'light' | 'dark';
+    /**
+     * Persisted desktop-icon id ('default' = theme-aware DeepSeek whale, or a
+     * bundled whale-girl asset from assets/icons/). Applied to the window and
+     * taskbar glyph; unknown ids fall back to 'default'.
+     */
+    desktopIcon?: string;
     /** Open the current workspace directory (tray "Open workspace"). */
     openWorkspace: () => void;
     /** Start a new task in the web UI (tray "New task"). */
@@ -65,6 +71,12 @@ export interface DesktopShellHandle {
      * 'system' tracks the page's theme via polling; light/dark pin the chrome.
      */
     applyTheme(theme: 'system' | 'light' | 'dark'): void;
+    /**
+     * Apply a desktop/window icon id immediately (from the settings card's
+     * desktop-icon picker). Re-applies the window + taskbar glyph; unknown ids
+     * fall back to the theme-aware DeepSeek whale.
+     */
+    applyDesktopIcon(id: string): void;
     /**
      * Apply a window size immediately (from the settings card's width/height).
      * If the window is maximized, it is un-maximized first and the persisted

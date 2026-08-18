@@ -33,7 +33,7 @@ import { osThemeIsLight, refreshOsTheme } from './services/os-theme.js'
 import { resolveLaunchScreen } from './services/screen.js'
 import { WebViewThemeDetector } from './services/theme-sync.js'
 import { WebViewTray, type TrayCommand } from './services/tray.js'
-import { dshFaviconBlack, dshFaviconDark, dshFaviconDataUrl, dshFaviconTray } from './services/icons.js'
+import { dshFaviconBlack, dshFaviconDark, dshFaviconDataUrl, dshFaviconTray, loadDesktopIcon, DEFAULT_DESKTOP_ICON_ID, isKnownDesktopIcon } from './services/icons.js'
 import { playTaskSound, type TaskSoundKind } from './services/sound.js'
 import path from 'node:path'
 import os from 'node:os'
@@ -52,6 +52,12 @@ export interface DesktopOptions {
   height: number | undefined
   /** Title-bar theme: 'system' (default) | 'light' | 'dark'. */
   theme: 'system' | 'light' | 'dark'
+  /**
+   * Persisted desktop-icon id ('default' = theme-aware DeepSeek whale, or a
+   * bundled whale-girl asset from assets/icons/). Applied to the window and
+   * taskbar glyph; unknown ids fall back to 'default'.
+   */
+  desktopIcon?: string
   /** Open the current workspace directory (tray "Open workspace"). */
   openWorkspace: () => void
   /** Start a new task in the web UI (tray "New task"). */
@@ -75,6 +81,12 @@ export interface DesktopShellHandle {
    * 'system' tracks the page's theme via polling; light/dark pin the chrome.
    */
   applyTheme(theme: 'system' | 'light' | 'dark'): void
+  /**
+   * Apply a desktop/window icon id immediately (from the settings card's
+   * desktop-icon picker). Re-applies the window + taskbar glyph; unknown ids
+   * fall back to the theme-aware DeepSeek whale.
+   */
+  applyDesktopIcon(id: string): void
   /**
    * Apply a window size immediately (from the settings card's width/height).
    * If the window is maximized, it is un-maximized first and the persisted
@@ -134,14 +146,36 @@ let iconForLight: ReturnType<typeof dshFaviconDark> | undefined
 /** Taskbar-glyph variants (also decoded once; OS-theme dependent). */
 let taskbarIconForDark: ReturnType<typeof dshFaviconDark> | undefined
 let taskbarIconForLight: ReturnType<typeof dshFaviconDark> | undefined
+/** Persisted desktop-icon id ('default' = theme-aware whale). Set at open. */
+let desktopIconId = DEFAULT_DESKTOP_ICON_ID
+/** Last known page theme (drives which whale variant the title bar uses). */
+let lastWindowDark = true
+
+/**
+ * Wallface icon for the current `desktopIconId`: a bundled whale-girl asset
+ * when one is selected (theme-neutral), else the theme-aware DeepSeek whale.
+ */
+function currentDesktopIcon(dark: boolean): ReturnType<typeof dshFaviconDark> | undefined {
+  const custom = loadDesktopIcon(desktopIconId)
+  return custom !== undefined ? custom : (dark ? (iconForDark ??= dshFaviconDark()) : (iconForLight ??= dshFaviconBlack()))
+}
 
 /**
  * Taskbar glyph follows the OS theme (the taskbar surface does not follow
  * the page theme): white whale on a dark taskbar, black whale on a light
- * one. Refreshed on window focus so an OS theme change while running is
- * picked up without a restart.
+ * one; a selected whale-girl icon is theme-neutral. Refreshed on window
+ * focus so an OS theme change while running is picked up without a restart.
  */
 function applyTaskbarIcon(w: BrowserWindow): void {
+  const custom = loadDesktopIcon(desktopIconId)
+  if (custom !== undefined) {
+    try {
+      w.setTaskbarIcon(Array.from(custom.data), custom.width, custom.height)
+    } catch {
+      // Best-effort; icon swaps must never break the shell.
+    }
+    return
+  }
   const dark = osThemeIsLight() === false
   const icon = dark ? (taskbarIconForDark ??= dshFaviconDark()) : (taskbarIconForLight ??= dshFaviconBlack())
   if (icon === undefined) return
@@ -154,11 +188,12 @@ function applyTaskbarIcon(w: BrowserWindow): void {
 
 /**
  * Window title-bar icon follows the theme: white whale on dark chrome,
- * black whale on light chrome (the taskbar/tray icons stay white — the
- * taskbar surface does not follow the page theme).
+ * black whale on light chrome (a selected whale-girl icon is theme-neutral);
+ * the taskbar/tray icons stay white — the taskbar surface does not follow
+ * the page theme.
  */
 function applyWindowIcon(w: BrowserWindow, dark: boolean): void {
-  const icon = dark ? (iconForDark ??= dshFaviconDark()) : (iconForLight ??= dshFaviconBlack())
+  const icon = currentDesktopIcon(dark)
   if (icon === undefined) return
   try {
     w.setWindowIcon(Array.from(icon.data), icon.width, icon.height)
@@ -224,6 +259,11 @@ export function openDesktopShell(
   fs.mkdirSync(shellDataDir, { recursive: true })
   const shellContext = app.createWebContext({ dataDirectory: shellDataDir })
   const darkByDefault = options.theme !== 'light'
+  // Persisted desktop icon: validated against the registry, else the whale.
+  desktopIconId = options.desktopIcon !== undefined && isKnownDesktopIcon(options.desktopIcon)
+    ? options.desktopIcon
+    : DEFAULT_DESKTOP_ICON_ID
+  lastWindowDark = darkByDefault
   const splash = splashHtml(darkByDefault, dshFaviconDataUrl())
   const targetUrl = `${BASE_URL}:${port}`
 
@@ -285,6 +325,7 @@ export function openDesktopShell(
       // dsh defaults dark; corrected by the first probe as soon as the SPA paints.
       w.setTheme(Theme.Dark)
       wv.setBackgroundColor(...DARK_BG, 255)
+      lastWindowDark = true
       applyWindowIcon(w, true)
       if (hwnd !== undefined) applyNativeTitleBarTheme(hwnd, true)
       detector = new WebViewThemeDetector(wv)
@@ -292,6 +333,7 @@ export function openDesktopShell(
         console.log(`[dsh-hub] page theme ${dark ? 'dark' : 'light'}`)
         w.setTheme(dark ? Theme.Dark : Theme.Light)
         wv.setBackgroundColor(...(dark ? DARK_BG : LIGHT_BG), 255)
+        lastWindowDark = dark
         applyWindowIcon(w, dark)
         if (hwnd !== undefined) applyNativeTitleBarTheme(hwnd, dark)
       })
@@ -299,6 +341,7 @@ export function openDesktopShell(
       const dark = theme === 'dark'
       w.setTheme(dark ? Theme.Dark : Theme.Light)
       wv.setBackgroundColor(...(dark ? DARK_BG : LIGHT_BG), 255)
+      lastWindowDark = dark
       applyWindowIcon(w, dark)
       if (hwnd !== undefined) applyNativeTitleBarTheme(hwnd, dark)
     }
@@ -608,6 +651,16 @@ export function openDesktopShell(
       themeSetting = theme
       if (win !== undefined && webview !== undefined && !webview.isDisposed()) {
         applyWindowTheme(win, webview, theme)
+      }
+    },
+    applyDesktopIcon: (id: string) => {
+      desktopIconId = isKnownDesktopIcon(id) ? id : DEFAULT_DESKTOP_ICON_ID
+      if (win === undefined || win.isDisposed()) return
+      try {
+        applyTaskbarIcon(win)
+        applyWindowIcon(win, lastWindowDark)
+      } catch {
+        // Best-effort; an icon swap must never break the settings save.
       }
     },
     applySize: (width: number, height: number) => {
