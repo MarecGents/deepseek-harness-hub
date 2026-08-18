@@ -119,6 +119,18 @@ function sendCurrentWorkspace(ctx: ClientContext): void {
 /** Handle one tray command dispatched by the desktop shell. */
 function handleShellCommand(ctx: ClientContext, event: Event): void {
   const detail = (event as CustomEvent<{ command?: string }>).detail
+  // 诊断上报（E2E 断言 + 失效排查链路证据）：命令到达浏览器 client。
+  const report = (msg: string): void => {
+    try {
+      const internals = (window as unknown as {
+        __TAURI_INTERNALS__?: { invoke?: (c: string, a?: Record<string, unknown>) => Promise<unknown> }
+      }).__TAURI_INTERNALS__
+      internals?.invoke?.('diag_report', { msg }).catch?.(() => {})
+    } catch {
+      // 诊断失败不影响功能。
+    }
+  }
+  report('client-shell-command:' + (detail?.command ?? '?'))
   if (detail?.command === 'new-task') {
     // Official New Session flow (sidebar "+" button path). Deliberately pass no
     // explicit workspaceId: startSession resolves the current session's
@@ -128,9 +140,11 @@ function handleShellCommand(ctx: ClientContext, event: Event): void {
     }).workspaces
     if (workspaces === undefined || workspaces.startSession === undefined) {
       console.warn('[dsh-hub] new-task ignored: workspaces service unavailable')
+      report('client-new-task:workspaces-unavailable')
       return
     }
     console.log('[dsh-hub] new-task (current session workspace)')
+    report('client-new-task:startSession')
     workspaces.startSession()
     return
   }
@@ -147,6 +161,7 @@ function handleShellCommand(ctx: ClientContext, event: Event): void {
       }).__TAURI_INTERNALS__
       if (internals?.invoke) {
         void internals.invoke('open_workspace_path', { path: path ?? '' }).catch(() => {})
+        report('client-open-workspace:invoke:' + (path ?? ''))
       } else {
         const ipc = (window as unknown as { ipc?: { postMessage(message: string): void } }).ipc
         ipc?.postMessage(`mg:workspace-path:${path === undefined ? '' : encodeURIComponent(path)}`)

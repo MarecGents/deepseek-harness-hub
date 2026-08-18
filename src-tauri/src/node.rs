@@ -105,6 +105,32 @@ fn dispatch_dsh_cmd(app: &tauri::AppHandle, cmd_json: &str) {
                 let _ = crate::commands::play_sound(app.clone(), kind.to_string());
             }
         }
+        // 双向管道上行：host 解析聚焦会话工作区后回传 → Rust 打开目录（Q6 打开工作区）。
+        "open_workspace_path" => {
+            let path = value.get("path").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            info!("node: DSH_CMD open_workspace_path from host: '{}'", path);
+            let _ = crate::commands::open_workspace_path(path);
+        }
+        // 双向管道上行：host 请求壳把页面事件派发到浏览器（D-2 win.eval 可靠通道）。
+        // 替代坏掉的 Node 侧 dispatchPageEvent（globalThis.__mgShellReady 不存在）。
+        "dispatch_page_event" => {
+            let name = value.get("name").and_then(|v| v.as_str()).unwrap_or("");
+            let detail = value.get("detail").cloned().unwrap_or(serde_json::json!({}));
+            if name.is_empty() {
+                warn!("node: DSH_CMD dispatch_page_event missing name");
+            } else if let Some(win) = app.get_webview_window("main") {
+                let js = format!(
+                    "window.dispatchEvent(new CustomEvent('{}',{{detail:{}}}))",
+                    name, detail
+                );
+                match win.eval(&js) {
+                    Ok(_) => info!("node: dispatch_page_event '{}' eval'd to page", name),
+                    Err(e) => warn!("node: dispatch_page_event '{}' eval failed: {}", name, e),
+                }
+            } else {
+                warn!("node: dispatch_page_event '{}' skipped (no main window)", name);
+            }
+        }
         // 兼容旧名（早期实现）。
         "applyTheme" | "applySize" | "notify" => {
             warn!("node: DSH_CMD legacy name '{}' ignored (use set_window_theme/set_window_size/notify_task_complete)", cmd);

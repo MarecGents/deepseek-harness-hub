@@ -76,10 +76,13 @@ fn run_e2e(win: WebviewWindow) {
     info!("e2e: dispatching mg:shell-command open-workspace (same JS the native menu runs)");
     let _ = win.eval("window.dispatchEvent(new CustomEvent('mg:shell-command',{detail:{command:'open-workspace'}}))");
     sleep(2);
-    // 独立进程管道全链路（Q2：rc.14 tray-helper 模式）：Rust 写 dsh web stdin →
-    // host 读 MG_TRAY → dispatchPageEvent → 页面 → client → invoke → Rust 日志。
-    info!("e2e: sending tray command via stdin pipe (rc.14 pattern)");
+    // 独立进程管道全链路（Q6 双向）：Rust 写 dsh web stdin → host 解析聚焦会话
+    // → 上行 DSH_CMD → Rust 执行（open_workspace_path / dispatch_page_event）。
+    info!("e2e: sending open-workspace via stdin pipe (Q6 two-way)");
     crate::node::send_tray_command(win.app_handle(), "open-workspace");
+    sleep(3);
+    info!("e2e: sending new-task via stdin pipe (Q6 two-way)");
+    crate::node::send_tray_command(win.app_handle(), "new-task");
     sleep(3);
     // 直接 invoke 探针：验证命令+ACL 链路本身（绕开 client）。
     let _ = win.eval("window.__TAURI_INTERNALS__.invoke('open_workspace_path', { path: '' }).catch(function(){});");
