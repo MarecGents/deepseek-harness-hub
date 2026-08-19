@@ -108,9 +108,9 @@ export function setupSessionRuntime(ctx: Context, deps: SessionRuntimeDeps): voi
         sessions?: { list?: { getSnapshot?: () => { current?: string } } }
       }).sessions?.list?.getSnapshot?.()?.current
       if (current !== undefined && current === session.id) return // 聚焦中，不打扰
-      shell?.notifyTaskComplete('任务完成，点击回到窗口', { sessionId: session.id })
+      shell?.notifyTaskComplete('任务完成', { sessionId: session.id })
     } else if (kind === 'error') {
-      shell?.notifyTaskComplete('任务出错，点击回到窗口', { sessionId: session.id })
+      shell?.notifyTaskComplete('任务出错', { sessionId: session.id })
     }
   })
 

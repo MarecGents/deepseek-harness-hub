@@ -55,7 +55,7 @@ const COPY = {
   closeLabel: '关闭到托盘',
   closeHint: '点 X 关闭窗口时保持进程与托盘存活（不勾选则完全退出）',
   notifyLabel: '会话完成通知',
-  notifyHint: '任务回合完成时弹出系统通知，点击回到窗口',
+  notifyHint: '任务回合完成时弹出系统通知',
   soundLabel: '提示音',
   soundHint: '用户提问、任务完成、AI 请求批准或任务出错时播放提示音（与系统通知互相独立）',
   multiInstanceLabel: '允许同时运行多个 dsh 实例',
@@ -197,7 +197,13 @@ export function DesktopSettingsCard(_props: DesktopSettingsCardProps): ReactNode
         // (stale host build, whitelist miss, config write war). `config`
         // keeps server truth, so a genuinely dropped field still shows as
         // unsaved (dirty badge + enabled save button) instead of vanishing.
-        setDraft({ ...saved, ...patch })
+        // Width/height are clamped to the SAME bounds the server applies, so a
+        // hand-typed out-of-range value (e.g. 9000) can never make the draft
+        // permanently differ from the persisted value (永久 dirty bug).
+        const replay = { ...patch }
+        if (typeof replay.width === 'number') replay.width = Math.floor(Math.min(Math.max(replay.width, 480), 7680))
+        if (typeof replay.height === 'number') replay.height = Math.floor(Math.min(Math.max(replay.height, 360), 4320))
+        setDraft({ ...saved, ...replay })
         setSaved(true)
       } else {
         setFailed(true)
@@ -214,6 +220,10 @@ export function DesktopSettingsCard(_props: DesktopSettingsCardProps): ReactNode
   /** Apply a skin immediately: persist, then restyle the page live. */
   const onPickSkin = (id: string): void => {
     if (id === skinId) return
+    // Capture the last-good value so a failed persist rolls back to it (not to
+    // 'default', which would leave the UI showing default while config still
+    // holds the previous skin).
+    const previous = skinId
     // A user pick must never be clobbered by the boot skin restore (B8).
     markSkinUserPicked()
     setSkinFailed(false)
@@ -228,9 +238,9 @@ export function DesktopSettingsCard(_props: DesktopSettingsCardProps): ReactNode
         setDraft((prev) => prev === null ? prev : { ...prev, skin: id })
         setSaving(false)
       } else {
-        // Roll back the live style if the persistence failed.
-        applySkin(DEFAULT_SKIN_ID)
-        setSkinId(DEFAULT_SKIN_ID)
+        // Roll back the live style to the last-good value.
+        applySkin(previous)
+        setSkinId(previous)
         setSkinFailed(true)
         setSaving(false)
       }
@@ -240,6 +250,8 @@ export function DesktopSettingsCard(_props: DesktopSettingsCardProps): ReactNode
   /** Apply a background immediately: persist, then restyle the page live. */
   const onPickBackground = (id: string): void => {
     if (id === backgroundId) return
+    // Last-good value for a failed-persist rollback (not 'none').
+    const previous = backgroundId
     // A user pick must never be clobbered by the boot background restore.
     markBackgroundUserPicked()
     setBackgroundFailed(false)
@@ -255,9 +267,9 @@ export function DesktopSettingsCard(_props: DesktopSettingsCardProps): ReactNode
         setDraft((prev) => prev === null ? prev : { ...prev, background: id })
         setSaving(false)
       } else {
-        // Roll back the live style if the persistence failed.
-        applyBackground(DEFAULT_BACKGROUND_ID)
-        setBackgroundId(DEFAULT_BACKGROUND_ID)
+        // Roll back the live style to the last-good value.
+        applyBackground(previous)
+        setBackgroundId(previous)
         setBackgroundFailed(true)
         setSaving(false)
       }

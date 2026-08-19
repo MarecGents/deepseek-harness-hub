@@ -172,14 +172,12 @@ function dispatchPageEvent(name: string, detail: Record<string, unknown> = {}): 
  * @param ctx    - The Cordis plugin context (unused in this implementation
  *                 but kept for signature compatibility with `openDesktopShell`).
  * @param options - Shell configuration resolved from the dsh plugin Config.
- * @param onExit  - Callback invoked when the shell requests an exit.
  * @returns       A handle to control the shell.
  */
 export function openDesktopShellTauri(
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   ctx: unknown,
   options: TauriShellOptions,
-  onExit: () => void,
 ): TauriShellHandle {
   // Runs inside the dsh web Node sidecar: every shell operation is an
   // `DSH_CMD <json>` stdout up-link that the Rust shell executes (node.rs).
@@ -253,8 +251,8 @@ export function openDesktopShellTauri(
 
     notifyTaskComplete: (body: string, opts?: { sessionId?: string }) => {
       if (guard()) return
-      // 完成提示音（Q4：经 play_sound 通道，浏览器侧播放）。
-      void invoke('play_sound', { kind: 'success' })
+      // 声音已由 session-runtime 统一触发（Q4：提问/完成/批准/出错四段），
+      // 此处不再重复 play_sound（此前非聚焦会话会「音效块 + 这里」双响）。
 
       // Spam guard: at most one toast per cooldown window (same as desktop.ts).
       const now = Date.now()
@@ -275,8 +273,10 @@ export function openDesktopShellTauri(
     dispose: () => {
       if (disposed) return
       disposed = true
+      // 插件拆除仅释放句柄，不退出进程：进程退出由 Rust 壳（tray_quit /
+      // CloseRequested）负责。若在此调 exitProcess，任何 include.refresh /
+      // 热重载 / 优雅关闭都会把整个 dsh sidecar 硬杀并误写 quit.marker。
       console.log('[dsh-hub] tauri shell disposed')
-      onExit()
     },
   }
 

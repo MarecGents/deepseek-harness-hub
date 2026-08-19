@@ -16,13 +16,13 @@
 | 3 | 窗口状态记忆 | 仅持久化 maximized（`dsh-hub-window-state.json`）；退出最大化恢复保存尺寸或 3/4 屏；最小 480×360 | ✅ `helpers/state.rs`（restore_window_state / resize 保存） |
 | 4 | 默认尺寸策略 | 无保存尺寸 = 启动屏 3/4（光标所在屏，multi-monitor aware）；恰好默认值 1280×720 不算用户显式保存 | ✅ `managers/window.rs`（primary_monitor 3/4，上限 1600×1000） |
 | 5 | 关闭/最小化到托盘 | closeToTray=true 关窗保进程+托盘；minimizeToTray 最小化即隐藏；行为实时读配置 | ✅ lib.rs `CloseRequested`（prevent_close+hide）/ `Resized+is_minimized` 检测 |
-| 6 | 设置实时应用 | 主题/尺寸保存后即时 applyTheme/applySize；最大化时保存尺寸先退最大化再套用 | ✅ DSH_CMD `set_window_theme`/`set_window_size` 上行 → Rust 执行 |
+| 6 | 设置实时应用 | 主题/尺寸保存后即时 applyTheme/applySize；最大化时保存尺寸先退最大化再套用 | ⚠️ 主题/尺寸 DSH_CMD 上行已通；「最大化时先退最大化再套用」未实现 |
 
 ## 2. 主题与外观
 
 | # | 功能 | 说明（rc.14 行为） | 当前状态 |
 |---|---|---|---|
-| 7 | 标题栏主题跟随 | 'system' 监听页面 `data-ds-dark-theme`；DWM immersive dark；同步 webview 背景防帧错位 | ✅ `helpers/theme.rs`（DWM attr 20/34/35）+ shell-init.js 皮肤 token 同向配色 |
+| 7 | 标题栏主题跟随 | 'system' 监听页面 `data-ds-dark-theme`；DWM immersive dark；同步 webview 背景防帧错位 | ⚠️ 强制浅/深按皮肤色板已通；「system 监听页面主题→DWM/背景」观察器缺失，仅 CSS token 被动跟随 |
 | 8 | 标题栏浅/深强制模式 | 主题选项「浅色/深色」强制 chrome 色；跟随 dsh 走 token | ✅ 增强：按当前皮肤浅/深色板解析（`#mg-dsh-skin` 样式表），皮肤切换自动重读；回退黑白 |
 | 9 | 双轨图标 | 标题栏图标随页面主题（深白鲸/浅黑鲸）；任务栏图标随 OS 主题；托盘图标按 OS 主题 | ⚠️ 托盘图标 ✅（32x32.png）；窗口/任务栏用 exe 内嵌图标，未做深浅翻转（M4 收口可选） |
 
@@ -32,14 +32,14 @@
 |---|---|---|---|
 | 10 | 常驻系统托盘 | 菜单：显示/隐藏主界面（动态标签）、打开工作区、新建会话、退出 | ✅ `managers/tray.rs` 原生菜单 + 左键单击显示 + `sync_toggle_label` 动态标签 |
 | 11 | 打开工作区 | 打开**当前聚焦会话**所在工作区目录 | ✅ 修复（2026-08-19）：改走 client 聚焦会话解析 → `open_workspace_path` |
-| 12 | 新建会话 | 派发页面事件 → 官方 `workspaces.startSession()`（当前会话→最近工作区）；SPA 未就绪重试不丢命令 | ✅ stdin 管道 → host → `dispatch_page_event` → client `startSession` |
+| 12 | 新建会话 | 派发页面事件 → 官方 `workspaces.startSession()`（当前会话→最近工作区）；SPA 未就绪重试不丢命令 | ⚠️ 单次派发无 `__mgShellReady` 重试（boot 期点击会丢）；隐藏到托盘时点新建会话不聚焦窗口 |
 | 13 | 托盘退出 | 写 `quit.marker` 后正常退出，不误判崩溃重启 | ✅ `helpers/quit.rs` + `tray_quit` 命令 |
 
 ## 4. 通知与声音
 
 | # | 功能 | 说明（rc.14 行为） | 当前状态 |
 |---|---|---|---|
-| 14 | 任务完成 Toast | depth-0 会话 turn/end completed\|error 弹原生通知，点击恢复窗口；30s 冷却；聚焦会话只响音不弹 | ✅ `services/notify.rs`（NotificationExt + AUMID 注册 + 快捷方式）+ tauri-shell.ts 冷却/聚焦抑制 |
+| 14 | 任务完成 Toast | depth-0 会话 turn/end completed\|error 弹原生通知；30s 冷却；聚焦会话只响音不弹 | ⚠️ toast 弹出 + 冷却 + 聚焦抑制已通；「点击回到窗口」缺失（tauri-plugin-notification 无点击回调 API，文案已诚实化） |
 | 15 | 四段事件提示音 | 提问 start/完成 success/需批准 attention/出错 error，独立开关；隐藏到托盘仍可闻 | ✅ DSH_CMD `play_sound` → Rust eval → 页面 HTMLAudio（sounds-api 伺服 WAV，autoplay 放行） |
 | 16 | 原创音效 | `scripts/synthesize-sounds.mjs` 合成四段 44.1kHz WAV（无第三方素材） | ✅ 保留（assets + sounds-api 路由） |
 
@@ -88,9 +88,9 @@
 |---|---|---|---|
 | 26 | 启动门控 | 仅 `DSH_HUB_LAUNCHED=1`（壳启动）装配 host+client；普通 `dsh web` 连插件都不挂载 | ✅ cordis.patch.yml `disabled` + index.ts `launchedByShortcut()` |
 | 27 | 单实例 PID 锁 | `launcher.lock`（wx 原子、死 PID 接管、争用后验） | ✅ 替换为 `tauri-plugin-single-instance`（二次启动聚焦已有窗口） |
-| 28 | 多实例防护 | 检测运行中 dsh web 实例（netstat+CIM 命令行匹配）；默认拒绝（无"继续"出口）；勾选后仍需 Yes 确认 | ✅ lib.rs `detect_running_dsh_instances` + dialog 门禁（2026-08-19 接线） |
-| 29 | 崩溃自动重启 | 非 0 退出且无 quit.marker：≤3 次重启（1.2s 间隔）；0 退出/quit.marker 不重启 | ⚠️ quit.marker 语义 ✅（quit.rs/node.rs）；sidecar 重启循环未接线（M4 收口） |
-| 30 | 装配自愈 | 每次启动注册 web profile scoped bundle + junction 校验/重指、清理 bare 遗留；`--assemble-only` 诊断；dsh 缺失自动安装 | ✅ `scripts/assemble-profile.mjs` + node.rs `assemble_profile()` + 壳 `--assemble-only`/`--smoke` |
+| 28 | 多实例防护 | 检测运行中 dsh web 实例（netstat+CIM 命令行匹配）；默认拒绝（无"继续"出口）；勾选后仍需 Yes 确认 | ✅ lib.rs 双通道门禁 + dialog；已加 dev 豁免（debug + 隔离 DSH_HOME 放行）。⚠️ CIM 通道失败会静默放行 |
+| 29 | 崩溃自动重启 | 非 0 退出且无 quit.marker：≤3 次重启（1.2s 间隔）；0 退出/quit.marker 不重启 | ✅ supervisor 线程已接线（≤3 次 + READY 后 re-navigate；quit.marker 启动时清除） |
+| 30 | 装配自愈 | 每次启动注册 web profile scoped bundle + junction 校验/重指、清理 bare 遗留；`--assemble-only` 诊断；dsh 缺失自动安装 | ⚠️ scoped 装配/junction 自愈/诊断均通；「dsh 缺失自动安装」仅 postinstall（npm 路径），运行期缺失只回退临时页 |
 
 ## 12. 安装与身份
 
@@ -112,7 +112,21 @@
 
 ## 覆盖缺口（⚠️ 待 M4/M5 收口）
 
+### 已修复（2026-08-19 三轮审查后）
+- sidecar 崩溃自动重启循环（supervisor 线程 ≤3 次 + READY 后 re-navigate）
+- cmd-shim 兜底孤儿 node（resolve 硬化 + taskkill /T /F）
+- 插件 fiber 拆除硬杀进程（dispose 不再调 exitProcess）
+- peerDependencies 区间（^0.0.1-rc.1 → ^0.1.0-rc.6）
+- config 写入非原子（renameSync）、settings 永久 dirty、皮肤/背景失败回滚、workspace 双 decode
+- 提示音双响、closeToTray 首启默认不一致
+- bridge 死代码移除 + config/pins/workspace 路由 Host 白名单
+- 多实例门禁 dev 豁免（隔离 DSH_HOME）
+
+### 仍待收口（M4/M5）
 1. **Splash 启动画面**（T4.4 官方双窗方案未落地）
-2. **sidecar 崩溃自动重启循环**（≤3 次；quit.marker 语义已就绪）
-3. **NSIS 安装器 / 卸载清理 / 自动更新**（M5 范围）
-4. **窗口/任务栏图标深浅翻转**（可选增强）
+2. **system 主题跟随页面观察器**（DWM/背景/窗口图标随页面 `data-ds-dark-theme`）
+3. **通知点击回到窗口**（tauri-plugin-notification 无点击 API，需 notify-rust 直用或 Windows toast COM 回调）
+4. **NSIS 安装器 / 卸载清理 / 自动更新**（M5 范围）
+5. **窗口/任务栏图标深浅翻转**（可选增强）
+6. **托盘命令 boot 重试**（`__mgShellReady` 轮询）
+7. **最大化时保存尺寸先退最大化**、取消最大化恢复保存尺寸、光标所在屏 3/4 默认尺寸

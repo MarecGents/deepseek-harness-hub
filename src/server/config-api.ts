@@ -16,6 +16,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync, rmSync 
 import { join } from 'node:path'
 import { dshHome } from '../helpers/state-store.js'
 import { DEFAULT_SHELL_CONFIG, type ShellConfig } from '../models/shell-config.js'
+import { rejectIfBadHost } from './host-guard.ts'
 export type { ShellConfig }
 
 
@@ -106,8 +107,10 @@ export function writeShellConfig(patch: Partial<ShellConfig>): ShellConfig {
     mkdirSync(dir, { recursive: true })
     const tmp = `${file}.tmp`
     writeFileSync(tmp, JSON.stringify(next, null, 2), 'utf8')
-    writeFileSync(file, JSON.stringify(next, null, 2), 'utf8')
-    rmSync(tmp, { force: true })
+    // Same-volume rename is atomic on Windows — never write the target file
+    // directly (a crash mid-write would tear config.json and silently drop
+    // every setting via the read fallback).
+    renameSync(tmp, file)
   } catch {
     // Persisting must not crash the request.
   }
@@ -185,6 +188,7 @@ export function makeConfigRoutes(onChange?: (value: ShellConfig, changed?: { siz
       kind: 'exact',
       path: `${CONFIG_API_PREFIX}/config`,
       handler: (req: IncomingMessage, res: ServerResponse): Promise<void> => {
+        if (rejectIfBadHost(req, res)) return Promise.resolve()
         if (req.method === 'GET') {
           json(res, 200, { ok: true, value: readShellConfig() })
           return Promise.resolve()

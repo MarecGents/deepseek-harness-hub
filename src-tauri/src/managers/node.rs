@@ -1,7 +1,7 @@
 // node.rs — M4 Node sidecar manager（T4.1）
 //
 // 模块类别：Manager（壳）
-// 职责：管理 dsh web Node sidecar 进程（start/stop/restart/stdout parsing）。
+// 职责：管理 dsh web Node sidecar 进程（spawn/stop/crash-restart/stdout parsing）。
 //       spawn node dsh-web-sidecar.mjs（或直接 node dsh web --port 0），
 //       解析 stdout 路径行获取端口号，stderr 不处理。
 //
@@ -17,28 +17,18 @@
 // 退出语义（对齐 launcher.mjs L341-372）：
 //   - quit.marker 存在 → 不重启（用户主动退出）
 //   - exit code 0 → 不重启（正常退出）
-//   - 非 0 退出 → ≤3 次重启（1.2s 间隔），超限发出 dsh:crash 事件
+//   - 非 0 退出 → supervisor 连续崩溃重启 ≤3 次（1.2s 间隔，READY 到达归零），
+//     超限 error! dsh:crash → 写 marker → process::exit(1)（fail-fast，
+//     下次启动 clear_quit_marker 后获得全新机会）
 
 use std::fs;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
-use log::{info, warn};
+use log::{error, info, warn};
 use tauri::Manager;
-
-/// dsh home 路径（rc.14 语义：DSH_HOME env || ~/.dsh）。
-fn dsh_home() -> PathBuf {
-    match std::env::var("DSH_HOME") {
-        Ok(v) if !v.trim().is_empty() => PathBuf::from(v.trim()),
-        _ => dirs::home_dir().unwrap_or_default().join(".dsh"),
-    }
-}
-
-/// quit.marker 路径。
-fn quit_marker_path() -> PathBuf {
-    dsh_home().join("dsh-hub").join("quit.marker")
-}
 
 /// 解析 dsh web 输出行中的端口号。
 /// 匹配 `dsh web: http://127.0.0.1:<port>` 格式（rc.7 实测）。
@@ -146,6 +136,8 @@ pub struct NodeState {
     /// dsh web 进程的 stdin 管道（rc.14 tray-helper 模式：壳下行托盘命令 →
     /// 独立进程管道 → host 插件 → 页面 dispatchPageEvent 带重试）。
     pub stdin: Mutex<Option<std::process::ChildStdin>>,
+    /// sidecar 连续崩溃次数（M4 supervisor 重启循环用；每次 READY 到达时归零）。
+    pub restart_count: AtomicU32,
 }
 
 impl NodeState {
@@ -155,6 +147,7 @@ impl NodeState {
             port: Mutex::new(None),
             ready: Mutex::new(false),
             stdin: Mutex::new(None),
+            restart_count: AtomicU32::new(0),
         }
     }
 }
@@ -226,11 +219,53 @@ fn find_node_in_path() -> Option<PathBuf> {
 
 /// 解析 dsh 命令为可直接 spawn 的 (node 可执行, dsh 入口 js)。
 ///
-/// npm 全局 shim 布局（Windows）：`<prefix>/dsh.cmd` 内容指向
-/// `<prefix>/node_modules/@deepseek-ai/dsh/lib/bin.js`，node 用 `<prefix>/node.exe`
-/// （缺则 PATH 上的 node）。CreateProcess 无法直接执行 .cmd，必须解析到
-/// node.exe + entry 再 spawn（或经 cmd /c 兜底，见 start_dsh）。
+/// 1. 优先读 dsh.cmd（npm 全局 shim）内容：把 `%~dp0`（SET dp0 赋值源）与
+///    `%dp0%`（引用）统一替换为 shim 所在目录 dir，再从引号包裹的 token 里提取
+///    node.exe 与 node_modules\@deepseek-ai\dsh\lib\bin.js（npm 生成 shim 的标准
+///    形态，形如 `"%dp0%\node.exe" "%dp0%\node_modules\@deepseek-ai\dsh\lib\bin.js" %*`）。
+///    解析到 node+entry 且 entry 存在则直接返回——避免 cmd /c 兜底（cmd shim 的
+///    node 孙进程无法被 child.kill() 覆盖，易留孤儿）。
+/// 2. 解析失败再回退既有布局：<dir>/node_modules/@deepseek-ai/dsh/lib/bin.js。
+///
+/// CreateProcess 无法直接执行 .cmd，必须解析到 node.exe + entry 再 spawn
+/// （或经 cmd /c 兜底，见 spawn_via_cmd_shim）。
 fn resolve_dsh_entry(dsh_cmd: &Path) -> Result<(PathBuf, PathBuf), String> {
+    // 1) npm shim 内容解析（读 dsh.cmd 文本）。
+    if let Ok(content) = fs::read_to_string(dsh_cmd) {
+        if let Some(dir) = dsh_cmd.parent() {
+            let dir_str = dir.to_string_lossy();
+            let expanded = content.replace("%~dp0", &dir_str).replace("%dp0%", &dir_str);
+            // 提取引号包裹的路径 token（去掉空 token）。
+            let tokens: Vec<&str> = expanded
+                .split('"')
+                .filter(|t| !t.trim().is_empty())
+                .map(str::trim)
+                .collect();
+            let entry = tokens.iter().find(|t| {
+                t.replace('\\', "/")
+                    .ends_with("node_modules/@deepseek-ai/dsh/lib/bin.js")
+            });
+            let node = tokens.iter().find(|t| t.trim_end_matches('"').ends_with("node.exe"));
+            if let Some(entry) = entry {
+                let entry = PathBuf::from(entry.trim_end_matches('"'));
+                if entry.exists() {
+                    let node = node
+                        .map(|n| PathBuf::from(n.trim_end_matches('"')))
+                        .filter(|n| n.exists())
+                        .or_else(find_node_in_path)
+                        .ok_or("node not found in PATH")?;
+                    info!(
+                        "node: resolved dsh entry from shim: {} + {}",
+                        node.display(),
+                        entry.display()
+                    );
+                    return Ok((node, entry));
+                }
+            }
+        }
+    }
+
+    // 2) 回退：既有目录布局。
     if let Some(dir) = dsh_cmd.parent() {
         let entry = dir
             .join("node_modules")
@@ -282,7 +317,7 @@ pub fn assemble_profile() -> Result<(), String> {
     let script = format!("node {}", assemble_script.display());
     let mut asm = Command::new("cmd");
     asm.args(["/d", "/s", "/c", script.as_str()])
-        .env("DSH_HOME", dsh_home())
+        .env("DSH_HOME", crate::state::dsh_home())
         .env("DSH_HUB_PACKAGE_ROOT", repo_root);
     // Q3：子进程 CREATE_NO_WINDOW，防控制台闪现。
     #[cfg(target_os = "windows")]
@@ -307,26 +342,44 @@ pub fn assemble_profile() -> Result<(), String> {
 
 /// 启动 dsh web sidecar（T4.1）。
 ///
-/// 1. 组装 profile（调 assemble-profile.mjs，复用 assemble_profile；失败仅告警）
-/// 2. spawn node → dsh web --port 0
-/// 3. 后台线程逐行解析 stdout：READY 信号 + DSH_CMD 上行请求行
-///    （tauri-shell.ts 写 `DSH_CMD <json>` → 此处执行窗口操作）
+/// 1. 清除上次残留 quit.marker（前一轮 fail-fast 可能留下；清掉后本轮获得
+///    全新 3 次重启机会，supervisor 判定以 marker 为「用户主动退出」）
+/// 2. 组装 profile（调 assemble-profile.mjs，复用 assemble_profile；失败仅告警）
+/// 3. spawn_inner 拉起 sidecar（解析 cmd shim / 兜底 cmd /c）
+/// 4. 启动 supervisor 线程：监视 child 退出 → 崩溃 ≤3 次重启循环
 pub fn start_dsh(state: Arc<NodeState>, app: tauri::AppHandle) -> Result<(), String> {
+    // M4 启动时清除残留 marker（上轮 dsh:crash fail-fast 可能写入）。
+    crate::quit::clear_quit_marker();
+
     // 确保 profile 已装配（幂等；失败仅告警，沿用既有继续启动语义）。
     if let Err(e) = assemble_profile() {
         warn!("node: assemble-profile failed ({e}), continuing with existing profile");
     }
 
+    spawn_inner(state.clone(), app.clone())?;
+    spawn_supervisor(state, app);
+    Ok(())
+}
+
+/// 实际 spawn sidecar（初始启动与 supervisor 崩溃重启共用）。
+///
+/// - 重启语义：新进程是全新实例、端口会变 → 开头重置 ready=false / port=None。
+/// - Windows：优先解析 .cmd shim → node.exe + entry 直接 spawn（CreateProcess
+///   不能执行 .cmd）；解析失败退 cmd /c 兜底。非 Windows：直接 spawn dsh。
+/// - 成功后在 state.child 放入新 child（supervisor 每轮 take 出来 try_wait）。
+fn spawn_inner(state: Arc<NodeState>, app: tauri::AppHandle) -> Result<(), String> {
+    // 重启后端口会变：先清 READY 状态，supervisor 重新等新端口。
+    *state.ready.lock().unwrap() = false;
+    *state.port.lock().unwrap() = None;
+
     let dsh_cmd = find_dsh().ok_or("dsh not found in PATH/npm global")?;
 
-    // Windows：优先解析 .cmd shim → node.exe + entry 直接 spawn（CreateProcess
-    // 不能执行 .cmd）；解析失败退 cmd /c 兜底。非 Windows：直接 spawn dsh。
     let (node, entry) = if cfg!(windows) && dsh_cmd.extension().is_some_and(|e| e == "cmd") {
         match resolve_dsh_entry(&dsh_cmd) {
             Ok(pair) => pair,
             Err(e) => {
                 warn!("node: dsh entry unresolved ({e}); falling back to cmd /c shim");
-                return start_dsh_via_cmd_shim(state, app, &dsh_cmd);
+                return spawn_via_cmd_shim(state, app, &dsh_cmd);
             }
         }
     } else {
@@ -347,7 +400,7 @@ pub fn start_dsh(state: Arc<NodeState>, app: tauri::AppHandle) -> Result<(), Str
     cmd.stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
-        .env("DSH_HOME", dsh_home())
+        .env("DSH_HOME", crate::state::dsh_home())
         .env("DSH_HUB_LAUNCHED", "1")
         .env("DSH_HUB_SHELL", "tauri");
     // Q3：dsh.cmd 经 cmd.exe 解析会闪控制台，加 CREATE_NO_WINDOW。
@@ -376,6 +429,8 @@ pub fn start_dsh(state: Arc<NodeState>, app: tauri::AppHandle) -> Result<(), Str
                     if let Some(port) = parse_dsh_ready_port(&l) {
                         *state_ready.ready.lock().unwrap() = true;
                         *state_ready.port.lock().unwrap() = Some(port);
+                        // READY 到达 = 本轮启动成功，连续崩溃计数归零。
+                        state_ready.restart_count.store(0, Ordering::SeqCst);
                         info!("node: READY on port {}", port);
                     } else if let Some(cmd_json) = l.strip_prefix("DSH_CMD ") {
                         // tauri-shell.ts 的 stdio 上行请求行（SOP D-1）。
@@ -410,7 +465,9 @@ pub fn start_dsh(state: Arc<NodeState>, app: tauri::AppHandle) -> Result<(), Str
 }
 
 /// 兜底启动路径：`cmd /d /s /c "<dsh.cmd>" web --port 0`（仅当 entry 解析失败）。
-fn start_dsh_via_cmd_shim(state: Arc<NodeState>, app: tauri::AppHandle, dsh_cmd: &Path) -> Result<(), String> {
+/// 注意：此路径的 child 是 cmd.exe——kill 时需 taskkill /T 杀整棵进程树
+/// （kill_sidecar 处理），防 node 孙进程孤儿。
+fn spawn_via_cmd_shim(state: Arc<NodeState>, app: tauri::AppHandle, dsh_cmd: &Path) -> Result<(), String> {
     info!("node: spawning via cmd shim: {} web --port 0", dsh_cmd.display());
     let comspec = std::env::var("COMSPEC").unwrap_or_else(|_| "cmd.exe".to_string());
     let mut cmd = Command::new(comspec);
@@ -418,7 +475,7 @@ fn start_dsh_via_cmd_shim(state: Arc<NodeState>, app: tauri::AppHandle, dsh_cmd:
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
-        .env("DSH_HOME", dsh_home())
+        .env("DSH_HOME", crate::state::dsh_home())
         .env("DSH_HUB_LAUNCHED", "1")
         .env("DSH_HUB_SHELL", "tauri");
     #[cfg(target_os = "windows")]
@@ -443,6 +500,7 @@ fn start_dsh_via_cmd_shim(state: Arc<NodeState>, app: tauri::AppHandle, dsh_cmd:
                     if let Some(port) = parse_dsh_ready_port(&l) {
                         *state_ready.ready.lock().unwrap() = true;
                         *state_ready.port.lock().unwrap() = Some(port);
+                        state_ready.restart_count.store(0, Ordering::SeqCst);
                         info!("node: READY on port {}", port);
                     } else if let Some(cmd_json) = l.strip_prefix("DSH_CMD ") {
                         dispatch_dsh_cmd(&app, cmd_json);
@@ -474,30 +532,152 @@ fn start_dsh_via_cmd_shim(state: Arc<NodeState>, app: tauri::AppHandle, dsh_cmd:
     Ok(())
 }
 
-/// 停止 dsh web sidecar（T4.1）。
-///
-/// 写 quit.marker + kill child → 不触发重启循环。
-/// 调用方：--smoke 诊断模式（建窗成功后收尾，防孤儿子进程占用端口）。
-pub fn stop_dsh(state: &NodeState) {
-    // 写 quit.marker（不重启）。
-    let marker = quit_marker_path();
-    let _ = fs::create_dir_all(marker.parent().unwrap());
-    let _ = fs::write(&marker, "quit");
-    info!("node: wrote quit.marker at {}", marker.display());
+/// 重启后等待新 READY：轮询 state.port（最多 60s），拿到新端口且 TCP 可达后
+/// 把主窗口 navigate 到新 URL（重启后端口会变，旧 127.0.0.1:<old> 已失效）。
+/// 不在持锁期间 sleep；port 锁只短暂取用。
+fn wait_restart_ready_and_navigate(state: &NodeState, app: &tauri::AppHandle) {
+    use std::net::{SocketAddr, TcpStream};
+    use std::time::{Duration, Instant};
 
-    // kill child。
-    if let Some(mut child) = state.child.lock().unwrap().take() {
-        let _ = child.kill();
-        info!("node: killed child process");
+    let start = Instant::now();
+    loop {
+        if let Some(port) = *state.port.lock().unwrap() {
+            let addr = format!("127.0.0.1:{port}");
+            if let Ok(addr) = addr.parse::<SocketAddr>() {
+                if TcpStream::connect_timeout(&addr, Duration::from_millis(500)).is_ok() {
+                    info!("node: restart READY verified — {addr} reachable, navigating main window");
+                    if let Some(win) = app.get_webview_window("main") {
+                        if let Ok(url) = tauri::Url::parse(&format!("http://127.0.0.1:{port}")) {
+                            let _ = win.navigate(url);
+                            info!("node: supervisor navigated main window to http://127.0.0.1:{port}");
+                        } else {
+                            // URL 解析失败（u16 端口理论上不会）——退 eval 兜底。
+                            let _ = win.eval(format!("location.href='http://127.0.0.1:{port}'"));
+                        }
+                    }
+                    return;
+                }
+            }
+        }
+        if start.elapsed() > Duration::from_secs(60) {
+            warn!("node: restart READY timeout (60s), main window not navigated");
+            return;
+        }
+        std::thread::sleep(Duration::from_millis(200));
     }
 }
 
-/// 清除 quit.marker（M4 启动时清除残留）。
-#[allow(dead_code)] // M4 完整接线后移除
-pub fn clear_quit_marker() {
-    let marker = quit_marker_path();
-    if marker.exists() {
-        let _ = fs::remove_file(&marker);
-        info!("node: cleared quit.marker at {}", marker.display());
+/// sidecar 崩溃重启 supervisor（M4 核心）：监视 child 退出状态。
+///
+/// 语义（对齐 launcher.mjs L341-372）：
+///   - quit.marker 存在 → 用户主动退出，不重启，break
+///   - exit code 0 → 正常退出，不重启，break
+///   - 其他（崩溃）→ 连续崩溃计数 <3 → sleep 1.2s → clear marker → spawn_inner
+///     重启（计数 +1，READY 到达归零）；计数 ≥3 → error! dsh:crash → 写 marker
+///     → process::exit(1)（fail-fast，下次启动 clear 后获得新机会）
+///
+/// 锁纪律：try_wait 需要 &mut Child → 每轮 take 出来 wait，还在跑则放回；
+/// 不在持 child 锁时 sleep / 调用 spawn / 拿 port 锁（防死锁）。
+fn spawn_supervisor(state: Arc<NodeState>, app: tauri::AppHandle) {
+    std::thread::spawn(move || {
+        info!("node: supervisor started");
+        loop {
+            // 先取 child 再进 if-let：`if let` scrutinee 里的临时 MutexGuard 会存活
+            // 到整个块结束，若在块内再次 lock 同一把锁会死锁（clippy::if_let_mutex）。
+            let taken = state.child.lock().unwrap().take();
+            if let Some(mut child) = taken {
+                match child.try_wait() {
+                    Ok(None) => {
+                        // 还在跑：放回，200ms 后继续观察。
+                        *state.child.lock().unwrap() = Some(child);
+                        std::thread::sleep(std::time::Duration::from_millis(200));
+                    }
+                    Ok(Some(status)) => {
+                        // 进程已退出（child 已被 try_wait 消费，无需放回）。
+                        if crate::quit::has_quit_marker() {
+                            info!("node: supervisor saw quit.marker — user exit, no restart");
+                            break;
+                        }
+                        if status.code() == Some(0) {
+                            info!("node: supervisor saw clean exit (code 0) — no restart");
+                            break;
+                        }
+                        // 崩溃：连续计数（READY 到达时由 stdout 线程归零）。
+                        let count = state.restart_count.load(Ordering::SeqCst);
+                        if count < 3 {
+                            warn!(
+                                "node: sidecar crashed (exit {:?}), restart attempt {}/3 in 1.2s",
+                                status.code(),
+                                count + 1
+                            );
+                            std::thread::sleep(std::time::Duration::from_millis(1200));
+                            // spawn 前清 marker：即使判定瞬间有残留 marker 也清掉，
+                            // 保证本轮重启不被误判为「用户主动退出」。
+                            crate::quit::clear_quit_marker();
+                            if let Err(e) = spawn_inner(state.clone(), app.clone()) {
+                                error!("node: restart spawn failed: {e}");
+                                crate::quit::write_quit_marker();
+                                std::process::exit(1);
+                            }
+                            state.restart_count.fetch_add(1, Ordering::SeqCst);
+                            // 重启后端口会变：等新 READY 并把主窗口导航到新 URL。
+                            wait_restart_ready_and_navigate(&state, &app);
+                        } else {
+                            error!("dsh:crash — sidecar crashed {} times consecutively, giving up", count);
+                            crate::quit::write_quit_marker();
+                            std::process::exit(1);
+                        }
+                    }
+                    Err(e) => {
+                        // try_wait 出错（罕见）：放回继续观察，避免误判崩溃。
+                        warn!("node: supervisor try_wait error: {e}");
+                        *state.child.lock().unwrap() = Some(child);
+                        std::thread::sleep(std::time::Duration::from_millis(200));
+                    }
+                }
+            } else {
+                // child 槽位为空（尚未 spawn / 已被 kill_sidecar 消费）：短暂等待。
+                std::thread::sleep(std::time::Duration::from_millis(200));
+            }
+        }
+        info!("node: supervisor exited");
+    });
+}
+
+/// 仅杀 sidecar 进程（不写 quit.marker）。
+///
+/// Windows：child.kill() 后再补 taskkill /PID <pid> /T /F —— /T 杀整棵进程树，
+/// 防 cmd-shim 兜底路径的 node 孙进程孤儿；仅当 child.kill() 成功拿到 pid 时
+/// 执行，taskkill 失败忽略。
+pub fn kill_sidecar(state: &NodeState) {
+    if let Some(mut child) = state.child.lock().unwrap().take() {
+        match child.kill() {
+            Ok(_) => {
+                info!("node: killed child process");
+                #[cfg(target_os = "windows")]
+                {
+                    use std::os::windows::process::CommandExt;
+                    let pid = child.id();
+                    // taskkill /T：cmd-shim 兜底路径的 cmd.exe 树内 node 孙进程
+                    // 一并杀掉，防孤儿占用端口。
+                    let pid_str = pid.to_string();
+                    let _ = Command::new("taskkill")
+                        .args(["/PID", pid_str.as_str(), "/T", "/F"])
+                        .creation_flags(0x08000000)
+                        .output();
+                    info!("node: taskkill /PID {pid} /T /F issued (tree kill)");
+                }
+            }
+            Err(e) => warn!("node: child.kill failed: {}", e),
+        }
     }
+}
+
+/// 停止 dsh web sidecar（T4.1）。
+///
+/// = kill_sidecar + 写 quit.marker（supervisor 见 marker 判定为用户退出，不重启）。
+/// 调用方：托盘退出 / closeToTray=false 关闭 / --smoke 收尾。
+pub fn stop_dsh(state: &NodeState) {
+    kill_sidecar(state);
+    crate::quit::write_quit_marker();
 }

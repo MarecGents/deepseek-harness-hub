@@ -3,7 +3,7 @@
 // 模块类别：Services（壳）
 // 职责：quit.marker 语义定义（Rust 侧写 marker → process::exit(0)）。
 //       对齐 launcher.mjs L383-406 的 quit.marker 判别逻辑。
-// 外部接口：write_quit_marker()。
+// 外部接口：write_quit_marker() / clear_quit_marker() / has_quit_marker()。
 //
 // quit.marker 语义（与 rc.14 完全对齐）：
 //   1. 托盘「退出」点击 → 写 marker → process::exit(0)
@@ -30,12 +30,17 @@ pub fn write_quit_marker() {
     info!("quit: wrote marker at {}", path.display());
 }
 
-/// 清除 quit.marker（M4 崩溃重启循环：每次启动时清除残留 marker）。
-#[allow(dead_code)] // M4 sidecar 落地时移除
+/// 清除 quit.marker（M4 崩溃重启循环：每次启动/重启前清除残留 marker）。
 pub fn clear_quit_marker() {
     let path = marker_path();
     if path.exists() {
         let _ = std::fs::remove_file(&path);
         info!("quit: cleared marker at {}", path.display());
     }
+}
+
+/// 检查 quit.marker 是否存在（M4 supervisor 退出判定：存在 = 用户主动退出，
+/// 不重启；无 marker 的非 0 退出 = 崩溃，进入重启循环）。
+pub fn has_quit_marker() -> bool {
+    marker_path().exists()
 }

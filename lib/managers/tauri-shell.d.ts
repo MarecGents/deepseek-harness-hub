@@ -116,7 +116,6 @@ export type { TaskSoundKind };
  * @param ctx    - The Cordis plugin context (unused in this implementation
  *                 but kept for signature compatibility with `openDesktopShell`).
  * @param options - Shell configuration resolved from the dsh plugin Config.
- * @param onExit  - Callback invoked when the shell requests an exit.
  * @returns       A handle to control the shell.
  */
-export declare function openDesktopShellTauri(ctx: unknown, options: TauriShellOptions, onExit: () => void): TauriShellHandle;
+export declare function openDesktopShellTauri(ctx: unknown, options: TauriShellOptions): TauriShellHandle;

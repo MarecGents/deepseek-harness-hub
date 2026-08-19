@@ -93,8 +93,10 @@ export function writeShellConfig(patch: Partial<ShellConfig>): ShellConfig {
     mkdirSync(dir, { recursive: true })
     const tmp = `${file}.tmp`
     writeFileSync(tmp, JSON.stringify(next, null, 2), 'utf8')
-    writeFileSync(file, JSON.stringify(next, null, 2), 'utf8')
-    rmSync(tmp, { force: true })
+    // Same-volume rename is atomic on Windows — avoid tearing config.json on a
+    // mid-write crash (which would silently drop every setting via the read
+    // fallback).
+    renameSync(tmp, file)
   } catch {
     // Persisting must not crash the request.
   }

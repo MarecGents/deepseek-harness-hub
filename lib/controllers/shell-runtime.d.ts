@@ -25,16 +25,6 @@ export declare function getActiveCwd(): string | undefined;
 /** Update the host-side fallback cwd (called by session/bridge controllers). */
 export declare function setActiveCwd(cwd: string | undefined): void;
 /**
- * Exit the whole process (close window ⇒ quit dsh).
- *
- * Intentionally uses `process.exit(0)` instead of `ctx.appExit`/`app.exit()`:
- * webviewjs's native teardown can crash with 0xC0000005 on Windows, which the
- * launcher would otherwise treat as an unexpected crash and auto-restart. The
- * marker file tells the launcher this was a deliberate quit even if the OS
- * reports a non-zero exit code.
- */
-export declare function exitProcess(_ctx: Context): void;
-/**
  * 双向管道上行：向壳写一条 `DSH_CMD <json>`（stdout，node.rs 解析执行）。
  * rc.14 tray-helper 反向通道：host → 壳（打开目录 / 派发页面事件等）。
  * @param payload - { cmd, ...args } 命令帧。

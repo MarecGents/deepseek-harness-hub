@@ -12,6 +12,7 @@ import { readdir } from 'node:fs/promises'
 import { isAbsolute, join } from 'node:path'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { WebRoute } from '@deepseek-ai/dsh-host-webserver'
+import { rejectIfBadHost } from './host-guard.ts'
 
 const API_PREFIX = '/api/dsh-hub/workspace'
 const MAX_ENTRIES = 1000
@@ -48,8 +49,10 @@ function queryPath(req: IncomingMessage): string | null {
     const url = new URL(req.url ?? '', 'http://localhost')
     const raw = url.searchParams.get('path')
     if (raw === null || raw === '') return null
-    const path = decodeURIComponent(raw)
-    return isAbsolute(path) ? path : null
+    // URLSearchParams.get 已经完成一次百分号解码；再 decodeURIComponent 会
+    // 二次解码，路径中的字面 '%'（如 C:\work\100%done）抛 URIError → 400，
+    // 或把 '%25' 再解成 '%' 读错目录。直接用已解码的 raw 即可。
+    return isAbsolute(raw) ? raw : null
   } catch {
     return null
   }
@@ -123,6 +126,7 @@ export function makeWorkspaceRoutes(): WebRoute[] {
       kind: 'exact',
       path: `${API_PREFIX}/list`,
       handler: (req: IncomingMessage, res: ServerResponse): Promise<void> => {
+        if (rejectIfBadHost(req, res)) return Promise.resolve()
         if (req.method !== 'GET') {
           json(res, 405, { ok: false, error: 'method-not-allowed' })
           return Promise.resolve()
@@ -142,6 +146,7 @@ export function makeWorkspaceRoutes(): WebRoute[] {
       kind: 'exact',
       path: `${API_PREFIX}/git`,
       handler: (req: IncomingMessage, res: ServerResponse): Promise<void> => {
+        if (rejectIfBadHost(req, res)) return Promise.resolve()
         if (req.method !== 'GET') {
           json(res, 405, { ok: false, error: 'method-not-allowed' })
           return Promise.resolve()

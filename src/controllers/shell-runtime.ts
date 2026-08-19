@@ -16,8 +16,7 @@
  * @category Controller（业务编排层）
  */
 
-import { mkdirSync, writeFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { join } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import { dshHome } from '../helpers/state-store.js'
 import { hasStoredWindowSize, readShellConfig } from '../services/config-store.js'
@@ -40,26 +39,6 @@ export function getActiveCwd(): string | undefined {
 /** Update the host-side fallback cwd (called by session/bridge controllers). */
 export function setActiveCwd(cwd: string | undefined): void {
   activeCwd = cwd
-}
-
-/**
- * Exit the whole process (close window ⇒ quit dsh).
- *
- * Intentionally uses `process.exit(0)` instead of `ctx.appExit`/`app.exit()`:
- * webviewjs's native teardown can crash with 0xC0000005 on Windows, which the
- * launcher would otherwise treat as an unexpected crash and auto-restart. The
- * marker file tells the launcher this was a deliberate quit even if the OS
- * reports a non-zero exit code.
- */
-export function exitProcess(_ctx: Context): void {
-  try {
-    const file = quitMarkerFile()
-    mkdirSync(dirname(file), { recursive: true })
-    writeFileSync(file, String(process.pid), 'utf8')
-  } catch {
-    // Best-effort; the launcher still sees exit code 0 in the normal case.
-  }
-  process.exit(0)
 }
 
 /**

@@ -51,8 +51,7 @@ export interface Config {
     theme: 'system' | 'light' | 'dark';
     /**
      * Show a native Windows notification when a top-level user task finishes
-     * (a turn of a depth-0 session ends with reason `completed`). Clicking the
-     * toast restores the main window. Defaults to on.
+     * (a turn of a depth-0 session ends with reason `completed`). Defaults to on.
      */
     notifyOnTaskComplete: boolean;
     /**

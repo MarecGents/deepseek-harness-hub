@@ -74,9 +74,10 @@ fn wait_for_ready(port: u16) -> Result<(), String> {
     }
 }
 
-/// 读取 closeToTray 配置（M3 直读 $DSH_HOME/dsh-hub/config.json）。
+/// 读取 closeToTray 配置（默认 false，与 host DEFAULT_SHELL_CONFIG.closeToTray 一致；
+/// 此前 Rust 侧默认 true 导致首启点 X 隐藏到托盘，与设置卡默认「完全退出」不符）。
 fn read_close_to_tray() -> bool {
-    read_shell_config_bool("closeToTray", true)
+    read_shell_config_bool("closeToTray", false)
 }
 
 /// 读取 minimizeToTray 配置（默认 true，与 rc.14 一致）。
@@ -134,6 +135,15 @@ fn detect_running_dsh_instances() -> Vec<u32> {
 /// 默认（allowMultipleInstances=false）直接警告并退出；已勾选允许则仍要求是/否确认。
 /// @returns true = 可以继续启动；false = 应退出。
 fn enforce_multi_instance(app: &tauri::App) -> bool {
+    // dev 构建 + 隔离 DSH_HOME（≠ 默认 ~/.dsh，SOP §5.5 测试隔离）→ 直接放行：
+    // 隔离 home 与正式数据不共享，无 seq 冲突风险，不弹框。
+    if cfg!(debug_assertions)
+        && crate::state::dsh_home() != dirs::home_dir().unwrap_or_default().join(".dsh")
+    {
+        info!("m4: dev build with isolated DSH_HOME — skipping multi-instance gate");
+        return true;
+    }
+
     let running = detect_running_dsh_instances();
     if running.is_empty() {
         return true;
@@ -433,8 +443,11 @@ pub fn run() {
                     let win = window::build_main_window(app)?;
                     let _ = theme::apply_theme(&win, tauri::Theme::Dark);
                     restore_window_state(&win);
-                    maybe_smoke_exit(app);
+                    // 回退 1：sidecar 未 spawn（start_dsh Err），无需 kill；
+                    // 但 smoke 收尾前必须已托管 NodeState（maybe_smoke_exit 经
+                    // stop_dsh 收尾依赖托管，未托管时退化为只写 marker）。
                     app.manage(node_state);
+                    maybe_smoke_exit(app);
                     return Ok(());
                 }
             }
@@ -455,10 +468,13 @@ pub fn run() {
                     if start.elapsed().as_secs() > 60 {
                         warn!("m4: READY timeout, falling back to temporary page");
                         let win = window::build_main_window(app)?;
-                    restore_window_state(&win);
+                        restore_window_state(&win);
                         let _ = theme::apply_theme(&win, tauri::Theme::Dark);
+                        app.manage(node_state.clone());
                         maybe_smoke_exit(app);
-                        app.manage(node_state);
+                        // 回退 2：sidecar 已 spawn（READY 超时）→ 先杀进程防孤儿占用
+                        // 端口；supervisor 见 child 槽位被消费后静默待命（不重启）。
+                        node::kill_sidecar(&node_state);
                         return Ok(());
                     }
                     std::thread::sleep(std::time::Duration::from_millis(200));
@@ -473,8 +489,11 @@ pub fn run() {
                 let win = window::build_main_window(app)?;
                 restore_window_state(&win);
                 let _ = theme::apply_theme(&win, tauri::Theme::Dark);
+                app.manage(node_state.clone());
                 maybe_smoke_exit(app);
-                app.manage(node_state);
+                // 回退 3：sidecar 已 spawn（验证失败）→ 先杀进程防孤儿占用端口；
+                // supervisor 见 child 槽位被消费后静默待命（不重启）。
+                node::kill_sidecar(&node_state);
                 return Ok(());
             }
 

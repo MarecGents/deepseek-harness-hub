@@ -38,7 +38,6 @@ import type {} from '@deepseek-ai/dsh-agent'
 import { installSettingsSection, settingsNamespace } from '@deepseek-ai/dsh-settings'
 import z from '@deepseek-ai/schemastery'
 import { openDesktopShellTauri, type TauriShellHandle } from './managers/tauri-shell.ts'
-import { makeBridgeRoutes } from './server/bridge-server.ts'
 import { makeConfigRoutes } from './server/config-api.js'
 import { hasStoredWindowSize, migrateLegacyPaths, readShellConfig, storedNotifyOnTaskComplete, storedSoundEnabled } from './services/config-store.js'
 import { makeWorkspaceRoutes } from './server/workspace-api.js'
@@ -47,7 +46,7 @@ import { makeBackgroundsRoutes } from './server/backgrounds-api.js'
 import { makeSoundsRoutes } from './server/sounds-api.js'
 import { getFocusedSessionState, setupSessionRuntime, type SessionShellLike } from './controllers/session-runtime.ts'
 import { setupTrayPipe } from './controllers/tray-pipe.ts'
-import { effectiveConfig, exitProcess, getActiveCwd, newTaskInWeb, openWorkspaceDir, sendDshCmd, setActiveCwd } from './controllers/shell-runtime.ts'
+import { effectiveConfig, getActiveCwd, newTaskInWeb, openWorkspaceDir, sendDshCmd, setActiveCwd } from './controllers/shell-runtime.ts'
 
 /** Stable Cordis plugin name (referenced by cordis.patch.yml's insert row). */
 export const name = '@marecgents/dsh-hub'
@@ -75,8 +74,7 @@ export interface Config {
   theme: 'system' | 'light' | 'dark'
   /**
    * Show a native Windows notification when a top-level user task finishes
-   * (a turn of a depth-0 session ends with reason `completed`). Clicking the
-   * toast restores the main window. Defaults to on.
+   * (a turn of a depth-0 session ends with reason `completed`). Defaults to on.
    */
   notifyOnTaskComplete: boolean
   /**
@@ -166,15 +164,6 @@ export function apply(ctx: Context, config: Config): void {
       ...makePinsRoutes(),
       ...makeBackgroundsRoutes(),
       ...makeSoundsRoutes(),
-      // T4.9 bridge-server routes (Tauri mode): SSE/POST endpoints for
-      // Tauri shell ↔ dsh-hub page communication.
-      ...makeBridgeRoutes({
-        getBearerToken: () => process.env.DSH_HUB_BRIDGE_TOKEN ?? '',
-        onWorkspaceReported: (path) => { setActiveCwd(path) },
-        onTaskNotify: (payload) => {
-          console.log(`[dsh-hub] bridge notify: ${payload.message ?? payload.status ?? 'task-event'}`)
-        },
-      }),
     ].map((route) => server.register(route))
     routesDisposed = () => {
       for (const dispose of disposers) void dispose()
@@ -210,7 +199,7 @@ export function apply(ctx: Context, config: Config): void {
         const stored = readShellConfig()
         return { minimizeToTray: stored.minimizeToTray, closeToTray: stored.closeToTray }
       },
-    }, () => exitProcess(ctx))
+    })
     if (h) {
       shell = h
       console.log('[dsh-hub] Tauri shell handle connected')
