@@ -1,0 +1,9 @@
+# cargo 构建配置（windows-gnu 专用）
+#
+# 本机无 Visual Studio / MSVC linker，使用 MinGW-w64 gcc + rustup GNU 工具链。
+# GNU 工具链链接 cdylib（dsh_hub_lib.dll）时，mingw ld 会把 windows crate
+# 导入库的全部符号自动导出，导出序号超过 PE/COFF 上限 → "export ordinal too
+# large"（tauri-apps/tauri#10843）。--exclude-all-symbols 抑制自动导出：
+# 桌面 exe 静态链接 rlib，cdylib 无需导出任何符号。
+[target.x86_64-pc-windows-gnu]
+rustflags = ["-C", "link-arg=-Wl,--exclude-all-symbols"]

@@ -119,6 +119,10 @@ fn handle_menu_event(app: &tauri::AppHandle, event: MenuEvent) {
         }
         MENU_QUIT => {
             info!("tray: quit requested");
+            // 先杀 sidecar（dsh web 子进程），防孤儿进程残留占用端口。
+            if let Some(state) = app.try_state::<std::sync::Arc<crate::node::NodeState>>() {
+                crate::node::stop_dsh(&state);
+            }
             crate::quit::write_quit_marker();
             std::process::exit(0);
         }

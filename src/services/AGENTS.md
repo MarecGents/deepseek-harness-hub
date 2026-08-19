@@ -1,13 +1,15 @@
 # AGENTS.md — src/services/（Services 层）开发约束
 
-> 本目录是 dsh-hub host half 的 **Services（纯领域业务）层**。2026-08-18 重构后本目录仅存 `theme-sync.ts`；其余文件已按类别迁出：HTTP 路由 → `../server/`，纯工具 → `../helpers/`，壳生命周期 → `../managers/`。
+> 本目录是 dsh-hub host half 的 **Services（纯领域业务）层**。2026-08-18 重构后本目录包含 `theme-sync.ts`（主题桥）与持久化服务 `config-store.ts` / `pins-store.ts`；HTTP 路由 → `../server/`，纯工具 → `../helpers/`，壳生命周期 → `../managers/`。
 > 改动本目录任何文件前，**必须**先读根 [../../AGENTS.md](../../AGENTS.md) 与 [../AGENTS.md](../AGENTS.md) 与本文件。
 
 ## 文件归类
 
 | 文件 | 模块类别 | 职责 | Tauri 迁移 |
 |---|---|---|---|
-| `theme-sync.ts` | **Services** | 页面主题 → IPC 桥转发（配合壳层主题应用） | 保留（桥） |
+| `theme-sync.ts` | **Services** | 页面主题 → IPC 桥转发（配合壳层主题应用） | **已删除**（WebView2 壳，dev-v2 Tauri-only） |
+| `config-store.ts` | **Services** | 壳配置持久化（config.json 读写/迁移/单字段读） | 保留（数据兼容） |
+| `pins-store.ts` | **Services** | 置顶会话持久化（pins.json 读写/原子写） | 保留（数据兼容） |
 
 ## Services 层规范
 

@@ -14,10 +14,10 @@
  *       cordis.patch.yml insert.name == web-profile bundles entry).
  *   P2  cordis.patch.yml insert.name is the SCOPED package name — a bare
  *       name would make dsh die with ERR_MODULE_NOT_FOUND at boot.
- *   P3  no uncommitted lib/ or launcher.vbs drift in the working tree
+ *   P3  no uncommitted lib/ drift in the working tree
  *       (prepack rebuilds lib/, so the tree must be clean before packing).
  *   P4  real install smoke test: `npm pack` → isolated `npm i -g --prefix`
- *       → isolated $DSH_HOME + DSH_HUB_ASSEMBLE_ONLY=1 launcher run → the
+ *       → isolated $DSH_HOME + `bin/dsh-web-sidecar.mjs` assembly run → the
  *       web profile must end up scoped-assembled (bundles contains the
  *       scoped name, junction at node_modules/@marecgents/dsh-hub → pkg).
  *   P5  npmjs dist-tags report (run after publish; informational here).
@@ -80,7 +80,7 @@ function profileBundles() {
 // ── P3: working-tree drift ───────────────────────────────────────────────────
 
 function uncommittedDrift() {
-  const r = spawnSync('git', ['status', '--porcelain', '--', 'lib', 'bin/launcher.vbs'], {
+  const r = spawnSync('git', ['status', '--porcelain', '--', 'lib'], {
     cwd: PACKAGE_ROOT, encoding: 'utf8', windowsHide: true,
   })
   return (r.stdout ?? '').split('\n').map((l) => l.trim()).filter(Boolean)
@@ -112,13 +112,16 @@ function runSmoke() {
     })
     if (install.status !== 0) return { ok: false, detail: `isolated install failed: ${(install.stderr || '').trim().slice(0, 400)}` }
 
-    // 3. Run the installed launcher in assemble-only mode against an empty
-    //    $DSH_HOME — this is exactly the fresh-machine first-launch path.
-    const launcher = join(npmRoot, 'node_modules', ...SCOPED.split('/'), 'bin', 'launcher.mjs')
-    if (!existsSync(launcher)) return { ok: false, detail: `installed package missing launcher: ${launcher}` }
-    const run = spawnSync(process.execPath, [launcher], {
+    // 3. Run the installed sidecar helper in assembly mode against an empty
+    //    $DSH_HOME — this is exactly the fresh-machine first-launch path
+    //    (the Tauri shell's `--assemble-only` covers the Rust side in
+    //    verify-tauri-release P2; this Node-side check validates the npm
+    //    package's own assembly).
+    const sidecar = join(npmRoot, 'node_modules', ...SCOPED.split('/'), 'bin', 'dsh-web-sidecar.mjs')
+    if (!existsSync(sidecar)) return { ok: false, detail: `installed package missing sidecar helper: ${sidecar}` }
+    const run = spawnSync(process.execPath, [sidecar], {
       cwd: PACKAGE_ROOT, encoding: 'utf8', windowsHide: true, timeout: 120000,
-      env: { ...process.env, DSH_HOME: simHome, DSH_HUB_ASSEMBLE_ONLY: '1' },
+      env: { ...process.env, DSH_HOME: simHome },
     })
     if (run.status !== 0) {
       return { ok: false, detail: `assemble-only run exited ${run.status}: ${(run.stderr || run.stdout || '').trim().slice(0, 500)}` }
@@ -182,7 +185,7 @@ check('P2 loader entry is scoped (no bare-name fallback)', patchNames.length > 0
 
 // P3 working tree
 const drift = uncommittedDrift()
-check('P3 no uncommitted lib/launcher.vbs drift', drift.length === 0, drift.length ? `uncommitted: ${drift.join(' ')}` : 'tree clean')
+check('P3 no uncommitted lib/ drift', drift.length === 0, drift.length ? `uncommitted: ${drift.join(' ')}` : 'tree clean')
 
 // P4 real-install smoke
 const smoke = runSmoke()

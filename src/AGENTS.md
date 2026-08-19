@@ -8,13 +8,13 @@
 src/
   index.ts          Controller（入口）：apply() 装配，唯一 entry
   core/             Core：全局服务注册表 + 生命周期顺序（SPT [Injectable] 思想）
-  managers/         壳 Manager：desktop.ts（WebView2 壳）、tauri-shell.ts（Tauri 壳）、tray.ts（WebView2 托盘）
+  controllers/      Controller：业务编排（session-runtime / tray-pipe，见 controllers/AGENTS.md）
+  managers/         壳 Manager：tauri-shell.ts（Tauri 壳桥，唯一壳 Manager；desktop/tray 已删除）
   server/           Server：HTTP/WS 路由工厂（config/backgrounds/sounds/workspace/pins/bridge）
-  services/         Services：纯领域逻辑（theme-sync）
-  helpers/          Helper：无状态/平台工具（state-store/dwm-theme/os-theme/explorer/screen/icons/png-decode/sound/app-id）
-  controllers/      Controller：编排层（新增，业务编排下沉处）
-  models/           Model：类型模型（新增，d.ts/zod schema 抽离处）
-  utils/            Utils：纯工具（新增）
+  services/         Services：纯领域逻辑（config-store / pins-store）
+  helpers/          Helper：无状态/平台工具（state-store，$DSH_HOME 语义）
+  models/           Model：共享类型/常量（pipe 协议帧、ShellConfig，见 models/AGENTS.md）
+  utils/            Utils：纯函数（管道帧解析，见 utils/AGENTS.md）
   client/           插件 UI（见 client/AGENTS.md）
   bridge/           桥客户端（Tauri invoke 封装）
 ```
@@ -25,12 +25,21 @@ src/
 |---|---|---|
 | `index.ts` | **Controller** | 插件入口：`export const name`（= 包名）、`Config` schema、`apply()` 装配（路由注册、设置卡片、托盘/通知接线、启动门控判定、Tauri 双向管道） |
 | `core/registry.ts` | **Core** | `TrayCommandRegistry`：托盘命令声明式注册 + 分发（新增命令 = register，不改分发链） |
+| `controllers/session-runtime.ts` | **Controller** | 会话运行时编排：聚焦 cwd 跟踪、事件提示音、任务完成通知、`getFocusedSessionState`（Q6） |
+| `controllers/tray-pipe.ts` | **Controller** | 托盘双向管道编排：`MG_TRAY` 读 stdin → registry 分发 → `DSH_CMD` 上行 |
+| `controllers/shell-runtime.ts` | **Controller** | 壳级编排：effectiveConfig / exitProcess / sendDshCmd / open-workspace / new-task 语义（index.ts 只留装配） |
+| `services/config-store.ts` | **Services** | 壳配置持久化：migrateLegacyPaths / readShellConfig / writeShellConfig / stored* 读 |
+| `services/pins-store.ts` | **Services** | 置顶会话持久化：readPinnedSessions / writePinnedSessions |
+| `models/pipe.ts` | **Model** | 管道协议类型/常量：`TrayCommand`/`MgTrayFrame`/`DshCmdPayload`/`DshCmdName`/前缀 |
+| `models/shell-config.ts` | **Model** | `ShellConfig` 接口 + `DEFAULT_SHELL_CONFIG`（配置三处一致的单一来源） |
+| `models/plugin-config.ts` | **Model** | `PluginConfig` 接口（Cordis 插件 Config 的纯类型单一来源） |
+| `utils/pipe.ts` | **Utils** | `parseMgTrayLine` 纯函数（帧解析，无副作用） |
 | `managers/tauri-shell.ts` | **Manager（壳）** | Tauri 壳 facade：invoke 桥（DSH_CMD 上行）、声音/通知/主题/窗口命令、getTrayBehavior 实时读 |
-| `managers/desktop.ts` | **Manager（壳）** | WebView2 桌面壳生命周期（Tauri 迁移后废弃） |
-| `managers/tray.ts` | **Manager（壳）** | WebView2 托盘（Tauri 迁移后废弃） |
+| `managers/desktop.ts` | **Manager（壳）** | WebView2 桌面壳生命周期（**已删除**：WebView2 壳，dev-v2 Tauri-only） |
+| `managers/tray.ts` | **Manager（壳）** | WebView2 托盘（**已删除**：WebView2 壳，dev-v2 Tauri-only） |
 | `server/*-api.ts` | **Server** | 路由工厂：config/backgrounds/sounds/workspace/pins/bridge（`/api/dsh-hub/*`） |
-| `services/theme-sync.ts` | **Services** | 页面主题 → IPC 桥转发 |
-| `helpers/*` | **Helper** | 无状态工具：state-store（$DSH_HOME/窗口状态）、dwm-theme、os-theme、explorer、screen、icons、png-decode、sound、app-id |
+| `services/theme-sync.ts` | **Services** | 页面主题 → IPC 桥转发（**已删除**：WebView2 壳，dev-v2 Tauri-only） |
+| `helpers/*` | **Helper** | 无状态工具：state-store（$DSH_HOME/窗口状态）；dwm-theme / os-theme / explorer / screen / icons / png-decode / sound / app-id 已删除（WebView2 壳，dev-v2 Tauri-only） |
 | `client/*` | 插件 UI | 见 [client/AGENTS.md](client/AGENTS.md) |
 
 ## host 架构红线
@@ -43,7 +52,7 @@ src/
 
 ## 分层依赖红线（SPT 单向依赖，防"改一处坏一处"）
 
-- **单向依赖**：上层可依赖下层，**下层禁止依赖上层**。层级：`index.ts → core → managers/server/services → helpers → models/utils`。
+- **单向依赖**：上层可依赖下层，**下层禁止依赖上层**。层级：`index.ts → controllers → core → managers/server/services → helpers → models/utils`。
   - `server/*-api.ts` 只调 `helpers/*` 与纯库，不 import `index.ts` / `managers` 业务。
   - `helpers/*` 零依赖（或仅依赖其他 helpers / 官方库）；`models/utils` 无业务副作用。
   - 跨层引用违规 = 审查必纠项。

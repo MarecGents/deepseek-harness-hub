@@ -13,7 +13,6 @@ src-tauri/src/
   managers/             壳 Manager：tray.rs / node.rs / window.rs / single_instance.rs
   services/             Services：notify.rs（系统 toast）
   helpers/              Helper：theme.rs / state.rs / quit.rs / os_theme.rs / e2e.rs
-  bridge.rs             （预留桥模块）
 ```
 
 > `#[path = "managers/tray.rs"] mod tray;` **保留模块名**（`crate::tray` / `crate::node` …），移动文件无需改引用链。新增文件在 lib.rs 增加 `#[path] mod` 声明并归类。

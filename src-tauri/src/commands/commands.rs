@@ -58,9 +58,10 @@ pub fn window_close(app: tauri::AppHandle) -> Result<(), String> {
     }
 }
 
-/// 主题切换命令（桥桩，M2 bridge.rs 也实现过，这里统一）。
-/// Q2：外壳主题只控 chrome——跟随 dsh（system）不设属性（标题栏走皮肤 token）；
-/// 深色/浅色 → eval 设置 body[data-mg-shell-theme]（标题栏默认黑/白覆盖）。
+/// 主题切换命令（桥桩，M2 壳-前端桥接唯一实现）。
+/// Q2 增强：外壳主题只控 chrome——跟随 dsh（system）不设属性（标题栏走皮肤 token）；
+/// 深色/浅色 → 调页面侧 `__mgSetShellTheme`（shell-init.js）：从当前皮肤的对应
+/// 色板解析标题栏颜色并内联覆盖（不再硬编码黑/白），即时动态切换。
 #[tauri::command]
 pub fn set_window_theme(app: tauri::AppHandle, theme: String) -> Result<(), String> {
     let tauri_theme = match theme.as_str() {
@@ -70,13 +71,14 @@ pub fn set_window_theme(app: tauri::AppHandle, theme: String) -> Result<(), Stri
     };
     if let Some(win) = app.get_webview_window("main") {
         crate::theme::apply_theme(&win, tauri_theme).map_err(|e| e.to_string())?;
-        // 外壳 chrome 强制覆盖（Q2）：dark/light → 设属性；system → 移除（跟随 dsh token）。
-        let js = match theme.as_str() {
-            "dark" => "document.body.setAttribute('data-mg-shell-theme','dark')",
-            "light" => "document.body.setAttribute('data-mg-shell-theme','light')",
-            _ => "document.body.removeAttribute('data-mg-shell-theme')",
-        };
-        let _ = win.eval(js);
+        // 外壳 chrome 强制覆盖（Q2）：shell-init.js 按皮肤色板解析并设置标题栏
+        // 颜色；system → 移除覆盖（回皮肤 token）。页面未就绪时（__mgSetShellTheme
+        // 尚不存在）写入 __mgPendingShellTheme，initShell 就绪后补应用。
+        let theme_json = serde_json::to_string(&theme).unwrap_or_else(|_| "\"system\"".to_string());
+        let js = format!(
+            "(window.__mgSetShellTheme && window.__mgSetShellTheme({theme_json})) || (({theme_json} === 'light' || {theme_json} === 'dark') && (window.__mgPendingShellTheme = {theme_json}))"
+        );
+        let _ = win.eval(&js);
         Ok(())
     } else {
         Err("main window not found".to_string())
@@ -107,9 +109,14 @@ pub fn get_workspace_path() -> String {
 
 /// 托盘菜单「退出」（自绘 HTML 菜单 → invoke 上行）。
 /// 写 quit.marker + 退出（launcher quit 语义；不依赖事件系统）。
+/// 先杀 sidecar（dsh web 子进程）——否则壳退出后孤儿 sidecar 继续占用端口
+/// （2026-08-19 实测：多次测试退出后残留 node dsh web --port 0 进程）。
 #[tauri::command]
-pub fn tray_quit() -> Result<(), String> {
+pub fn tray_quit(app: tauri::AppHandle) -> Result<(), String> {
     log::info!("tray_quit invoked from page");
+    if let Some(state) = app.try_state::<std::sync::Arc<crate::node::NodeState>>() {
+        crate::node::stop_dsh(&state);
+    }
     crate::quit::write_quit_marker();
     std::process::exit(0);
 }

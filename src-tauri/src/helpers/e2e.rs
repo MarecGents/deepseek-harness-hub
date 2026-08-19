@@ -39,6 +39,18 @@ fn run_e2e(win: WebviewWindow) {
     show_titlebar_colors(&win);
     sleep(2);
 
+    // ── M2 #4/#7 补验证（设置卡即时改尺寸链路）：invoke set_window_size →
+    // 窗口尺寸实际变化（config API onChange → shell.applySize 走同一命令）。
+    info!("e2e: invoking set_window_size (800x600)");
+    let _ = win.eval("window.__TAURI_INTERNALS__.invoke('set_window_size', { width: 800, height: 600 }).catch(function(){});");
+    sleep(2);
+    if let Ok(inner) = win.inner_size() {
+        info!("e2e: after set_window_size inner={}x{}", inner.width, inner.height);
+    }
+    // 恢复默认尺寸（后续断言不依赖尺寸，恢复保持环境整洁）。
+    let _ = win.eval("window.__TAURI_INTERNALS__.invoke('set_window_size', { width: 1440, height: 810 }).catch(function(){});");
+    sleep(1);
+
     // ── ① 最小化到托盘（标题栏 ─ 按钮）──
     info!("e2e: clicking minimize button");
     let _ = win.eval("document.querySelector('#dsh-hub-titlebar .tb-controls .tb-btn:nth-child(1)').click();");

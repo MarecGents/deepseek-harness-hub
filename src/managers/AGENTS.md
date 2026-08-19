@@ -7,9 +7,9 @@
 
 | 文件 | 模块类别 | 职责 | Tauri 迁移 |
 |---|---|---|---|
-| `desktop.ts` | **Manager（壳）** | WebView2 桌面壳生命周期（窗口/托盘装配） | **废弃**（迁移后删除） |
+| `desktop.ts` | **Manager（壳）** | WebView2 桌面壳生命周期（窗口/托盘装配） | **已删除**（WebView2 壳，dev-v2 Tauri-only） |
 | `tauri-shell.ts` | **Manager（壳）** | Tauri 壳 facade：invoke 桥（DSH_CMD 上行）、声音/通知/主题/窗口命令、getTrayBehavior 实时读 | 保留（host 侧桥） |
-| `tray.ts` | **Manager（壳）** | WebView2 托盘（helper 进程优先 + 进程内兜底） | **废弃**（迁移后删除） |
+| `tray.ts` | **Manager（壳）** | WebView2 托盘（helper 进程优先 + 进程内兜底） | **已删除**（WebView2 壳，dev-v2 Tauri-only） |
 
 ## Manager 层红线
 

@@ -1,13 +1,17 @@
 /**
- * dsh-hub host half — the desktop shell over the web-app layer.
+ * dsh-hub host half — the desktop shell over the web-app layer (Tauri-only).
  *
  * Launch gating: the desktop window, the config API, and the settings
- * namespace are active ONLY when the process was started by this project —
- * the desktop shortcut or the `dsh-hub` command, both of which set
- * `DSH_HUB_LAUNCHED=1`. The cordis.patch.yml row is additionally
- * `disabled` under any other launch, so a plain command-line `dsh web` never
- * even mounts this plugin: no window, no client row in __DSH_BOOT__, nothing
- * injected.
+ * namespace are active ONLY when the process was started by the Tauri shell —
+ * the Rust sidecar spawn sets `DSH_HUB_LAUNCHED=1` (and `DSH_HUB_SHELL=tauri`).
+ * The cordis.patch.yml row is additionally `disabled` under any other launch,
+ * so a plain command-line `dsh web` never even mounts this plugin: no window,
+ * no client row in __DSH_BOOT__, nothing injected.
+ *
+ * Shell channel: every shell operation (theme / size / notify / sound /
+ * dispatch / open-workspace) is a `DSH_CMD <json>` stdout up-link that
+ * `src-tauri/src/managers/node.rs` parses and executes on the window
+ * (stdio JSON-RPC, SOP D-1). The WebView2-era `desktop.ts` shell is removed.
  *
  * Config surface: the client settings card reads/writes the shell config
  * through this plugin's own HTTP routes (`/api/dsh-hub/config`).
@@ -61,8 +65,8 @@ export interface Config {
 export declare const Config: z<Config>;
 /** Settings namespace owned by this plugin (spelled like the package). */
 export declare const SETTINGS_NS: import("@deepseek-ai/dsh-settings").SettingsNamespace;
-/** Env marker the desktop shortcut / `dsh-hub` command sets before spawning dsh web. */
+/** Env marker the Tauri shell sets before spawning the dsh web sidecar. */
 export declare const LAUNCHED_BY_SHORTCUT_ENV = "DSH_HUB_LAUNCHED";
-/** True when this process was started by the desktop shortcut or `dsh-hub`. */
+/** True when this process was started by the Tauri shell (or `dsh-hub`). */
 export declare function launchedByShortcut(): boolean;
 export declare function apply(ctx: Context, config: Config): void;

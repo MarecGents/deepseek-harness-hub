@@ -36,7 +36,6 @@ fn dsh_home() -> PathBuf {
 }
 
 /// quit.marker 路径。
-#[allow(dead_code)] // M4 完整接线后移除（tray quit handler / close-requested 调用）
 fn quit_marker_path() -> PathBuf {
     dsh_home().join("dsh-hub").join("quit.marker")
 }
@@ -209,41 +208,143 @@ fn find_dsh() -> Option<PathBuf> {
     None
 }
 
+/// 在 PATH 中查找 node 可执行文件（Windows: node.exe）。
+fn find_node_in_path() -> Option<PathBuf> {
+    let path_var = std::env::var("PATH").unwrap_or_default();
+    let name = if cfg!(windows) { "node.exe" } else { "node" };
+    for dir in path_var.split(';') {
+        if dir.is_empty() {
+            continue;
+        }
+        let candidate = Path::new(dir).join(name);
+        if candidate.exists() {
+            return Some(candidate);
+        }
+    }
+    None
+}
+
+/// 解析 dsh 命令为可直接 spawn 的 (node 可执行, dsh 入口 js)。
+///
+/// npm 全局 shim 布局（Windows）：`<prefix>/dsh.cmd` 内容指向
+/// `<prefix>/node_modules/@deepseek-ai/dsh/lib/bin.js`，node 用 `<prefix>/node.exe`
+/// （缺则 PATH 上的 node）。CreateProcess 无法直接执行 .cmd，必须解析到
+/// node.exe + entry 再 spawn（或经 cmd /c 兜底，见 start_dsh）。
+fn resolve_dsh_entry(dsh_cmd: &Path) -> Result<(PathBuf, PathBuf), String> {
+    if let Some(dir) = dsh_cmd.parent() {
+        let entry = dir
+            .join("node_modules")
+            .join("@deepseek-ai")
+            .join("dsh")
+            .join("lib")
+            .join("bin.js");
+        if entry.exists() {
+            let node = if cfg!(windows) && dir.join("node.exe").exists() {
+                dir.join("node.exe")
+            } else {
+                find_node_in_path().ok_or("node not found in PATH")?
+            };
+            return Ok((node, entry));
+        }
+    }
+    Err(format!("cannot resolve dsh entry from {}", dsh_cmd.display()))
+}
+
+/// 仓库根目录（scripts/assemble-profile.mjs 所在处）：
+/// 开发态 = CARGO_MANIFEST_DIR（src-tauri/）的父目录；
+/// 已打包态 = exe 相邻目录（M5 externalBin 内嵌资产路径预留）。
+fn repo_root() -> PathBuf {
+    let dev_root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap_or(Path::new("."));
+    if dev_root.join("scripts").join("assemble-profile.mjs").exists() {
+        return dev_root.to_path_buf();
+    }
+    std::env::current_exe()
+        .ok()
+        .and_then(|exe| exe.parent().map(Path::to_path_buf))
+        .unwrap_or_else(|| dev_root.to_path_buf())
+}
+
+/// 装配 web profile（调 scripts/assemble-profile.mjs，幂等）。
+///
+/// T4.4 诊断参数（--assemble-only / --smoke）与 start_dsh 共用的装配入口；
+/// repo_root 推导见 repo_root()，env 注入 DSH_HOME + DSH_HUB_PACKAGE_ROOT。
+/// 返回 Err = 脚本缺失 / 命令无法启动 / 退出码非 0（--assemble-only 据此 exit 1）。
+pub fn assemble_profile() -> Result<(), String> {
+    let repo_root = repo_root();
+    let assemble_script = repo_root.join("scripts").join("assemble-profile.mjs");
+    if !assemble_script.exists() {
+        return Err(format!(
+            "assemble-profile.mjs not found at {}",
+            assemble_script.display()
+        ));
+    }
+    info!("node: assembling profile via {}", assemble_script.display());
+    let script = format!("node {}", assemble_script.display());
+    let mut asm = Command::new("cmd");
+    asm.args(["/d", "/s", "/c", script.as_str()])
+        .env("DSH_HOME", dsh_home())
+        .env("DSH_HUB_PACKAGE_ROOT", repo_root);
+    // Q3：子进程 CREATE_NO_WINDOW，防控制台闪现。
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        asm.creation_flags(0x08000000);
+    }
+    let asm_output = asm
+        .output()
+        .map_err(|e| format!("assemble-profile spawn failed: {e}"))?;
+    if !asm_output.status.success() {
+        let stderr = String::from_utf8_lossy(&asm_output.stderr);
+        warn!("node: assemble-profile failed: {}", stderr.trim());
+        return Err(format!(
+            "assemble-profile exited with {:?}",
+            asm_output.status.code()
+        ));
+    }
+    info!("node: profile assembly complete");
+    Ok(())
+}
+
 /// 启动 dsh web sidecar（T4.1）。
 ///
-/// 1. 组装 profile（调 assemble-profile.mjs）
+/// 1. 组装 profile（调 assemble-profile.mjs，复用 assemble_profile；失败仅告警）
 /// 2. spawn node → dsh web --port 0
 /// 3. 后台线程逐行解析 stdout：READY 信号 + DSH_CMD 上行请求行
 ///    （tauri-shell.ts 写 `DSH_CMD <json>` → 此处执行窗口操作）
 pub fn start_dsh(state: Arc<NodeState>, app: tauri::AppHandle) -> Result<(), String> {
-    // 确保 profile 已装配。
-    // CARGO_MANIFEST_DIR = src-tauri/，assemble-profile.mjs 在仓库根 scripts/。
-    let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
-    let assemble_script = repo_root.join("scripts").join("assemble-profile.mjs");
-    if assemble_script.exists() {
-        info!("node: assembling profile via {}", assemble_script.display());
-        let mut asm = Command::new("cmd");
-        asm.args(["/d", "/s", "/c", &format!("node {}", assemble_script.display())])
-            .env("DSH_HOME", dsh_home())
-            .env("DSH_HUB_PACKAGE_ROOT", repo_root);
-        // Q3：子进程 CREATE_NO_WINDOW，防控制台闪现。
-        #[cfg(target_os = "windows")]
-        {
-            use std::os::windows::process::CommandExt;
-            asm.creation_flags(0x08000000);
-        }
-        let asm_output = asm.output().map_err(|e| format!("assemble-profile failed: {e}"))?;
-        if !asm_output.status.success() {
-            warn!("node: assemble-profile stderr: {}", String::from_utf8_lossy(&asm_output.stderr));
-        }
+    // 确保 profile 已装配（幂等；失败仅告警，沿用既有继续启动语义）。
+    if let Err(e) = assemble_profile() {
+        warn!("node: assemble-profile failed ({e}), continuing with existing profile");
     }
 
-    let node = find_dsh().ok_or("dsh not found in PATH/npm global")?;
-    info!("node: spawning {} web --port 0", node.display());
+    let dsh_cmd = find_dsh().ok_or("dsh not found in PATH/npm global")?;
 
-    let mut cmd = Command::new(&node);
-    cmd.args(["web", "--port", "0"])
-        .stdin(Stdio::piped())
+    // Windows：优先解析 .cmd shim → node.exe + entry 直接 spawn（CreateProcess
+    // 不能执行 .cmd）；解析失败退 cmd /c 兜底。非 Windows：直接 spawn dsh。
+    let (node, entry) = if cfg!(windows) && dsh_cmd.extension().is_some_and(|e| e == "cmd") {
+        match resolve_dsh_entry(&dsh_cmd) {
+            Ok(pair) => pair,
+            Err(e) => {
+                warn!("node: dsh entry unresolved ({e}); falling back to cmd /c shim");
+                return start_dsh_via_cmd_shim(state, app, &dsh_cmd);
+            }
+        }
+    } else {
+        (dsh_cmd.clone(), PathBuf::new())
+    };
+
+    let mut cmd = if entry.as_os_str().is_empty() {
+        info!("node: spawning {} web --port 0", node.display());
+        let mut c = Command::new(&node);
+        c.args(["web", "--port", "0"]);
+        c
+    } else {
+        info!("node: spawning {} {} web --port 0", node.display(), entry.display());
+        let mut c = Command::new(&node);
+        c.arg(&entry).args(["web", "--port", "0"]);
+        c
+    };
+    cmd.stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .env("DSH_HOME", dsh_home())
@@ -308,10 +409,75 @@ pub fn start_dsh(state: Arc<NodeState>, app: tauri::AppHandle) -> Result<(), Str
     Ok(())
 }
 
+/// 兜底启动路径：`cmd /d /s /c "<dsh.cmd>" web --port 0`（仅当 entry 解析失败）。
+fn start_dsh_via_cmd_shim(state: Arc<NodeState>, app: tauri::AppHandle, dsh_cmd: &Path) -> Result<(), String> {
+    info!("node: spawning via cmd shim: {} web --port 0", dsh_cmd.display());
+    let comspec = std::env::var("COMSPEC").unwrap_or_else(|_| "cmd.exe".to_string());
+    let mut cmd = Command::new(comspec);
+    cmd.args(["/d", "/s", "/c", &format!("\"{}\" web --port 0", dsh_cmd.display())])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .env("DSH_HOME", dsh_home())
+        .env("DSH_HUB_LAUNCHED", "1")
+        .env("DSH_HUB_SHELL", "tauri");
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x08000000);
+    }
+
+    let mut child = cmd.spawn().map_err(|e| format!("spawn dsh web via cmd failed: {e}"))?;
+
+    let stdout = child.stdout.take().expect("stdout pipe");
+    let stderr = child.stderr.take();
+    *state.stdin.lock().unwrap() = child.stdin.take();
+
+    let state_ready = state.clone();
+    std::thread::spawn(move || {
+        let reader = BufReader::new(stdout);
+        for line in reader.lines() {
+            match line {
+                Ok(l) => {
+                    info!("dsh-stdout: {}", l);
+                    if let Some(port) = parse_dsh_ready_port(&l) {
+                        *state_ready.ready.lock().unwrap() = true;
+                        *state_ready.port.lock().unwrap() = Some(port);
+                        info!("node: READY on port {}", port);
+                    } else if let Some(cmd_json) = l.strip_prefix("DSH_CMD ") {
+                        dispatch_dsh_cmd(&app, cmd_json);
+                    }
+                }
+                Err(e) => {
+                    warn!("node: stdout read error: {}", e);
+                    break;
+                }
+            }
+        }
+        info!("node: stdout loop ended (cmd shim)");
+    });
+
+    if let Some(stderr) = stderr {
+        std::thread::spawn(move || {
+            let reader = BufReader::new(stderr);
+            for line in reader.lines() {
+                match line {
+                    Ok(l) => info!("dsh-stderr: {}", l),
+                    Err(e) => { warn!("dsh-stderr read error: {}", e); break; }
+                }
+            }
+        });
+    }
+
+    *state.child.lock().unwrap() = Some(child);
+    info!("node: child process spawned via cmd shim (waiting for READY)");
+    Ok(())
+}
+
 /// 停止 dsh web sidecar（T4.1）。
 ///
 /// 写 quit.marker + kill child → 不触发重启循环。
-#[allow(dead_code)] // M4 完整接线后移除（tray quit handler / close-requested 调用）
+/// 调用方：--smoke 诊断模式（建窗成功后收尾，防孤儿子进程占用端口）。
 pub fn stop_dsh(state: &NodeState) {
     // 写 quit.marker（不重启）。
     let marker = quit_marker_path();

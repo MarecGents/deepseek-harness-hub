@@ -79,7 +79,7 @@ export const enum BridgeDownstreamEvent {
  */
 export const enum BridgeUpstreamEndpoint {
   /** 上报当前工作区路径。 */
-  WorkspacePath = '/api/dsh-hub/bridge/workspace-path',
+  WorkspacePath = '/api/dsh-hub/bridge/workspace',
   /** 上报当前聚焦的 session id。 */
   SessionFocus = '/api/dsh-hub/bridge/session-focus',
   /** 上报页面主题变化（dark = true/false）。 */

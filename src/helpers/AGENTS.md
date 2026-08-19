@@ -8,14 +8,14 @@
 | 文件 | 模块类别 | 职责 | Tauri 迁移 |
 |---|---|---|---|
 | `state-store.ts` | **Helper** | `dshHome()` / 窗口状态文件路径 | 保留（$DSH_HOME 语义不变） |
-| `dwm-theme.ts` | **Helper** | koffi 调 Dwm 设置标题栏主题（Windows 专属） | **重写**（Tauri 窗口 API） |
-| `os-theme.ts` | **Helper** | 系统深浅色探测（Windows 专属） | **重写**（Tauri 主题 API） |
-| `explorer.ts` | **Helper** | 打开文件夹 + 前置（koffi ShellExecuteW + EnumWindows） | **重写**（tauri shell） |
-| `screen.ts` | **Helper** | 屏幕分辨率探测（resolveLaunchScreen） | **重写**（Tauri 屏幕 API） |
-| `icons.ts` | **Helper** | 图标生成/解码（png-decode 配套） | 保留 |
-| `png-decode.ts` | **Helper** | PNG 解码（纯函数） | 保留 |
-| `sound.ts` | **Helper** | 声音资源路径/文件名解析 | 保留（播放走壳） |
-| `app-id.ts` | **Helper** | AppUserModelId 设置 | **重写**（打包后由 manifest 提供） |
+| `dwm-theme.ts` | **Helper** | koffi 调 Dwm 设置标题栏主题（Windows 专属） | **已删除**（WebView2 壳，dev-v2 Tauri-only） |
+| `os-theme.ts` | **Helper** | 系统深浅色探测（Windows 专属） | **已删除**（WebView2 壳，dev-v2 Tauri-only） |
+| `explorer.ts` | **Helper** | 打开文件夹 + 前置（koffi ShellExecuteW + EnumWindows） | **已删除**（WebView2 壳，dev-v2 Tauri-only） |
+| `screen.ts` | **Helper** | 屏幕分辨率探测（resolveLaunchScreen） | **已删除**（WebView2 壳，dev-v2 Tauri-only） |
+| `icons.ts` | **Helper** | 图标生成/解码（png-decode 配套） | **已删除**（WebView2 壳，dev-v2 Tauri-only） |
+| `png-decode.ts` | **Helper** | PNG 解码（纯函数） | **已删除**（WebView2 壳，dev-v2 Tauri-only） |
+| `sound.ts` | **Helper** | 声音资源路径/文件名解析 | **已删除**（WebView2 壳，dev-v2 Tauri-only；播放走 Rust 壳） |
+| `app-id.ts` | **Helper** | AppUserModelId 设置 | **已删除**（WebView2 壳，dev-v2 Tauri-only） |
 
 ## Helper 层规范
 

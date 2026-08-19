@@ -2,7 +2,7 @@
 
 > **本文件是 dsh-hub 的全部开发 harness（总纲）。** 开发/修改任何部分之前，**必须**先阅读本文件，并阅读对应职能目录下的子 harness（见文末「分层 harness 索引」）。
 >
-> dsh-hub 是 **DeepSeek Harness（dsh）的桌面端框架**：以原生窗口（当前 WebView2，未来 Tauri 2.x）承载 dsh Web UI，并提供系统托盘、主题同步、窗口记忆、右侧栏、会话通知等桌面能力。它是 **dsh 生态的插件 + 桌面壳**，**绝不修改 dsh 底层源码**。
+> dsh-hub 是 **DeepSeek Harness（dsh）的桌面端框架**：以原生窗口（Tauri 2.x，dev-v2 Tauri-only；WebView2 时代壳已删除）承载 dsh Web UI，并提供系统托盘、主题同步、窗口记忆、右侧栏、会话通知等桌面能力。它是 **dsh 生态的插件 + 桌面壳**，**绝不修改 dsh 底层源码**。
 
 ---
 
@@ -31,11 +31,13 @@ dsh-hub 是**双 half** 结构，且**套壳代码与插件代码必须严格模
 │ host half（dsh 进程内，Node）——分层结构见 src/AGENTS.md         │
 │   src/index.ts          Controller：插件入口，编排装配          │
 │   src/core/             Core：命令注册表 / 生命周期（registry）  │
-│   src/managers/         壳 Manager：desktop / tauri-shell / tray│
+│   src/managers/         壳 Manager：tauri-shell（唯一壳 Manager）│
 │   src/server/           Server：HTTP 路由工厂（/api/dsh-hub/*） │
-│   src/services/         Services：纯领域业务（theme-sync）      │
-│   src/helpers/          Helper：无状态工具（state/dwm/os/screen…）│
-│   src/{controllers,models,utils}/  预留层（见 src/AGENTS.md）  │
+│   src/services/         Services：纯领域业务（config/pins-store）│
+│   src/helpers/          Helper：无状态工具（state-store）          │
+│   src/controllers/     Controller：业务编排（session-runtime/tray-pipe）│
+│   src/models/          Model：共享类型/常量（pipe 帧、ShellConfig）     │
+│   src/utils/           Utils：纯函数（管道帧解析）                      │
 ├─────────────────────────────────────────────────────────────┤
 │ client half（浏览器内，React）                                 │
 │   src/client/*          插件 UI：设置卡片 + 右侧栏（body portal）│
@@ -44,8 +46,10 @@ dsh-hub 是**双 half** 结构，且**套壳代码与插件代码必须严格模
 │   lib.rs / main.rs      Controller：壳入口                    │
 │   commands/ managers/ services/ helpers/（SPT 分层）          │
 ├─────────────────────────────────────────────────────────────┤
-│ 启动器（独立进程）                                             │
-│   bin/*                launcher / tray-helper / lock / vbs    │
+│ 壳入口 / 装配（dev-v2 Tauri-only，launcher 家族已删）           │
+│   src-tauri/src/lib.rs   Tauri 壳入口（见上）                  │
+│   bin/dsh-web-sidecar.mjs    dsh web sidecar 进程             │
+│   scripts/assemble-profile.mjs  运行 profile 装配（幂等）      │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -58,16 +62,16 @@ dsh-hub 是**双 half** 结构，且**套壳代码与插件代码必须严格模
 
 | 类别 | 职责 | 命名示例 |
 |---|---|---|
-| **Controller** | 入口编排、装配、生命周期挂钩 | `index.ts`、`launcher.mjs`、`lib.rs` |
-| **Manager** | 管理复杂对象的生命周期/状态机 | `managers/desktop.ts`（壳）、`managers/tray.rs` |
-| **Services** | 业务服务，对外提供能力 | `services/theme-sync.ts`、`services/notify.rs` |
+| **Controller** | 入口编排、装配、生命周期挂钩 | `index.ts`、`lib.rs` |
+| **Manager** | 管理复杂对象的生命周期/状态机 | `managers/tauri-shell.ts`（壳）、`managers/tray.rs` |
+| **Services** | 业务服务，对外提供能力 | `services/config-store.ts`、`services/notify.rs` |
 | **Server** | HTTP 路由 / 对外端口 | `server/config-api.ts`、`server/workspace-api.ts` |
-| **Helper** | 纯工具函数，无状态、无副作用 | `helpers/icons.ts`、`helpers/screen.ts`、`lock.mjs` |
+| **Helper** | 纯工具函数，无状态、无副作用 | `helpers/state-store.ts` |
 | **Core** | 全局注册表 / 生命周期顺序 | `core/registry.ts` |
 
 **分层依赖红线（SPT 单向依赖，2026-08-18 重构确立，防"改一处坏一处"）**：
 
-- **单向依赖**：上层可依赖下层，下层**禁止**依赖上层。层级：`index.ts → core → managers/server/services → helpers → models/utils`（host half）；`lib.rs → commands → managers/services → helpers`（Rust 壳 half）。
+- **单向依赖**：上层可依赖下层，下层**禁止**依赖上层。层级：`index.ts → controllers → core → managers/server/services → helpers → models/utils`（host half）；`lib.rs → commands → managers/services → helpers`（Rust 壳 half）。
 - 跨层引用违规 = 审查必纠项；新增文件先归类（Core/Controller/Manager/Services/Server/Helper/Model/Utils），命名清晰表达职能。
 - **命令分发**：托盘/管道命令一律走 `core/registry.ts` 注册表（新增命令 = `trayCommands.register(...)`），禁止在 index.ts 散落 if/else 分发链。
 - **双向管道协议同步**：壳→host 走 stdin `MG_TRAY`；host→壳走 stdout `DSH_CMD`。帧格式与命令名变更必须同步 `src-tauri/src/managers/node.rs` 分发表 ↔ `src/managers/tauri-shell.ts`（sendDshCmd）↔ `src/index.ts`（MG_TRAY 读取）。
@@ -143,12 +147,12 @@ npm run build:client   # client（tsdown + SDK junction）
 0. **门禁**：先 `node scripts/verify-release.mjs`，**全部 PASS** 才可继续（脚本自动检查 P1–P5，含干净安装冒烟）。
 1. **插件身份四重相等**（§0 铁律 2）：package.json name == tsdown PLUGIN_ID == cordis.patch.yml insert.name == web profile bundles 条目。
 2. **loader entry 必须是 scoped 包名** `@marecgents/dsh-hub`：bare 名（`dsh-hub`）会让全新环境首启 `ERR_MODULE_NOT_FOUND` → 「连续异常退出」弹窗（rc.10–rc.13 真实事故，见 [docs/关键踩坑记录.md#33](docs/关键踩坑记录.md)）。launcher 装配必须 scoped（junction `node_modules/@marecgents/dsh-hub`），禁止 bare 兜底残留。
-3. **lib 产物零漂移**：build 后 `git status` 无未提交 lib/ 变更（prepack 会重建 lib，发布前已提交；`bin/launcher.vbs` 是 postinstall 生成模板，无关改动 `git checkout -- bin/launcher.vbs`）。
+3. **lib 产物零漂移**：build 后 `git status` 无未提交 lib/ 变更（prepack 会重建 lib，发布前已提交）。
 4. **dist-tags 直查 registry**：发布后 `Invoke-RestMethod 'https://registry.npmjs.org/-/package/@marecgents/dsh-hub/dist-tags'` 必须 `latest == rc == 当前版本`。**`npm view` 有镜像缓存，不可信**。
 5. **registry 显式官方**：publish / dist-tag 一律 `--registry=https://registry.npmjs.org/`（本机默认是华为镜像）。
 6. **版本不可覆盖**：`npm version <bump>` 每次升版本，同版本 publish 会被拒绝。
 7. **main 发布 + dev-v2 回灌 + tag**：push main 与 `v0.0.1-rc.<N>` tag；dev-v2 ff 到 main；**dev-v1 冻结不动**（§5.1）。
-8. **发布后真机验证**：测试电脑 `npm i -g @marecgents/dsh-hub --allow-scripts=@marecgents/dsh-hub,koffi` 首启冒烟（含 postinstall 快捷方式；`--allow-scripts` 防 npm 安全机制拦截 postinstall/koffi 构建）——脚本隔离验证用 `--ignore-scripts`，不覆盖 postinstall 链路。
+8. **发布后真机验证**：测试电脑安装 `cargo tauri build` 的 **NSIS 安装器**（M5）后首启冒烟；插件层 npm 发布仍走 `node scripts/verify-release.mjs` 门禁（保留）。
 
 ### 5.3 发布命令（rc 流程，逐步执行）
 
@@ -188,26 +192,20 @@ git checkout dev-v2 && git merge main --ff-only && git push origin dev-v2
 - **修复**（rc.14）：launcher 统一 scoped 装配 + 每次启动自愈 junction + 幂等清理 bare 遗留 + `DSH_HUB_ASSEMBLE_ONLY=1` 诊断模式。
 - **详细**：[docs/关键踩坑记录.md#33](docs/关键踩坑记录.md)（含升级冒烟项）。
 
-### 5.5 开发与运行隔离（2026-08-16 强制）
+### 5.5 开发与运行隔离（dev-v2 Tauri-only，2026-08 更新）
 
-**原则**：日常使用与测试电脑**必须运行 npm 发布的包**（latest / rc）；**禁止**把开发仓库 junction 进运行 profile 当日常实例——rc.10–rc.13 事故根因之一正是"开发环境永远测不出 npm 包真实状态"（本机 npm link / 仓库 junction 走 scoped 短路，全新环境走 bare 兜底即崩）。
+**原则**：WebView2 时代的 npm launcher / junction / 桌面快捷方式 / 运行 profile 装配链路已随壳层整体删除（launcher 家族、`install-local.mjs`）。dev-v2 起 **Tauri 为唯一壳模式**：日常使用与测试电脑运行 **NSIS 安装器**安装的 Tauri 壳；开发仓库不再以 junction 方式进入运行 profile。
 
-- **运行环境装配**：`profiles/web/node_modules/@marecgents/dsh-hub` junction 必须指向 **npm 全局包目录**（`npm prefix -g` 下的 `node_modules/@marecgents/dsh-hub`），不得指向开发仓库。launcher 每次启动自愈：junction 指向非当前包根时自动 relink——**桌面壳从全局包入口启动，junction 即指向全局包**。
-- **入口区分**：
-  - 日常 / 测试：桌面快捷方式（postinstall 生成，指向全局包 `bin/launcher.vbs`）→ 全局包 launcher → junction → 全局包。
-  - 开发：仓库代码 + **隔离验证**（`DSH_HOME=<临时目录>` + `DSH_HUB_ASSEMBLE_ONLY=1` 装配冒烟，或 `scripts/verify-release.mjs` P4）。**禁止**用仓库 launcher 直接启动去污染运行 profile（会把 junction relink 回仓库，下次日常启动即"开发状态"）。
-- **发布后升级运行环境**（两步，缺一不可）：
-  1. `npm i -g @marecgents/dsh-hub --allow-scripts=@marecgents/dsh-hub,koffi --registry=https://registry.npmjs.org/`（更新全局包；`--allow-scripts` 放行 postinstall 重建桌面快捷方式 + koffi 原生构建，防 npm 安全机制拦截导致 `install-scripts blocked` 警告）
-  2. 下次打开桌面壳 → launcher 自愈 relink junction → 运行最新版
-- **本地先行验证**（发布前）：`npm i -g --allow-scripts=@marecgents/dsh-hub,koffi <tgz>`（或 `--prefix <临时>` 隔离装）验证通过 → 再 `npm publish` → 最后 `npm i -g @marecgents/dsh-hub --allow-scripts=@marecgents/dsh-hub,koffi` 拉官方版（与测试电脑同链路）。
-- **状态核查**（2026-08-16）：本机运行 profile junction 与快捷方式已从 dev 仓库切换为 npm 全局包（rc.14）。
+- **开发**：`npm run tauri:dev`（=`cargo tauri dev`）——Rust 壳 + Node sidecar（`bin/dsh-web-sidecar.mjs`，内部调用 `scripts/assemble-profile.mjs` 做 profile 装配）本地联动。
+- **测试隔离**：dev 测试用**隔离 DSH_HOME**（`DSH_HOME=<临时目录>`），不污染正式运行数据；dev 实例可与已运行的 3080 端口 dsh web **并存**。
+- **运行 / 发布**：`npm run tauri:build`（=`cargo tauri build`）产出 **NSIS 安装器（M5）**；测试电脑安装后首启冒烟，运行真实 `$DSH_HOME`。
+- **多实例门禁**：已由 **Rust 壳 `src-tauri/src/lib.rs`** 承担（single-instance + netstat/CIM 检测，默认拒绝共存），不再依赖 npm launcher 的 PID 锁（`lock.mjs` 已删）。
+- **状态核查**（2026-08）：launcher / junction / 快捷方式等 WebView2 时代产物已从仓库删除；运行 profile 装配由 sidecar 承担。
 
-### 5.6 自编译安装（本地构建 → npm 全局，等同发布安装）
+### 5.6 自编译安装（install-local 已删除，dev-v2 Tauri-only）
 
-- **命令**：`npm run install:local`（=`scripts/install-local.mjs`：`npm pack` → `npm i -g <tgz> --allow-scripts=@marecgents/dsh-hub,koffi` → 校验输出）。分步等价于 `npm pack` + `npm i -g ./dist/marecgents-dsh-hub-<version>.tgz --allow-scripts=@marecgents/dsh-hub,koffi`。
-- **效果**：与 `npm i -g @marecgents/dsh-hub` 发布安装**别无二异**——全局包落 `npm prefix -g`/node_modules/@marecgents/dsh-hub，`dsh-hub` / `dsh-hub.cmd` / `dsh-hub.ps1` 命令 shim 生成，postinstall 运行（dsh/pnpm 检测 + 桌面快捷方式重建）。
-- **用途**：发布前本地验证（含 postinstall 链路，补 verify-release P4 的 `--ignore-scripts` 盲区）、离线安装、开发后一键装到运行环境。
-- **注意**：桌面壳运行中覆盖安装会 `EBUSY`（全局包被加载占用）——先退出桌面壳再执行；装完后 profile junction 由 launcher 下次启动自愈指向全局包。
+- **现状**：`npm run install:local` 与 `scripts/install-local.mjs` 已随 WebView2 壳删除（package.json 无该 script）。本地构建/安装 = **Tauri 产物链路**：`npm run tauri:build`（=`cargo tauri build`）→ **NSIS 安装器（M5）** → 安装即等同发布安装（见 §5.5）。
+- **发布前本地验证**：构建并安装本地 NSIS 包冒烟；插件层 npm 发布仍走 `node scripts/verify-release.mjs` 门禁（见 §5.2）。
 
 ## 6. 未来技术路线（约束方向，不立即实施）
 

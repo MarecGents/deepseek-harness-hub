@@ -33,6 +33,7 @@
 #[path = "helpers/e2e.rs"] mod e2e;
 
 use log::{info, warn};
+use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::{Listener, Manager};
 
 /// M1 IPC 冒烟命令。
@@ -83,6 +84,106 @@ fn read_minimize_to_tray() -> bool {
     read_shell_config_bool("minimizeToTray", true)
 }
 
+/// 读取 allowMultipleInstances 配置（默认 false = 严格拒共存，红线不松）。
+fn read_allow_multiple_instances() -> bool {
+    read_shell_config_bool("allowMultipleInstances", false)
+}
+
+/// T4.2 双通道多实例检测：枚举 TCP 监听端口的 PID，并与命令行匹配
+/// `dsh.*web` 的 node.exe / dsh-hub.exe / dsh-hub-guard.exe 进程求交。
+/// 任一命中即认为已有 dsh web 实例在运行（宁可误拦不可漏拦，SOP §5.4-1）。
+/// @returns 命中进程 PID（排序），空 = 无运行实例。
+fn detect_running_dsh_instances() -> Vec<u32> {
+    // 通道 1：监听端口 → PID（netstat）。
+    let mut listener_pids: std::collections::HashSet<u32> = std::collections::HashSet::new();
+    if let Ok(out) = std::process::Command::new("netstat").args(["-ano", "-p", "tcp"]).output() {
+        let text = String::from_utf8_lossy(&out.stdout);
+        for line in text.lines() {
+            let cols: Vec<&str> = line.split_whitespace().collect();
+            if cols.len() >= 5 && cols[0] == "TCP" && cols[3] == "LISTENING" {
+                if let Ok(pid) = cols[4].parse::<u32>() {
+                    listener_pids.insert(pid);
+                }
+            }
+        }
+    }
+    // 通道 2：进程命令行匹配（PowerShell CIM；括号化 OR 规避本机 WQL -or 解析失败，
+    // 见 2026-08-19 实测：`Name='x' -or Name='y'` 报 0x80041017 无效查询）。
+    let filter = "(Name='node.exe') OR (Name='dsh-hub.exe') OR (Name='dsh-hub-guard.exe')";
+    let script = format!(
+        "Get-CimInstance Win32_Process -Filter \"{filter}\" | Where-Object {{ $_.CommandLine -match 'dsh.*web' }} | Select-Object -ExpandProperty ProcessId"
+    );
+    let mut matched = Vec::new();
+    if let Ok(out) = std::process::Command::new("powershell.exe")
+        .args(["-NoProfile", "-NonInteractive", "-Command", &script])
+        .output()
+    {
+        for pid in String::from_utf8_lossy(&out.stdout).lines() {
+            if let Ok(n) = pid.trim().parse::<u32>() {
+                if listener_pids.contains(&n) {
+                    matched.push(n);
+                }
+            }
+        }
+    }
+    matched.sort_unstable();
+    matched
+}
+
+/// T4.2 多实例门禁：检测到运行中的 dsh web 实例时，
+/// 默认（allowMultipleInstances=false）直接警告并退出；已勾选允许则仍要求是/否确认。
+/// @returns true = 可以继续启动；false = 应退出。
+fn enforce_multi_instance(app: &tauri::App) -> bool {
+    let running = detect_running_dsh_instances();
+    if running.is_empty() {
+        return true;
+    }
+    let detail = running.iter().map(|pid| format!("  · PID {pid}")).collect::<Vec<_>>().join("\n");
+    warn!("m4: detected {} running dsh instance(s):\n{}", running.len(), detail);
+
+    use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind, MessageDialogResult};
+
+    if !read_allow_multiple_instances() {
+        // 默认：拒绝。仅 OK 按钮，无"继续"逃生口（SOP：宁可误拦不可漏拦）。
+        let msg = format!(
+            "⚠ 检测到已有 {} 个 dsh 实例正在运行：\n{}\n\n为保护会话数据，默认禁止同时运行多个 dsh 实例。\n请先关闭已运行的 dsh 窗口，再启动桌面壳。\n（如确需共存，请到 设置 → DSH HUB 设置 中勾选「允许同时运行多个实例」。）",
+            running.len(),
+            detail
+        );
+        let resp = app
+            .dialog()
+            .message(msg)
+            .title("dsh-hub")
+            .kind(MessageDialogKind::Warning)
+            .buttons(MessageDialogButtons::Ok)
+            .blocking_show();
+        let _ = resp;
+        info!("m4: blocked by multi-instance gate (allowMultipleInstances=false)");
+        return false;
+    }
+
+    // 已勾选允许：仍要求显式确认。
+    let question = format!(
+        "⚠ 检测到已有 {} 个 dsh 实例正在运行：\n{}\n\n多个实例共享 $DSH_HOME 会话数据，同时操作同一会话可能损坏会话日志（seq 冲突）。\n你已勾选「允许同时运行多个实例」。确认仍要启动桌面壳吗？",
+        running.len(),
+        detail
+    );
+    let resp = app
+        .dialog()
+        .message(question)
+        .title("dsh-hub")
+        .kind(MessageDialogKind::Warning)
+        .buttons(MessageDialogButtons::YesNo)
+        .blocking_show_with_result();
+    if resp == MessageDialogResult::Yes {
+        info!("m4: user confirmed coexistence; launching");
+        true
+    } else {
+        info!("m4: user declined coexistence; exiting");
+        false
+    }
+}
+
 /// 读 $DSH_HOME/dsh-hub/config.json 的布尔字段。
 fn read_shell_config_bool(key: &str, default: bool) -> bool {
     let config_path = state::dsh_home().join("dsh-hub").join("config.json");
@@ -94,6 +195,18 @@ fn read_shell_config_bool(key: &str, default: bool) -> bool {
         Err(_) => default,
     }
 }
+
+/// 恢复 rc.14 窗口记忆：只恢复 maximized 标志（几何尺寸不持久化）。
+fn restore_window_state(win: &tauri::WebviewWindow) {
+    if state::load_window_state().maximized {
+        if let Err(e) = win.maximize() {
+            warn!("window: restore maximized failed: {}", e);
+        } else {
+            info!("window: restored maximized state");
+        }
+    }
+}
+
 
 /// Q3/Q4：Windows 未打包应用的系统 toast 需要 AUMID 才会显示
 /// （tauri-plugin-notification 用 config identifier = com.marecgents.dsh-hub）。
@@ -221,6 +334,41 @@ fn known_desktop_path() -> std::path::PathBuf {
 }
 
 
+/// --smoke 诊断模式标记（T4.4）：main.rs 解析参数后置位，
+/// lib.rs setup 建窗成功（window build Ok）后检查 → 写 quit.marker + exit(0)。
+/// 普通启动（无 --smoke）保持 false，行为完全不变。
+static SMOKE_MODE: AtomicBool = AtomicBool::new(false);
+
+/// 启用 --smoke 诊断模式（main.rs 调用）。
+pub fn enable_smoke_mode() {
+    SMOKE_MODE.store(true, Ordering::SeqCst);
+}
+
+/// 装配 web profile（T4.4 诊断参数入口，复用 managers/node.rs 装配逻辑）。
+pub fn assemble_profile() -> Result<(), String> {
+    node::assemble_profile()
+}
+
+/// --smoke 模式：建窗成功即验证通过 —— 短暂延迟（~500ms）让 webview 初始化，
+/// 写 quit.marker + process::exit(0)（退出语义红线：quit.marker + exit(0)）。
+/// sidecar 已启动时经 node::stop_dsh 收尾（kill 子进程，防 --smoke 后孤儿进程
+/// 占用端口）；未托管 NodeState 时直接写 marker。普通启动零开销返回。
+fn maybe_smoke_exit(app: &tauri::App) {
+    if !SMOKE_MODE.load(Ordering::SeqCst) {
+        return;
+    }
+    info!("smoke: window created OK — 500ms grace for webview init, then clean exit");
+    std::thread::sleep(std::time::Duration::from_millis(500));
+    if let Some(state) = app.try_state::<std::sync::Arc<node::NodeState>>() {
+        // stop_dsh：写 quit.marker + kill sidecar（--smoke 收尾）。
+        // state 是 State<Arc<NodeState>>——&state 经 Deref 链（State→Arc→NodeState）收窄。
+        crate::node::stop_dsh(&state);
+    } else {
+        quit::write_quit_marker();
+    }
+    std::process::exit(0);
+}
+
 pub fn run() {
     let log_dir = state::dsh_home().join("dsh-hub").join("logs");
 
@@ -243,6 +391,8 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         // T3.5：通知插件（notify.rs 经 NotificationExt 弹系统 toast）。
         .plugin(tauri_plugin_notification::init())
+        // T4.2：多实例确认框（预启 CLI dsh web 时的拦截/确认对话框）。
+        .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             ping,
             commands::diag_report,
@@ -264,7 +414,12 @@ pub fn run() {
             register_toast_aumid();
 
             // ── M4 流程（T4.4 SOP §5.4 步骤 4）──
-            // 1. 托盘。
+            // 1. 多实例门禁（T4.2 双通道）：预启 CLI dsh web 必拦截 / 确认。
+            if !enforce_multi_instance(app) {
+                std::process::exit(1);
+            }
+
+            // 2. 托盘。
             let _tray = tray::setup_tray(app)?;
 
             // 2. 启动 Node sidecar（T4.1）。
@@ -277,6 +432,8 @@ pub fn run() {
                     warn!("m4: sidecar start failed ({e}), falling back to temporary page");
                     let win = window::build_main_window(app)?;
                     let _ = theme::apply_theme(&win, tauri::Theme::Dark);
+                    restore_window_state(&win);
+                    maybe_smoke_exit(app);
                     app.manage(node_state);
                     return Ok(());
                 }
@@ -298,7 +455,9 @@ pub fn run() {
                     if start.elapsed().as_secs() > 60 {
                         warn!("m4: READY timeout, falling back to temporary page");
                         let win = window::build_main_window(app)?;
+                    restore_window_state(&win);
                         let _ = theme::apply_theme(&win, tauri::Theme::Dark);
+                        maybe_smoke_exit(app);
                         app.manage(node_state);
                         return Ok(());
                     }
@@ -312,7 +471,9 @@ pub fn run() {
             if let Err(e) = wait_for_ready(port) {
                 warn!("m4: READY verification failed ({e}), falling back");
                 let win = window::build_main_window(app)?;
+                restore_window_state(&win);
                 let _ = theme::apply_theme(&win, tauri::Theme::Dark);
+                maybe_smoke_exit(app);
                 app.manage(node_state);
                 return Ok(());
             }
@@ -344,15 +505,19 @@ pub fn run() {
                 .initialization_script(init_script)
                 .build()?;
 
+            restore_window_state(&win);
             // 6. 应用主题（M2 DWM）。
             theme::apply_theme(&win, tauri::Theme::Dark)?;
+
+            // T4.4：--smoke 诊断模式 —— 建窗成功即验证通过，写 quit.marker 后自动退出。
+            maybe_smoke_exit(app);
 
             // 7. 事件接线（M2 resize + M3 closeToTray）。
             let win_handle = win.clone();
             win.listen("tauri://resize", move |_event| {
                 if let Ok(inner) = win_handle.inner_size() {
                     let _ = state::save_window_state(state::WindowState {
-                        maximized: false,
+                        maximized: win_handle.is_maximized().unwrap_or(false),
                         width: inner.width,
                         height: inner.height,
                     });
@@ -377,6 +542,10 @@ pub fn run() {
                             crate::tray::sync_toggle_label(&on_sync_app);
                             info!("close-requested: closeToTray=true, prevent_close + hiding window");
                         } else {
+                            // 先杀 sidecar（dsh web 子进程），防孤儿进程残留。
+                            if let Some(state) = on_sync_app.try_state::<std::sync::Arc<node::NodeState>>() {
+                                node::stop_dsh(&state);
+                            }
                             quit::write_quit_marker();
                             info!("close-requested: closeToTray=false, writing quit.marker and exiting");
                             std::process::exit(0);

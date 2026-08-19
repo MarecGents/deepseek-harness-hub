@@ -31,6 +31,7 @@
  * @module dsh-hub/tauri-shell
  * @category Manager (Shell)
  */
+import type { TaskSoundKind } from '../models/sound.js';
 /**
  * Options for the Tauri shell. Matches the subset of {@link DesktopOptions}
  * that does not depend on the WebView2 Application / BrowserWindow objects.
@@ -103,8 +104,8 @@ export interface TauriShellHandle {
     /** Dispose the shell (release listeners, stop polling). */
     dispose(): void;
 }
-/** Shell event sound kind (mirrors desktop.ts TaskSoundKind). */
-export type TaskSoundKind = 'start' | 'success' | 'attention' | 'error';
+/** Shell event sound kind (mirrors models/sound.ts). */
+export type { TaskSoundKind };
 /**
  * Open the Tauri desktop shell.
  *

@@ -96,6 +96,18 @@ function debounce(fn: () => void, ms: number): () => void {
   }
 }
 
+/** 诊断上报（进 dsh.log：E2E 断言 + 置顶会话失效排查链路证据）。 */
+function reportDiag(msg: string): void {
+  try {
+    const internals = (window as unknown as {
+      __TAURI_INTERNALS__?: { invoke?: (c: string, a?: Record<string, unknown>) => Promise<unknown> }
+    }).__TAURI_INTERNALS__
+    internals?.invoke?.('diag_report', { msg: `pin:${msg}` }).catch?.(() => {})
+  } catch {
+    // 诊断失败不影响功能。
+  }
+}
+
 /** Pinned-conversations controller; install() returns the disposer. */
 export function installPinnedConversations(ctx: unknown): () => void {
   const runtime = ctx as ClientCtxLike
@@ -111,6 +123,8 @@ export function installPinnedConversations(ctx: unknown): () => void {
   const missingStreak = new Map<string, number>()
   let alive = true
   let inSearch = false
+  /** 锚点缺失诊断只报一次（MutationObserver 高频触发防刷屏）。 */
+  let anchorMissingReported = false
   const debouncedSync = debounce(() => { if (alive) sync() }, 250)
 
   // ── Persistence ─────────────────────────────────────────────────────────
@@ -255,12 +269,13 @@ export function installPinnedConversations(ctx: unknown): () => void {
       // collapse to the same candidate; the earlier element is the title).
       if (!candidates.has(ids[0])) candidates.set(ids[0], { id: ids[0], el, title: key })
     }
-    // Longest-match guard: if any leaf text strictly contains the candidate
-    // TITLE, the candidate is a fragment of a longer label — skip it.
+    // Longest-match guard（refined）：仅当「更长的叶子文本」本身也是另一个会话
+    // 标题（titleToIds 命中）时才算歧义跳过。此前对任意更长包含子串的叶子都跳过，
+    // 导致标题恰是某非标题标签（相对时间/状态/徽章）前缀的会话无法置顶（2026-08-19）。
     const entries = [...candidates.values()]
     if (entries.length !== 1) return undefined // ambiguous (or unknown) row
     const entry = entries[0]
-    if (leafTexts.some((t) => t.length > entry.title.length && t.includes(entry.title))) return undefined
+    if (leafTexts.some((t) => t.length > entry.title.length && t.includes(entry.title) && titleToIds.has(t))) return undefined
     return entry === undefined ? undefined : { id: entry.id, titleEl: entry.el }
   }
 
@@ -440,7 +455,14 @@ export function installPinnedConversations(ctx: unknown): () => void {
     if (!alive) return
     const slot = findSlot()
     const tree = findTree()
-    if (slot === null || tree === null) return
+    if (slot === null || tree === null) {
+      // 锚点缺失（布局变更/未挂载）——只上报一次，避免 MutationObserver 刷屏。
+      if (!anchorMissingReported) {
+        anchorMissingReported = true
+        reportDiag(`sync: slot=${slot !== null} tree=${tree !== null}`)
+      }
+      return
+    }
     inSearch = detectSearch(tree, slot)
     try {
       syncPinnedSection(tree)
@@ -564,6 +586,11 @@ export function installPinnedConversations(ctx: unknown): () => void {
       bootObserver.disconnect()
       installObserver()
       sync()
+      // 首次锚点就绪：上报 DOM 基线（行数/匹配数），供失效排查对照。
+      const tree = findTree()
+      const rows = tree === null ? 0 : tree.querySelectorAll(SESSION_ROW_SELECTOR).length
+      const sessions = Object.values(sessionSnapshot()?.byId ?? {}).filter((s) => s?.blank !== true).length
+      reportDiag(`boot: slot=ok tree=${tree !== null} rows=${rows} sessions=${sessions}`)
     }
   })
   bootObserver.observe(document.body, { childList: true, subtree: true })
@@ -571,6 +598,7 @@ export function installPinnedConversations(ctx: unknown): () => void {
     if (findSlot() === null && alive) {
       // Slot never appeared (different layout); give up quietly.
       bootObserver.disconnect()
+      reportDiag('boot: slot-missing-timeout (layout mismatch?)')
     }
   }, 10000)
 
