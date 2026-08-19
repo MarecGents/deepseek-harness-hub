@@ -8,6 +8,7 @@ fn main() {
                 "ping",
                 "diag_report",
                 "set_window_theme",
+                "apply_page_theme",
                 "set_window_size",
                 "get_workspace_path",
                 "window_minimize",

@@ -86,7 +86,17 @@ fn dispatch_dsh_cmd(app: &tauri::AppHandle, cmd_json: &str) {
         "notify_task_complete" => {
             let title = value.get("title").and_then(|v| v.as_str()).unwrap_or("DeepSeek Harness");
             let body = value.get("body").and_then(|v| v.as_str()).unwrap_or("任务完成");
-            let _ = crate::notify::notify_task_complete(app.clone(), Some(title.to_string()), Some(body.to_string()), None);
+            // 项 4：第 4 参由 sound 改为 session_id（透传，暂不用于定位会话）。
+            let session_id = value
+                .get("sessionId")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+            let _ = crate::notify::notify_task_complete(
+                app.clone(),
+                Some(title.to_string()),
+                Some(body.to_string()),
+                session_id,
+            );
         }
         // Q4：提示音 — Node 进程无 Audio，经 eval 到浏览器 HTMLAudio 播放。
         "play_sound" => {
@@ -102,18 +112,23 @@ fn dispatch_dsh_cmd(app: &tauri::AppHandle, cmd_json: &str) {
         }
         // 双向管道上行：host 请求壳把页面事件派发到浏览器（D-2 win.eval 可靠通道）。
         // 替代坏掉的 Node 侧 dispatchPageEvent（globalThis.__mgShellReady 不存在）。
+        // 项 5：改为带重试的 eval 脚本——页面未 ready（__mgShellReady !== true）时
+        // 300ms × 20 次轮询，页面就绪后不再丢命令（托盘命令 boot 期可靠性）。
         "dispatch_page_event" => {
             let name = value.get("name").and_then(|v| v.as_str()).unwrap_or("");
             let detail = value.get("detail").cloned().unwrap_or(serde_json::json!({}));
             if name.is_empty() {
                 warn!("node: DSH_CMD dispatch_page_event missing name");
             } else if let Some(win) = app.get_webview_window("main") {
+                // name 是受控字符串（open-workspace/new-task），detail 是 JSON 对象；
+                // 均经 serde_json::to_string 序列化后内插，避免拼接注入。
+                let name_json = serde_json::to_string(name).unwrap_or_else(|_| "\"\"".to_string());
+                let detail_json = serde_json::to_string(&detail).unwrap_or_else(|_| "{}".to_string());
                 let js = format!(
-                    "window.dispatchEvent(new CustomEvent('{}',{{detail:{}}}))",
-                    name, detail
+                    "(function(){{var n={name_json},d={detail_json};var t=0;function f(){{if(window.__mgShellReady===true){{window.dispatchEvent(new CustomEvent(n,{{detail:d}}));}}else if(t<20){{t++;setTimeout(f,300);}}}}f();}})()"
                 );
                 match win.eval(&js) {
-                    Ok(_) => info!("node: dispatch_page_event '{}' eval'd to page", name),
+                    Ok(_) => info!("node: dispatch_page_event '{}' eval'd (retry script)", name),
                     Err(e) => warn!("node: dispatch_page_event '{}' eval failed: {}", name, e),
                 }
             } else {

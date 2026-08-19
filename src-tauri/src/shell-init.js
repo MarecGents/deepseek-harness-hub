@@ -54,6 +54,18 @@ function ensureShellStyles() {
     '#dsh-hub-titlebar .tb-btn:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(128,128,128,.15));}',
     // 右侧栏（body portal, top:0/bottom:0）整体下移标题栏高度，底对齐不变。
     '#dsh-hub-right-sidebar-root .mg-rs-root{top:42px;}',
+    // ── Splash 启动覆盖层（覆盖 SPA 白屏；z-index 高于标题栏 99999）──
+    '#dsh-hub-splash{position:fixed;inset:0;z-index:100000;display:flex;flex-direction:column;',
+    'align-items:center;justify-content:center;gap:14px;background:#18181b;color:#ffffff;',
+    'font-family:system-ui,sans-serif;-webkit-user-select:none;user-select:none;',
+    'transition:opacity .4s ease;pointer-events:none;}',
+    '#dsh-hub-splash .splash-logo{width:48px;height:48px;display:block;',
+    'animation:splash-pulse 2s ease-in-out infinite;}',
+    '#dsh-hub-splash .splash-title{font-size:15px;font-weight:600;letter-spacing:.3px;color:#e4e4e7;}',
+    '#dsh-hub-splash .splash-spinner{width:22px;height:22px;border:2px solid rgba(255,255,255,.18);',
+    'border-top-color:#ffffff;border-radius:50%;animation:splash-spin .8s linear infinite;}',
+    '@keyframes splash-spin{to{transform:rotate(360deg);}}',
+    '@keyframes splash-pulse{0%,100%{opacity:1;}50%{opacity:.55;}}',
   ].join('');
   document.head.appendChild(st);
 }
@@ -153,10 +165,86 @@ function watchSkinChanges() {
   }, 500);
 }
 
+// ── Splash 启动覆盖层（项 1）：DOMContentLoaded 后注入全屏覆盖层，覆盖 SPA 白屏。
+// 鲸鱼 logo 复用标题栏的 tb-icon SVG（clone 放大 16px → 48px，无重复路径字面量）；
+// window load 或最迟 3s 后淡出移除（opacity transition + remove，幂等）。
+function injectSplash() {
+  if (document.getElementById('dsh-hub-splash')) return; // 幂等
+
+  const splash = document.createElement('div');
+  splash.id = 'dsh-hub-splash';
+
+  // 鲸鱼 logo：clone 标题栏 tb-icon（currentColor 随 splash 白色）；缺失时兜底圆形。
+  const logo = (function () {
+    const tb = document.querySelector('#dsh-hub-titlebar .tb-icon');
+    if (tb) {
+      const s = tb.cloneNode(true);
+      s.setAttribute('width', '48');
+      s.setAttribute('height', '48');
+      s.removeAttribute('class');
+      return s;
+    }
+    const s = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    s.setAttribute('width', '48');
+    s.setAttribute('height', '48');
+    s.setAttribute('viewBox', '0 0 50 50');
+    s.innerHTML = '<circle cx="25" cy="25" r="20" fill="currentColor" opacity="0.85"/>';
+    return s;
+  })();
+  logo.setAttribute('class', 'splash-logo');
+
+  const title = document.createElement('div');
+  title.className = 'splash-title';
+  title.textContent = 'DeepSeek Harness';
+
+  const spinner = document.createElement('div');
+  spinner.className = 'splash-spinner';
+
+  splash.append(logo, title, spinner);
+  document.body.appendChild(splash);
+
+  // 淡出移除：window load 优先，最迟 3s 兜底（SPA 长连接不阻塞 load，双保险）。
+  let removed = false;
+  const dismiss = () => {
+    if (removed) return;
+    removed = true;
+    splash.style.opacity = '0';
+    setTimeout(() => splash.remove(), 400);
+  };
+  if (document.readyState === 'complete') {
+    dismiss();
+  } else {
+    window.addEventListener('load', dismiss);
+  }
+  setTimeout(dismiss, 3000);
+}
+
+// ── 页面主题跟随（项 2）：body[data-ds-dark-theme] 变化 → invoke('apply_page_theme')
+//    （Rust 侧：DWM 标题栏 + webview 背景色 + 窗口图标翻转）。只在「跟随 dsh」
+//    （body 无 data-mg-shell-theme）时 invoke——强制浅/深色模式不覆盖。
+function watchPageTheme() {
+  const sync = () => {
+    if (document.body.hasAttribute('data-mg-shell-theme')) return;
+    if (!(window.__TAURI_INTERNALS__ && window.__TAURI_INTERNALS__.invoke)) return;
+    window.__TAURI_INTERNALS__.invoke('apply_page_theme', {
+      dark: document.body.hasAttribute('data-ds-dark-theme'),
+    }).catch(function () {});
+  };
+  sync(); // 初始同步一次（页面可能已就绪；未就绪由 observer 补发）。
+  // 监听两个属性：data-ds-dark-theme 变化即时跟随；data-mg-shell-theme 移除
+  // （强制→跟随切换）时补一次同步，避免 DWM/背景/图标停留在强制主题。
+  new MutationObserver(sync).observe(document.body, {
+    attributes: true,
+    attributeFilter: ['data-ds-dark-theme', 'data-mg-shell-theme'],
+  });
+}
+
 function initShell() {
   ensureShellStyles();
   injectTitleBar();
+  injectSplash();
   watchSkinChanges();
+  watchPageTheme();
   // 壳在页面未就绪时排队的主题请求（__mgPendingShellTheme）优先于 body 属性。
   const pending = window.__mgPendingShellTheme;
   window.__mgPendingShellTheme = undefined;

@@ -1,9 +1,9 @@
 // theme.rs — M2 主题管理（T2.3）
 //
 // 模块类别：Helper（壳）
-// 职责：窗口主题应用（Tauri set_theme + DWM 暗色标题栏）。
+// 职责：窗口主题应用（Tauri set_theme + DWM 暗色标题栏）+ 窗口图标随主题翻转。
 // 迁移映射：src/services/dwm-theme.ts（koffi DwmSetWindowAttribute）。
-// 外部接口：apply_theme(window, Theme)。
+// 外部接口：apply_theme(window, Theme)；apply_window_icon(window, dark)。
 //
 // DWM 暗色标题栏参照 spacedrive windows.rs L627-697：
 //   attr 20 (DWMWA_USE_IMMERSIVE_DARK_MODE) / 34 (BORDER_COLOR) / 35 (CAPTION_COLOR)
@@ -70,4 +70,24 @@ pub fn apply_theme(win: &WebviewWindow, theme: Theme) -> Result<(), Box<dyn std:
     }
 
     Ok(())
+}
+
+/// 窗口图标随页面主题翻转（项 3，合并进 apply_page_theme 调用链）。
+/// dark → icon-dark.png（白鲸，深色任务栏/标题栏图标）；light → icon-light.png
+/// （黑鲸）。PNG 由 scripts/generate-titlebar-icons.mjs 生成（128×128 透明背景），
+/// include_bytes! 内嵌（tauri `image-png` feature 解码）。set_icon 失败仅 warn。
+pub fn apply_window_icon(win: &WebviewWindow, dark: bool) {
+    let bytes: &[u8] = if dark {
+        include_bytes!("../../icons/icon-dark.png")
+    } else {
+        include_bytes!("../../icons/icon-light.png")
+    };
+    let name = if dark { "icon-dark" } else { "icon-light" };
+    match tauri::image::Image::from_bytes(bytes) {
+        Ok(img) => match win.set_icon(img) {
+            Ok(_) => log::info!("theme: window icon set ({})", name),
+            Err(e) => log::warn!("theme: set_icon({}) failed: {}", name, e),
+        },
+        Err(e) => log::warn!("theme: decode {} failed: {}", name, e),
+    }
 }

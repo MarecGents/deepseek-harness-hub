@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-apply-page-theme"
+description = "Enables the apply_page_theme command without any pre-configured scope."
+commands.allow = ["apply_page_theme"]
+
+[[permission]]
+identifier = "deny-apply-page-theme"
+description = "Denies the apply_page_theme command without any pre-configured scope."
+commands.deny = ["apply_page_theme"]

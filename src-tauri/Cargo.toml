@@ -29,10 +29,15 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 dirs = "5"
 log = "0.4"
+# 通知直接依赖（项 4）：notify_task_complete 用 notify-rust 弹 toast（Windows 走
+# winrt toast + AUMID），点击回调回窗口。tauri-plugin-notification 注册保留（lib.rs）。
+notify-rust = "4"
 
 # Windows DWM 暗色标题栏（T2.3 theme.rs，参照 spacedrive windows.rs L627-697）。
 # + IShellLink/IPersistFile/IPropertyStore（Q3：开始菜单+桌面快捷方式注册 AUMID，
 #   未打包应用 toast 显示 + 用户手动启动入口）。
+# + GetCursorPos/MonitorFromPoint/GetMonitorInfoW/GetDpiForMonitor（项 6：窗口
+#   尺寸按「光标所在屏」3/4 计算）。
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.61", features = [
     "Win32_Graphics_Dwm",
@@ -43,6 +48,9 @@ windows = { version = "0.61", features = [
     "Win32_System_Com",
     "Win32_System_Com_StructuredStorage",
     "Win32_Storage_FileSystem",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_Graphics_Gdi",
+    "Win32_UI_HiDpi",
 ] }
 
 [features]

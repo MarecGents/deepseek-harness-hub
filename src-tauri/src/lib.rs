@@ -407,6 +407,7 @@ pub fn run() {
             ping,
             commands::diag_report,
             commands::set_window_theme,
+            commands::apply_page_theme,
             commands::set_window_size,
             commands::get_workspace_path,
             commands::window_minimize,
@@ -533,13 +534,34 @@ pub fn run() {
 
             // 7. 事件接线（M2 resize + M3 closeToTray）。
             let win_handle = win.clone();
+            let prev_max = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(
+                win.is_maximized().unwrap_or(false),
+            ));
+            let prev_max_resize = prev_max.clone();
             win.listen("tauri://resize", move |_event| {
+                let is_max = win_handle.is_maximized().unwrap_or(false);
+                let was_max = prev_max_resize.swap(is_max, std::sync::atomic::Ordering::SeqCst);
                 if let Ok(inner) = win_handle.inner_size() {
+                    // 最大化时的 inner 是整屏尺寸，不覆盖保存尺寸（退出最大化后
+                    // 恢复用）——只在非最大化时保存 width/height。
                     let _ = state::save_window_state(state::WindowState {
-                        maximized: win_handle.is_maximized().unwrap_or(false),
-                        width: inner.width,
-                        height: inner.height,
+                        maximized: is_max,
+                        width: if is_max { 0 } else { inner.width },
+                        height: if is_max { 0 } else { inner.height },
                     });
+                }
+                // 项 6：退出最大化 → 恢复保存尺寸或默认 3/4（保存缺失/非法时用
+                // 光标屏 3/4；保存的是物理像素，按当前 scale 转逻辑再 set_size）。
+                if was_max && !is_max {
+                    let saved = state::load_window_state();
+                    let scale = win_handle.scale_factor().unwrap_or(1.0);
+                    let (w, h) = if saved.width >= 480 && saved.height >= 360 {
+                        (saved.width as f64 / scale, saved.height as f64 / scale)
+                    } else {
+                        crate::window::default_three_quarter_size(win_handle.app_handle())
+                    };
+                    log::info!("window: exit-maximize → restore size {}x{}", w as u32, h as u32);
+                    let _ = win_handle.set_size(tauri::Size::Logical(tauri::LogicalSize::new(w, h)));
                 }
             });
 

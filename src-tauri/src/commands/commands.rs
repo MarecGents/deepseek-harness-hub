@@ -85,10 +85,45 @@ pub fn set_window_theme(app: tauri::AppHandle, theme: String) -> Result<(), Stri
     }
 }
 
+/// 页面主题跟随命令（项 2/3）：dsh 页面 body[data-ds-dark-theme] 变化时由
+/// shell-init.js 的 MutationObserver 调用（仅「跟随 dsh」模式，不覆盖强制主题）。
+/// 三件事：
+///   1. DWM 标题栏主题（crate::theme::apply_theme）
+///   2. webview 背景色：dark=#18181b / light=#f6f8fa
+///   3. 窗口图标翻转：dark=icon-dark.png（白鲸）/ light=icon-light.png（黑鲸）
+#[tauri::command]
+pub fn apply_page_theme(app: tauri::AppHandle, dark: bool) -> Result<(), String> {
+    let theme = if dark { tauri::Theme::Dark } else { tauri::Theme::Light };
+    if let Some(win) = app.get_webview_window("main") {
+        crate::theme::apply_theme(&win, theme).map_err(|e| e.to_string())?;
+        // webview 背景色（防 resize/导航时的白/黑闪屏；win 无 set_background 则跳过）。
+        let color = tauri::window::Color(
+            if dark { 0x18 } else { 0xF6 },
+            if dark { 0x18 } else { 0xF8 },
+            if dark { 0x1B } else { 0xFA },
+            255,
+        );
+        if let Err(e) = win.set_background_color(Some(color)) {
+            log::warn!("apply_page_theme: set_background_color failed: {}", e);
+        }
+        crate::theme::apply_window_icon(&win, dark);
+        log::info!("apply_page_theme: theme applied (dark={})", dark);
+        Ok(())
+    } else {
+        Err("main window not found".to_string())
+    }
+}
+
 /// 窗口大小设置命令。
+/// 项 6：最大化状态下 Windows 不允许直接 set_size——先 unmaximize 再设尺寸
+/// （记录日志；unmaximize 触发的 resize 事件由 lib.rs 恢复逻辑兜底）。
 #[tauri::command]
 pub fn set_window_size(app: tauri::AppHandle, width: f64, height: f64) -> Result<(), String> {
     if let Some(win) = app.get_webview_window("main") {
+        if win.is_maximized().unwrap_or(false) {
+            log::info!("set_window_size: window maximized, unmaximizing first");
+            win.unmaximize().map_err(|e| e.to_string())?;
+        }
         let size = tauri::Size::Logical(tauri::LogicalSize::new(width, height));
         win.set_size(size).map_err(|e| e.to_string())
     } else {

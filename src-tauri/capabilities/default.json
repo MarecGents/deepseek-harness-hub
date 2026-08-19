@@ -27,6 +27,7 @@
     "allow-ping",
     "allow-diag-report",
     "allow-set-window-theme",
+    "allow-apply-page-theme",
     "allow-set-window-size",
     "allow-get-workspace-path",
     "allow-window-minimize",
