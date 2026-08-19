@@ -12,19 +12,19 @@
 | # | 功能 | 说明（rc.14 行为） | 当前状态 |
 |---|---|---|---|
 | 1 | 原生窗口承载 dsh SPA | webserver ACTIVE 即开窗（早于 Loader 全量就绪），`--port 0` 随机端口 | ✅ Tauri 无边框窗口 + `WebviewUrl::External`（lib.rs），READY 先验证再导航 |
-| 2 | 品牌化 Splash | 300ms 主题色 + dsh logo + spinner 覆盖到 SPA 首绘，无白/黑闪 | ⚠️ 未实现（Tauri 直接导航；T4.4 官方双窗 splash 待 M4 收口） |
+| 2 | 品牌化 Splash | 300ms 主题色 + dsh logo + spinner 覆盖到 SPA 首绘，无白/黑闪 | ✅ shell-init.js 注入覆盖层（鲸鱼 logo + spinner，load 或 3s 后淡出） |
 | 3 | 窗口状态记忆 | 仅持久化 maximized（`dsh-hub-window-state.json`）；退出最大化恢复保存尺寸或 3/4 屏；最小 480×360 | ✅ `helpers/state.rs`（restore_window_state / resize 保存） |
 | 4 | 默认尺寸策略 | 无保存尺寸 = 启动屏 3/4（光标所在屏，multi-monitor aware）；恰好默认值 1280×720 不算用户显式保存 | ✅ `managers/window.rs`（primary_monitor 3/4，上限 1600×1000） |
 | 5 | 关闭/最小化到托盘 | closeToTray=true 关窗保进程+托盘；minimizeToTray 最小化即隐藏；行为实时读配置 | ✅ lib.rs `CloseRequested`（prevent_close+hide）/ `Resized+is_minimized` 检测 |
-| 6 | 设置实时应用 | 主题/尺寸保存后即时 applyTheme/applySize；最大化时保存尺寸先退最大化再套用 | ⚠️ 主题/尺寸 DSH_CMD 上行已通；「最大化时先退最大化再套用」未实现 |
+| 6 | 设置实时应用 | 主题/尺寸保存后即时 applyTheme/applySize；最大化时保存尺寸先退最大化再套用 | ✅ DSH_CMD 上行即时应用；最大化时先退再 set_size（2026-08-19 第十轮） |
 
 ## 2. 主题与外观
 
 | # | 功能 | 说明（rc.14 行为） | 当前状态 |
 |---|---|---|---|
-| 7 | 标题栏主题跟随 | 'system' 监听页面 `data-ds-dark-theme`；DWM immersive dark；同步 webview 背景防帧错位 | ⚠️ 强制浅/深按皮肤色板已通；「system 监听页面主题→DWM/背景」观察器缺失，仅 CSS token 被动跟随 |
+| 7 | 标题栏主题跟随 | 'system' 监听页面 `data-ds-dark-theme`；DWM immersive dark；同步 webview 背景防帧错位 | ✅ apply_page_theme：DWM + webview 背景 + 窗口图标随 `data-ds-dark-theme`（MutationObserver） |
 | 8 | 标题栏浅/深强制模式 | 主题选项「浅色/深色」强制 chrome 色；跟随 dsh 走 token | ✅ 增强：按当前皮肤浅/深色板解析（`#mg-dsh-skin` 样式表），皮肤切换自动重读；回退黑白 |
-| 9 | 双轨图标 | 标题栏图标随页面主题（深白鲸/浅黑鲸）；任务栏图标随 OS 主题；托盘图标按 OS 主题 | ⚠️ 托盘图标 ✅（32x32.png）；窗口/任务栏用 exe 内嵌图标，未做深浅翻转（M4 收口可选） |
+| 9 | 双轨图标 | 标题栏图标随页面主题（深白鲸/浅黑鲸）；任务栏图标随 OS 主题；托盘图标按 OS 主题 | ✅ 窗口图标随页面主题翻转（icon-dark/light 鲸鱼 PNG）；托盘 32x32.png；任务栏用 exe 内嵌图标 |
 
 ## 3. 托盘
 
@@ -32,14 +32,14 @@
 |---|---|---|---|
 | 10 | 常驻系统托盘 | 菜单：显示/隐藏主界面（动态标签）、打开工作区、新建会话、退出 | ✅ `managers/tray.rs` 原生菜单 + 左键单击显示 + `sync_toggle_label` 动态标签 |
 | 11 | 打开工作区 | 打开**当前聚焦会话**所在工作区目录 | ✅ 修复（2026-08-19）：改走 client 聚焦会话解析 → `open_workspace_path` |
-| 12 | 新建会话 | 派发页面事件 → 官方 `workspaces.startSession()`（当前会话→最近工作区）；SPA 未就绪重试不丢命令 | ⚠️ 单次派发无 `__mgShellReady` 重试（boot 期点击会丢）；隐藏到托盘时点新建会话不聚焦窗口 |
+| 12 | 新建会话 | 派发页面事件 → 官方 `workspaces.startSession()`（当前会话→最近工作区）；SPA 未就绪重试不丢命令 | ✅ stdin 管道 → host → 页面事件（带 `__mgShellReady` 300ms×20 重试） |
 | 13 | 托盘退出 | 写 `quit.marker` 后正常退出，不误判崩溃重启 | ✅ `helpers/quit.rs` + `tray_quit` 命令 |
 
 ## 4. 通知与声音
 
 | # | 功能 | 说明（rc.14 行为） | 当前状态 |
 |---|---|---|---|
-| 14 | 任务完成 Toast | depth-0 会话 turn/end completed\|error 弹原生通知；30s 冷却；聚焦会话只响音不弹 | ⚠️ toast 弹出 + 冷却 + 聚焦抑制已通；「点击回到窗口」缺失（tauri-plugin-notification 无点击回调 API，文案已诚实化） |
+| 14 | 任务完成 Toast | depth-0 会话 turn/end completed\|error 弹原生通知；30s 冷却；聚焦会话只响音不弹 | ✅ notify-rust 直弹 + 点击回窗口（wait_for_action）+ 30s 冷却 + 聚焦抑制 |
 | 15 | 四段事件提示音 | 提问 start/完成 success/需批准 attention/出错 error，独立开关；隐藏到托盘仍可闻 | ✅ DSH_CMD `play_sound` → Rust eval → 页面 HTMLAudio（sounds-api 伺服 WAV，autoplay 放行） |
 | 16 | 原创音效 | `scripts/synthesize-sounds.mjs` 合成四段 44.1kHz WAV（无第三方素材） | ✅ 保留（assets + sounds-api 路由） |
 
@@ -122,11 +122,13 @@
 - bridge 死代码移除 + config/pins/workspace 路由 Host 白名单
 - 多实例门禁 dev 豁免（隔离 DSH_HOME）
 
-### 仍待收口（M4/M5）
-1. **Splash 启动画面**（T4.4 官方双窗方案未落地）
-2. **system 主题跟随页面观察器**（DWM/背景/窗口图标随页面 `data-ds-dark-theme`）
-3. **通知点击回到窗口**（tauri-plugin-notification 无点击 API，需 notify-rust 直用或 Windows toast COM 回调）
-4. **NSIS 安装器 / 卸载清理 / 自动更新**（M5 范围）
-5. **窗口/任务栏图标深浅翻转**（可选增强）
-6. **托盘命令 boot 重试**（`__mgShellReady` 轮询）
-7. **最大化时保存尺寸先退最大化**、取消最大化恢复保存尺寸、光标所在屏 3/4 默认尺寸
+### 已实现（2026-08-19 第十轮）
+- Splash 启动画面（shell-init.js 覆盖层，覆盖 SPA 白屏）
+- system 主题跟随（apply_page_theme：DWM + webview 背景 + 窗口图标随 `body[data-ds-dark-theme]`）
+- 通知点击回到窗口（notify-rust 直弹 + wait_for_action）
+- 窗口图标深浅翻转（icon-dark/icon-light 鲸鱼 PNG）
+- 托盘命令 boot 重试（`__mgShellReady` 300ms×20 轮询）
+- 窗口尺寸管理：最大化先退再套用、退出最大化恢复保存尺寸、光标所在屏 3/4（去上限）
+
+### 仍待收口（M5）
+1. **NSIS 安装器 / 卸载清理 / 自动更新**（M5 范围，本轮不打包不发布）
