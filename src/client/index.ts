@@ -30,8 +30,6 @@ import { DesktopSettingsCard, type DesktopSettingsCardProps } from './settings-c
 import { injectCardStyle } from './style.ts'
 import { RightSidebar } from './right-sidebar.tsx'
 import { injectRightSidebarStyle } from './right-sidebar-style.ts'
-import { applySkin, fetchStoredSkin, hasUserPickedSkin } from './skins.ts'
-import { applyBackground, fetchStoredBackground, hasUserPickedBackground } from './backgrounds.ts'
 import { installPinnedConversations } from './pin-conversations.ts'
 
 /**
@@ -239,20 +237,11 @@ export function apply(ctx: ClientContext): void {
   injectCardStyle()
   injectRightSidebarStyle()
 
-  // Restore the persisted skin once the config API is reachable. If the user
-  // already picked a skin in this page lifetime (settings card), the restore
-  // must not clobber it — the flag makes the race harmless.
-  void fetchStoredSkin().then((skinId) => {
-    if (hasUserPickedSkin()) return
-    applySkin(skinId)
-  })
-
-  // Same for the background image: restore the saved choice unless the user
-  // already picked one in this page lifetime.
-  void fetchStoredBackground().then((backgroundId) => {
-    if (hasUserPickedBackground()) return
-    applyBackground(backgroundId)
-  })
+  // Skin + background restoration moved to the unified appearance center
+  // (dsh-web-ui skin-center): its own controller boot-restores the persisted
+  // token skins / background images from the appearance settings namespace
+  // and applies bundle skins through the boot graph. The hub card embeds
+  // that panel, so no restore happens here anymore.
 
   try {
     slots.inject('settings.plugin.item', function* () {

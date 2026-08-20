@@ -2,8 +2,12 @@
  * dsh-hub settings card — one card in the dsh settings → plugins
  * page, styled after the official PluginCard (collapsible header, themed
  * controls, save/discard footer). It edits the shell config (window size,
- * theme, tray behavior) through this plugin's own HTTP routes, and shows the
- * usage-stats ledger.
+ * theme, tray behavior) through this plugin's own HTTP routes.
+ * Skins / background images / wallpapers are no longer owned here: the card
+ * embeds the unified appearance center from the dsh-web-ui skin-center
+ * plugin (`window.__dshAppearanceCenter__`), which persists to its own
+ * `appearance` settings namespace and migrates this card's legacy
+ * skin/background config once.
  *
  * The card renders only while the host serves the config API, which happens
  * only when the process was launched by this project (desktop shortcut /

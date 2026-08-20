@@ -44,6 +44,8 @@ export const CARD_CSS_CLASSES = {
   failed: 'mg-card-failed',
   saved: 'mg-card-saved',
   loading: 'mg-card-loading',
+
+  appearanceHost: 'mg-card-appearance-host',
 } as const
 
 const css = CARD_CSS_CLASSES
@@ -317,6 +319,17 @@ const STYLE_TEXT = `
   animation: mg-pulse 1.2s ease-in-out infinite;
 }
 @keyframes mg-pulse { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+/* The embedded appearance center (dsh-web-ui skin-center panel): a plain
+ * surface that carries its own card; give it a contained scroll so a long
+ * skin list never blows out the hub card. */
+.${css.appearanceHost} {
+  margin: 4px 0 2px;
+  max-height: 60vh;
+  overflow-y: auto;
+  border: 1px solid var(--dsw-alias-border-l1, rgb(0 0 0 / 6%));
+  border-radius: 10px;
+  background: var(--dsw-alias-bg-layer-1, #fafafa);
+}
 `
 
 /** Inject the card stylesheet once (idempotent; no-op when already present). */
