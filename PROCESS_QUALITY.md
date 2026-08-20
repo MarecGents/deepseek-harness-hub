@@ -12,7 +12,7 @@
 
 ### 1.2 适用范围
 - 本仓库全部开发任务：Tauri 2.x 迁移（M1–M5）、插件功能、UI/样式、文档、发布。
-- 项目级执行细则见《项目执行 SOP》（docs/process/），本文档定义方法论与模板。
+- 项目级执行细则见《项目执行 SOP》（外部档案仓库 `../docs/process/`），本文档定义方法论与模板。
 
 ### 1.3 术语
 | 术语 | 含义 |
@@ -83,7 +83,7 @@ SOP 把"经验/口头流程"固化为**标准作业书**，让任何执行者（
 
 ## 4. 项目执行 SOP（通用开发流程）
 
-> 项目级阶段化 SOP 见 `docs/process/`（如《迁移项目执行SOP》）。本节约定通用流程骨架：
+> 项目级阶段化 SOP 见外部档案仓库 `../docs/process/`（如《迁移项目执行SOP》）。本节约定通用流程骨架：
 
 ```
 需求/目标定义（D）
@@ -94,7 +94,7 @@ SOP 把"经验/口头流程"固化为**标准作业书**，让任何执行者（
    ↓ 代码评审 + 构建 + 门禁
 测试/验收（C）
    ↓ 验收表逐项 + 回归基线
-发布（verify-release / verify-tauri-release）
+发布（verify-release / verify-tauri-release[待 M5 落地]）
    ↓ dist-tag / Release 校验（直查 registry，禁缓存）
 复盘（缺陷登记、根因分析、SOP 修订）
 ```
@@ -105,7 +105,7 @@ SOP 把"经验/口头流程"固化为**标准作业书**，让任何执行者（
 | **身份门禁** | 插件身份四重相等（AGENTS.md 铁律 2） | 修复至一致，禁止继续 |
 | **构建门禁** | `npm run build && build:client`（或 `cargo build --release` + clippy + test）exit 0 | 修复 |
 | **发布门禁** | `node scripts/verify-release.mjs`（插件层）全部 PASS | 禁止 publish（铁律 6） |
-| **迁移门禁** | `verify-tauri-release.mjs`（壳层，M4 起）P1-P9 全部 PASS | 禁止发布 |
+| **迁移门禁** | 壳层 `cargo check` + `clippy` + `test` 零告警 + `verify-m4-multi-instance.mjs`（多实例硬验收）；`verify-tauri-release.mjs`（P1–P9）**M5 落地后启用** | 禁止发布 |
 | **验收门禁** | 阶段验收表全过（状态列"通过"） | 补齐后重跑 |
 | **回归门禁** | 回归基线（rc.14 行为/上一阶段）无回归 | 修复回归项 |
 

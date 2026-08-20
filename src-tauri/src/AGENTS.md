@@ -1,6 +1,6 @@
 # AGENTS.md — src-tauri/src/（Rust 壳层）开发约束
 
-> 本目录是 dsh-hub 的 **Tauri 2.x 原生壳**（M4 现状：Node sidecar + WebView2 承载 dsh Web UI）。改动本目录任何文件前，**必须**先读根 [../../AGENTS.md](../../AGENTS.md) 与本文件；涉及双向管道协议时还要读 [../../src/AGENTS.md](../../src/AGENTS.md)（host 侧）与本文件。
+> 本目录是 dsh-hub 的 **Tauri 2.x 原生壳**（Node sidecar 承载 dsh Web UI，wry 渲染引擎在 Windows 上底层为 WebView2 Runtime，与已删除的 @webviewjs「WebView2 壳」无代码关系）。改动本目录任何文件前，**必须**先读根 [../../AGENTS.md](../../AGENTS.md) 与本文件；涉及双向管道协议时还要读 [../../src/AGENTS.md](../../src/AGENTS.md)（host 侧）与本文件。
 
 ## 分层结构（SPT 架构借鉴，2026-08-18 重构）
 

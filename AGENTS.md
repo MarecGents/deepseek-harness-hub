@@ -183,7 +183,7 @@ git checkout dev-v2 && git merge main --ff-only && git push origin dev-v2
 # 6. 发布记录 docs/发布记录-rc<N>-YYYY-MM-DD-HHmm.md → commit（main）→ 回灌 dev-v2
 ```
 
-- **发布版本号策略**：当前 rc 预览期（`0.0.1-rc.x`）；正式版需在 **Tauri 2.x 迁移完成并达到良好体验后**再发布（见 [docs/dsh桌面端技术路线-2026-08-16.md](../../docs/dsh桌面端技术路线-2026-08-16.md)）。
+- **发布版本号策略**：当前 rc 预览期（`0.0.1-rc.x`）；正式版需在 **Tauri 2.x 迁移完成并达到良好体验后**再发布（见 [外部档案 docs/dsh桌面端技术路线-2026-08-16.md](../docs/dsh桌面端技术路线-2026-08-16.md)）。
 
 ### 5.4 全新环境首启崩溃事故（rc.10–rc.13，勿重蹈）
 
@@ -209,7 +209,7 @@ git checkout dev-v2 && git merge main --ff-only && git push origin dev-v2
 
 ## 6. 未来技术路线（约束方向，不立即实施）
 
-- **目标**：Tauri 2.x 壳（自定义壳 UI、Windows/macOS/Linux 三端、~10MB、官方插件生态）。详细决策见 `docs/dsh桌面端技术路线-2026-08-16.md`。
+- **目标**：Tauri 2.x 壳（自定义壳 UI、Windows/macOS/Linux 三端、~10MB、官方插件生态）。详细决策见外部档案 `../docs/dsh桌面端技术路线-2026-08-16.md`。
 - **迁移时**：壳层（`src/managers/*` + Windows 专属 `src/helpers/*` + `src-tauri/src/` 全部）重写/落地；插件层（client + `src/server/*` API）保留；dsh 生态通过 HTTP/WS 对接，client half 零改动。
 - **现在**：保持当前架构可运行，代码按本 harness 的隔离边界组织，为迁移留好切口（壳/插件接口清晰、不混层）。
 
