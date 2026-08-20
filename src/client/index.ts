@@ -30,10 +30,7 @@ import { DesktopSettingsCard, type DesktopSettingsCardProps } from './settings-c
 import { injectCardStyle } from './style.ts'
 import { RightSidebar } from './right-sidebar.tsx'
 import { injectRightSidebarStyle } from './right-sidebar-style.ts'
-import { applySkin, fetchStoredSkin, hasUserPickedSkin } from './skins.ts'
-import { applyBackground, fetchStoredBackground, hasUserPickedBackground } from './backgrounds.ts'
 import { installPinnedConversations } from './pin-conversations.ts'
-import { installConversationRail, refreshConversationRailPalette } from './conversation-rail.ts'
 
 /**
  * Tray-bridge ready flag, set at module scope — the very first thing that
@@ -240,21 +237,11 @@ export function apply(ctx: ClientContext): void {
   injectCardStyle()
   injectRightSidebarStyle()
 
-  // Restore the persisted skin once the config API is reachable. If the user
-  // already picked a skin in this page lifetime (settings card), the restore
-  // must not clobber it — the flag makes the race harmless.
-  void fetchStoredSkin().then((skinId) => {
-    if (hasUserPickedSkin()) return
-    applySkin(skinId)
-  })
-
-  // Same for the background image: restore the saved choice unless the user
-  // already picked one in this page lifetime.
-  void fetchStoredBackground().then((backgroundId) => {
-    if (hasUserPickedBackground()) return
-    applyBackground(backgroundId)
-    refreshConversationRailPalette() // backdrop restored after boot — re-derive rail colors
-  })
+  // Skin + background restoration moved to the unified appearance center
+  // (dsh-web-ui skin-center): its own controller boot-restores the persisted
+  // token skins / background images from the appearance settings namespace
+  // and applies bundle skins through the boot graph. The hub card embeds
+  // that panel, so no restore happens here anymore.
 
   try {
     slots.inject('settings.plugin.item', function* () {
@@ -300,14 +287,5 @@ export function apply(ctx: ClientContext): void {
     ctx.effect(() => installPinnedConversations(ctx), 'dsh-hub: pinned conversations')
   } catch (error) {
     console.warn('[dsh-hub] pinned conversations install failed:', error)
-  }
-
-  // Conversation rail (对话定位条): a left gutter over the conversation
-  // column with one clickable bar per turn. Body-portal overlay; the effect
-  // disposer removes it on reload. Read-only against the session snapshot.
-  try {
-    ctx.effect(() => installConversationRail(ctx), 'dsh-hub: conversation rail')
-  } catch (error) {
-    console.warn('[dsh-hub] conversation rail install failed:', error)
   }
 }
