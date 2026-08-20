@@ -167,7 +167,8 @@ function Test-PrivateDepsReady {
   if (-not (Test-Path -LiteralPath $DshCmd))  { return $false }
   if (-not (Test-Path -LiteralPath $DshEntry)){ return $false }
   if (-not (Test-Path -LiteralPath $PnpmCmd)) { return $false }
-  # 插件本体也必须就位（dsh web 经 junction 从私有 prefix 加载 @marecgents/dsh-hub）。
+  # The plugin package itself must also be present (dsh web loads
+  # @marecgents/dsh-hub from the private prefix via the junction).
   $HubPkg = Join-Path $Root 'node_modules\@marecgents\dsh-hub\package.json'
   if (-not (Test-Path -LiteralPath $HubPkg)) { return $false }
   try {
