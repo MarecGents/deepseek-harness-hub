@@ -20,6 +20,7 @@
  * @module dsh-hub/client
  */
 import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client';
+import { type DesktopSettingsCardProps } from './settings-card.tsx';
 declare module '@deepseek-ai/dsh-client-ui-slots' {
     interface SlotMap {
         /**
@@ -31,6 +32,17 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
             kind: 'keyed';
             scope: 'root';
             owner: SettingsPluginItemOwnerProps;
+        };
+        /**
+         * The first-level settings section that hosts the unified appearance
+         * center (window/theme/tray shell config + embedded appearance panel).
+         * Declared here because the hub's slot package version does not ship the
+         * settings.section slot (dsh-web-ui's skin-center extends it separately).
+         */
+        'settings.section': {
+            kind: 'keyed';
+            scope: 'root';
+            owner: DesktopSettingsCardProps;
         };
     }
 }

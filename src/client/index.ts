@@ -26,11 +26,12 @@ import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
 // Type-only: pulls the slots Context merge and the layout slot declarations.
 import type {} from '@deepseek-ai/dsh-client-ui-slots'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
-import { DesktopSettingsCard, type DesktopSettingsCardProps } from './settings-card.tsx'
+import { AppearanceCenterSection, type DesktopSettingsCardProps } from './settings-card.tsx'
 import { injectCardStyle } from './style.ts'
 import { RightSidebar } from './right-sidebar.tsx'
 import { injectRightSidebarStyle } from './right-sidebar-style.ts'
 import { installPinnedConversations } from './pin-conversations.ts'
+import { installConversationRail } from './conversation-rail.ts'
 
 /**
  * Tray-bridge ready flag, set at module scope — the very first thing that
@@ -48,6 +49,13 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
      * rc.7 起 slot 从 `list` 改为 `keyed`（卡片按 settings namespace key 派发）。
      */
     'settings.plugin.item': { kind: 'keyed'; scope: 'root'; owner: SettingsPluginItemOwnerProps }
+    /**
+     * The first-level settings section that hosts the unified appearance
+     * center (window/theme/tray shell config + embedded appearance panel).
+     * Declared here because the hub's slot package version does not ship the
+     * settings.section slot (dsh-web-ui's skin-center extends it separately).
+     */
+    'settings.section': { kind: 'keyed'; scope: 'root'; owner: DesktopSettingsCardProps }
   }
 }
 
@@ -243,20 +251,26 @@ export function apply(ctx: ClientContext): void {
   // and applies bundle skins through the boot graph. The hub card embeds
   // that panel, so no restore happens here anymore.
 
+  // The unified appearance center: a single first-level settings section
+  // ("外观中心") that bundles the desktop shell configuration (window / theme /
+  // tray / notifications) together with the embedded dsh-web-ui appearance
+  // panel (skins / backgrounds / wallpapers). The standalone "皮肤中心" section
+  // and the old "DSH HUB 设置" plugin card are gone — one entry, one surface.
   try {
-    slots.inject('settings.plugin.item', function* () {
+    slots.inject('settings.section', function* () {
+      // The slot package's typed SlotMap lacks settings.section; the runtime
+      // shape (id/order/label) mirrors what the dsh-web-ui skin-center used for
+      // the same first-level section, so the register options are cast.
       yield slots.register({
-        name: 'settings.plugin.item',
-        // rc.7 keyed slot：卡片按 settings namespace key 派发（tab-store 匹配 served）。
-        // key 必须 = SETTINGS_NS（'dsh-hub'），否则卡片永不渲染。
-        key: 'dsh-hub',
-        // rc.7 用 priority（替代旧版 order）。
-        priority: 30,
-      }, (props: DesktopSettingsCardProps) => DesktopSettingsCard(props))
+        name: 'settings.section',
+        id: 'appearance-center',
+        order: 120,
+        label: '外观中心',
+      } as never, (props: DesktopSettingsCardProps) => AppearanceCenterSection(props))
     })
   } catch (error) {
-    // Card mounting must never take down the tray bridge.
-    console.warn('[dsh-hub] settings card injection failed:', error)
+    // Section mounting must never take down the tray bridge.
+    console.warn('[dsh-hub] appearance center section injection failed:', error)
   }
 
   // Right sidebar: mount a body portal like dsh-better-sidebar. This keeps
@@ -287,5 +301,14 @@ export function apply(ctx: ClientContext): void {
     ctx.effect(() => installPinnedConversations(ctx), 'dsh-hub: pinned conversations')
   } catch (error) {
     console.warn('[dsh-hub] pinned conversations install failed:', error)
+  }
+
+  // Conversation rail (对话定位条): a left gutter over the conversation
+  // column with one clickable bar per turn. Body-portal overlay; the effect
+  // disposer removes it on reload. Read-only against the session snapshot.
+  try {
+    ctx.effect(() => installConversationRail(ctx), 'dsh-hub: conversation rail')
+  } catch (error) {
+    console.warn('[dsh-hub] conversation rail install failed:', error)
   }
 }
