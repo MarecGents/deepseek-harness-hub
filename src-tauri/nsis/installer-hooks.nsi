@@ -21,7 +21,7 @@
 
 !macro NSIS_HOOK_POSTINSTALL
   DetailPrint "dsh-hub: bootstrapping private Node runtime + dsh dependencies (install-time)..."
-  nsExec::ExecToLog 'powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "$INSTDIR\scripts\dsh-deps-install.ps1" -InstallDir "$INSTDIR"'
+  nsExec::ExecToLog 'powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "$INSTDIR\_up_\scripts\dsh-deps-install.ps1" -InstallDir "$INSTDIR"'
   Pop $0
   ${If} $0 != 0
     DetailPrint "dsh-hub: bootstrap exited with code $0 - the app will fall back to PATH/node at first launch"

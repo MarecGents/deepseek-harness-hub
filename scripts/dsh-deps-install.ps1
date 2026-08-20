@@ -177,21 +177,33 @@ function Test-PrivateDepsReady {
   return $true
 }
 
-# Download with Invoke-WebRequest; Start-BitsTransfer as fallback.
+# Download with Invoke-WebRequest; Start-BitsTransfer fallback; then a system
+# Node fetch fallback. The last one matters on machines whose Schannel TLS stack
+# is broken (PowerShell/curl all fail SSL) but whose Node/OpenSSL still works —
+# Node's fetch uses OpenSSL, independent of Windows Schannel.
 function Invoke-Download {
   param([string]$Url, [string]$OutFile)
   $ProgressPreference = 'SilentlyContinue'
   try {
     Invoke-WebRequest -Uri $Url -OutFile $OutFile -UseBasicParsing -ErrorAction Stop
     return $true
-  } catch {
+  } catch { }
+  try {
+    Start-BitsTransfer -Source $Url -Destination $OutFile -ErrorAction Stop
+    return $true
+  } catch { }
+  $sysNode = Get-Command node.exe -ErrorAction SilentlyContinue
+  if ($sysNode) {
+    $tmpJs = Join-Path $env:TEMP ("dsh-dl-" + [guid]::NewGuid().ToString('N') + ".mjs")
+    $js = "import { writeFileSync } from 'node:fs'; const r = await fetch(process.argv[2], { redirect: 'follow' }); if (!r.ok) process.exit(1); writeFileSync(process.argv[3], Buffer.from(await r.arrayBuffer()));"
+    Set-Content -Path $tmpJs -Value $js -Encoding UTF8
     try {
-      Start-BitsTransfer -Source $Url -Destination $OutFile -ErrorAction Stop
-      return $true
-    } catch {
-      return $false
-    }
+      & $sysNode.Source $tmpJs $Url $OutFile
+      if ($LASTEXITCODE -eq 0 -and (Test-Path -LiteralPath $OutFile)) { return $true }
+    } catch { }
+    finally { Remove-Item $tmpJs -Force -ErrorAction SilentlyContinue }
   }
+  return $false
 }
 
 # Download + extract node into $NodeDir. Returns $true on success.

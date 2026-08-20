@@ -311,18 +311,22 @@ fn resolve_dsh_entry(dsh_cmd: &Path) -> Result<(PathBuf, PathBuf), String> {
     Err(format!("cannot resolve dsh entry from {}", dsh_cmd.display()))
 }
 
-/// 仓库根目录（scripts/assemble-profile.mjs 所在处）：
+/// 仓库根目录（assemble-profile.mjs 所在处）：
 /// 开发态 = CARGO_MANIFEST_DIR（src-tauri/）的父目录；
-/// 已打包态 = exe 相邻目录（M5 externalBin 内嵌资产路径预留）。
+/// 已打包态 = exe 相邻目录（$INSTDIR）。
 ///
-/// M5：打包态优先 —— 安装器把 scripts/* 资源复制到 exe 相邻目录（$INSTDIR\scripts\），
-/// 若 exe 旁存在 scripts/assemble-profile.mjs 就直接用 exe 目录（$INSTDIR），
-/// 保证私有运行时解析落在 <$INSTDIR>\dsh-hub-win 而非开发机残留路径。
+/// M5：打包态 resources 实际落在 `$INSTDIR\_up_\scripts\`（Tauri 2 NSIS 约定），
+/// 故以 `_up_\scripts\assemble-profile.mjs` 存在判打包态；dev 态在仓库根 `scripts\`。
 fn repo_root() -> PathBuf {
     // 打包态：exe 相邻目录（$INSTDIR）。
     if let Ok(exe) = std::env::current_exe() {
         if let Some(exe_dir) = exe.parent() {
-            if exe_dir.join("scripts").join("assemble-profile.mjs").exists() {
+            if exe_dir
+                .join("_up_")
+                .join("scripts")
+                .join("assemble-profile.mjs")
+                .exists()
+            {
                 return exe_dir.to_path_buf();
             }
         }
@@ -336,6 +340,16 @@ fn repo_root() -> PathBuf {
         .ok()
         .and_then(|exe| exe.parent().map(Path::to_path_buf))
         .unwrap_or_else(|| dev_root.to_path_buf())
+}
+
+/// assemble-profile.mjs 的绝对路径：打包态在 `$INSTDIR\_up_\scripts\`，dev 态在仓库根 `scripts\`。
+fn assemble_script_path() -> PathBuf {
+    let root = repo_root();
+    let packed = root.join("_up_").join("scripts").join("assemble-profile.mjs");
+    if packed.exists() {
+        return packed;
+    }
+    root.join("scripts").join("assemble-profile.mjs")
 }
 
 /// M5 私有运行时根：<repo_root>\dsh-hub-win（NSIS 安装期引导脚本写入）。
@@ -376,7 +390,7 @@ fn prepend_private_node_path(cmd: &mut Command) {
 /// 返回 Err = 脚本缺失 / 命令无法启动 / 退出码非 0（--assemble-only 据此 exit 1）。
 pub fn assemble_profile() -> Result<(), String> {
     let repo_root = repo_root();
-    let assemble_script = repo_root.join("scripts").join("assemble-profile.mjs");
+    let assemble_script = assemble_script_path();
     if !assemble_script.exists() {
         return Err(format!(
             "assemble-profile.mjs not found at {}",
