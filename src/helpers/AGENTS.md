@@ -21,6 +21,6 @@
 
 1. **纯函数**：无状态、无副作用；输入输出类型明确（state-store 的读写是"文件 I/O 型工具"，属例外但仍无业务状态）。
 2. **零依赖**：只依赖其他 helpers / 官方库；**禁止** import 上层（index/managers/server/services）。
-3. **Windows 专属标记**：Windows-only 文件头注明"Tauri 迁移时重写"；跨平台代码不得直接依赖（经 theme-sync 桥 / 工厂注入）。
+3. **Windows 专属标记**：Windows-only 文件头注明平台依赖与归宿；跨平台代码不得直接依赖（经 tauri-shell 桥（DSH_CMD）/ 工厂注入）。
 4. **接口文档**：每个导出函数前写 JSDoc（作用、参数、返回、副作用）。
 5. **Build 前推演**：改完先推演（类型自洽、零依赖未破坏），再 `npm run build`。

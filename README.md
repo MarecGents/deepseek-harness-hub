@@ -26,21 +26,21 @@
 ## 功能特性
 
 - **原生桌面化**：用 Tauri 2.x 原生窗口打开 dsh Web UI，无浏览器标签页干扰。
-- **品牌化 Splash**：主题色 + dsh logo + spinner 覆盖从窗口打开到 SPA 首绘的加载过程，无白/黑闪块。
+- **品牌化 Splash**：主题色 + dsh logo + spinner 覆盖从窗口打开到 SPA 首绘的加载过程，无白/黑闪块（`src-tauri/src/shell-init.js` 注入覆盖层，页面 load 或 3s 后淡出）。
 - **系统托盘**：
   - 显示主界面 / 隐藏主界面（按窗口状态动态切换）
   - 打开工作区（自动激活并前置 Explorer）
-  - 新建任务（走官方 `ctx.workspaces.startSession` 流程，UI 即时刷新）
+  - 新建任务（走官方 `ctx.workspaces.startSession` 流程，UI 即时刷新；SPA 未就绪时命令自动重试——`__mgShellReady` 300ms×20 轮询不丢命令）
   - 退出（写 `quit.marker` 后干净退出，避免误判崩溃重启）
-- **窗口状态记忆**：最大化状态、分辨率、主题等持久化到 `$DSH_HOME/dsh-hub/config.json`。
-- **主题同步**：MutationObserver 事件驱动，标题栏深浅色实时跟随 dsh 页面主题（Tauri 壳 Rust Dwm 实现）。
+- **窗口状态记忆与尺寸管理**：最大化状态、分辨率、主题等持久化到 `$DSH_HOME/dsh-hub/config.json`；套用保存尺寸前若处于最大化先退最大化、退出时恢复保存尺寸；无保存尺寸时默认**光标所在屏 3/4**（multi-monitor aware，无上限，下限 480×360）。
+- **主题跟随（system）**：MutationObserver 事件驱动，`apply_page_theme` 命令让标题栏深浅色、webview 背景与**窗口图标（icon-dark / icon-light 翻转）**实时跟随 dsh 页面主题（Tauri 壳 Rust Dwm 实现）。
 - **设置卡片**：dsh 设置 → 插件页提供桌面壳配置（窗口尺寸 / 主题 / 托盘行为 / 会话完成通知 / 提示音 / 多实例开关 / 界面皮肤 / 背景图）。
 - **多实例保护**：启动时检测已有 dsh 实例（任意端口），默认拒绝共存以防会话数据损坏；确需共存可在设置中显式开启（附危险警告）。
 - **右侧栏**：概览（Token 统计）、文件树、Git 变更三页；收起后保留窄栏快捷按钮。
 - **置顶会话**：会话行 hover 置顶（同名会话安全跳过、不误标）；置顶区常驻列表顶部（可独立滚动）；持久化于 `$DSH_HOME/dsh-hub/pins.json`（localStorage 兜底）。注：多标签/多实例下 pins 为整体替换语义（最后写者胜）；同标签内 PUT 依赖 fetch 顺序保序。
 - **会话完成通知 + 事件提示音**：
   - **提示音**（独立开关）：用户提交问题（开始音）、任务正常完成（完成音）、AI 请求批准（需要你）、任务出错（出错音）——**四段原创合成音效**（`scripts/synthesize-sounds.mjs` 生成，无第三方素材），窗口隐藏到托盘时依然可闻。
-  - **Toast**：任务完成/出错时弹 Windows 原生通知，点击恢复窗口；30s 冷却。**聚焦会话策略**：正在查看的会话完成时只响提示音不弹 Toast（结果就在眼前）；后台会话完成或窗口隐藏时仍弹 Toast。
+  - **Toast**：任务完成/出错时弹 Windows 原生通知（notify-rust 直弹，`wait_for_action` 点击回窗），30s 冷却。**聚焦会话策略**：正在查看的会话完成时只响提示音不弹 Toast（结果就在眼前）；后台会话完成或窗口隐藏时仍弹 Toast。
 - **独立进程身份**：桌面壳为单一 Tauri 原生应用（`cargo tauri build` NSIS 安装），任务管理器显示 DeepSeek Harness Hub 图标与名称；WebView2 时代 `dsh-hub.exe` / `dsh-hub-guard.exe`（node.exe 复制 + rcedit 打补丁）机制已删除。
 - **启动门控**：仅当通过本项目启动时注入桌面壳与插件页面；普通 `dsh web` 完全不受影响。
 
@@ -54,7 +54,7 @@
 npm run tauri:build        # = cargo tauri build → src-tauri/target/release/bundle/nsis/
 ```
 
-- 安装器安装「DeepSeek Harness Hub」，从开始菜单 / 桌面启动；无需 Node 环境。
+- 安装器安装「DeepSeek Harness Hub」，从开始菜单 / 桌面启动。**注意**：NSIS 链路（M5）尚未闭环——安装后首启仍需本机 **Node + 全局 dsh**（sidecar 解析 node/dsh 入口后 spawn `dsh web`）；「无需 Node 环境」是 M5 收口（externalBin 内嵌资产）后的目标，当前不成立（见 [FUNCTIONS.md](FUNCTIONS.md)「仍待收口（M5）」）。
 - 插件层 npm 包 `@marecgents/dsh-hub` 仍随 dsh 生态发布（见「发布」），postinstall 仅做 `dsh` / `pnpm` 依赖检查。
 - **WebView2 时代已移除**：`npm i -g` launcher 安装链路、`koffi` 原生依赖、postinstall 创建的桌面快捷方式与 `dsh-hub` 命令 shim。
 
@@ -100,8 +100,10 @@ npm run m1:check         # M1 字段核对断言（tauri.conf/lib.rs，10 项）
 npm run m1:ipc-smoke     # M1 本地窗口 IPC 冒烟断言（需 tauri dev 已运行）
 ```
 
-- 前置：Rust 工具链（rustup stable）+ `@tauri-apps/cli`（已入 devDependencies）
-- M1 临时页由 `scripts/dev-shell-page.mjs` 伺服（`http://127.0.0.1:17891`），M4 起 devUrl 改指 dsh web 端口
+- 前置：Rust 工具链**二选一** + `@tauri-apps/cli`（已入 devDependencies）：
+  - **VS Build Tools（MSVC，推荐）**：`rustup toolchain install stable-x86_64-pc-windows-msvc`；
+  - **无 VS/MSVC 时**：`rustup toolchain install stable-x86_64-pc-windows-gnu` + MinGW-w64 gcc（本机为 `D:\Tools\Environment\MingGW\mingw64\bin`）。GNU 工具链链接 cdylib 需 `src-tauri/.cargo/config.toml` 的 `--exclude-all-symbols`（已入库：修复 mingw ld `export ordinal too large`，tauri-apps/tauri#10843）。
+- dev 模式临时页由 `scripts/dev-shell-page.mjs` 伺服（`http://127.0.0.1:17891`，即 `tauri.conf.json` 的 devUrl/beforeDevCommand）；**devUrl 未改指 dsh web 端口**——实际窗口在 sidecar READY 验证后以 `WebviewUrl::External` 导航到 dsh web 端口（`--port 0` 随机）
 - 插件层（`src/client/*`、config/workspace API）全程零改动，壳层重写为 Rust
 
 ### 验证门控
@@ -120,7 +122,8 @@ dsh web
 ┌──────────────────────────────────────────────────────────┐
 │ Tauri 壳（Rust，src-tauri/src/）                          │
 │   lib.rs：窗口 / 托盘 / 通知 / 主题 / 单实例 / 多实例门禁    │
-│   bin/dsh-web-sidecar.mjs：装配 profile + spawn dsh web   │
+│   managers/node.rs：装配 profile + spawn dsh web           │
+│   bin/dsh-web-sidecar.mjs：装配/入口解析辅助（M5 预留）     │
 └───────────────┬──────────────────────────────────────────┘
                 │ 双向管道：stdin MG_TRAY / stdout DSH_CMD
 ┌───────────────▼──────────────────────────────────────────┐
@@ -150,7 +153,7 @@ dsh web
 
 ### 关键机制
 
-- **启动链路**：Tauri 壳（`lib.rs`）→ 多实例检测（netstat + CIM，默认拒共存）→ Node sidecar（`bin/dsh-web-sidecar.mjs`：`scripts/assemble-profile.mjs` 装配 web profile + `spawn dsh web --port 0`，`DSH_HUB_LAUNCHED=1` 门控）→ READY 验证 → 建窗加载 dsh Web UI。
+- **启动链路**：Tauri 壳（`lib.rs`）→ 多实例检测（netstat + CIM，默认拒共存）→ Node sidecar 管理（`managers/node.rs`：调 `scripts/assemble-profile.mjs` 装配 web profile + spawn `dsh web --port 0`，`DSH_HUB_LAUNCHED=1` 门控；`bin/dsh-web-sidecar.mjs` 为独立装配/入口解析辅助，M5 externalBin 预留）→ READY 验证 → 建窗（`WebviewUrl::External`）加载 dsh Web UI。
 - **主题跟随**：`body[data-ds-dark-theme]` 变化 → MutationObserver → `DSH_CMD` → Tauri 壳应用标题栏主题（Rust Dwm）。
 - **托盘命令**：Rust 托盘（`tray.rs`）→ stdin `MG_TRAY` → host `core/registry.ts` 分发 → stdout `DSH_CMD` 回执。
 - **退出语义**：托盘"退出"写 `quit.marker` → 干净退出（`quit.rs`）；不触发崩溃重启误判。
@@ -160,19 +163,25 @@ dsh web
 
 ```
 dsh-hub/
-├── package.json            # dsh.bundle.patch + dsh.client + scripts（bin 已清空）
+├── package.json            # dsh.bundle.patch + dsh.client + scripts（npm bin 字段已清空，launcher 家族已删）
 ├── cordis.patch.yml        # 插件行（启动来源门控）
 ├── tsconfig.json
 ├── tsdown.config.ts        # client bundle 构建配置
 ├── bin/
-│   └── dsh-web-sidecar.mjs # dsh web sidecar（profile 装配 + spawn dsh web）
+│   └── dsh-web-sidecar.mjs # 独立 sidecar 辅助（profile 装配 + node/dsh 入口解析；M5 externalBin 预留）
 ├── scripts/
 │   ├── assemble-profile.mjs # 运行 profile 装配（scoped bundle + junction 自愈）
-│   ├── postinstall.mjs     # 检测 dsh/pnpm（不再建快捷方式）
-│   ├── postuninstall.mjs   # 依赖检查清理
-│   ├── build-client.mjs    # client 构建 + SDK junction
-│   └── generate-icon.mjs
-├── assets/                 # dsh favicon（PNG/ICO/SVG）
+│   ├── dev-shell-page.mjs   # dev 模式临时页伺服（127.0.0.1:17891）
+│   ├── build-client.mjs     # client 构建 + SDK junction
+│   ├── postinstall.mjs      # 检测 dsh/pnpm（不再建快捷方式）
+│   ├── postuninstall.mjs    # 依赖检查清理
+│   ├── synthesize-sounds.mjs # 四段提示音合成
+│   ├── check-tauri-conf.mjs  # M1 字段核对断言
+│   ├── ipc-smoke.mjs         # M1 窗口 IPC 冒烟
+│   ├── verify-release.mjs    # 发布门禁（P1-P5）
+│   ├── verify-m4-multi-instance.mjs # M4 多实例门禁断言
+│   └── generate-titlebar-icons.mjs  # 标题栏/窗口主题图标生成（icon-dark/light）
+├── assets/                 # dsh favicon（SVG）+ backgrounds/（背景图）+ sounds/（提示音）
 ├── src-tauri/              # Tauri 2.x 壳（Rust，lib.rs 入口 + NSIS 打包）
 ├── src/
 │   ├── index.ts            # host 插件入口（Controller 装配）
@@ -186,7 +195,8 @@ dsh-hub/
 │   ├── utils/              # 纯函数（管道帧解析）
 │   └── client/             # client half（设置卡片 + 右侧栏）
 ├── docs/
-│   └── 关键踩坑记录.md      # 踩坑索引
+│   ├── 关键踩坑记录.md      # 踩坑索引
+│   └── skins/              # 皮肤风格 harness（AGENTS.md + 各皮肤文档）
 └── lib/                    # 构建产物
 ```
 

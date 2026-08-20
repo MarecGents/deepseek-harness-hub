@@ -14,4 +14,4 @@
 
 - 44.1 kHz / 16-bit / 单声道 WAV；基音 + 轻微二次谐波，指数衰减包络
 - 修改旋律后重新生成：`node scripts/synthesize-sounds.mjs`
-- 播放：host 侧 koffi → winmm `PlaySoundW`（SND_ASYNC）；素材缺失自动回退系统别名音
+- 播放：Rust 壳 `play_sound` 命令 → `win.eval` → 浏览器 HTMLAudio（`/api/dsh-hub/sounds/*` 路由伺服 WAV，`--autoplay-policy=no-user-gesture-required` 放行）——Node 进程无 `Audio`，声音必须在页面播放（踩坑 #36）

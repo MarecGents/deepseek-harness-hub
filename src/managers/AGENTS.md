@@ -14,8 +14,8 @@
 ## Manager 层红线
 
 1. **壳/插件隔离**：Manager 只做壳生命周期与系统交互，**禁止**写插件业务（会话、路由、设置卡片）。
-2. **Windows 专属标记**：desktop.ts / tray.ts 文件头注明"Tauri 迁移后废弃"；跨平台代码不得直接依赖（经 tauri-shell / 工厂注入）。
+2. **Windows 专属标记**：Windows-only 能力文件头注明平台依赖；跨平台代码不得直接依赖（经 tauri-shell 桥 / 工厂注入）。
 3. **命令上行唯一通道**：Tauri 壳经 `sendDshCmd()`（stdout `DSH_CMD <json>`）上行；帧格式/命令名变更必须同步 `src-tauri/src/managers/node.rs` 分发表（三端同步：node.rs ↔ tauri-shell.ts ↔ index.ts）。
-4. **单向依赖**：Manager 可依赖 `../helpers/*`、`../services/theme-sync.js`、`../core/registry.js`；**禁止** import `../index.ts`、`../server/*`。
+4. **单向依赖**：Manager 可依赖 `../helpers/*`、`../core/registry.js`；**禁止** import `../index.ts`、`../server/*`。
 5. **错误处理**：子进程/异步错误不得静默；空 catch 必须注释；console 日志前缀 `[dsh-hub]`（进 dsh.log）。
 6. **Build 前推演**：改完先推演（壳生命周期、启动门控、管道协议、Windows 边界），再 `npm run build`。

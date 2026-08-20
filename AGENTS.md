@@ -48,13 +48,13 @@ dsh-hub 是**双 half** 结构，且**套壳代码与插件代码必须严格模
 ├─────────────────────────────────────────────────────────────┤
 │ 壳入口 / 装配（dev-v2 Tauri-only，launcher 家族已删）           │
 │   src-tauri/src/lib.rs   Tauri 壳入口（见上）                  │
-│   bin/dsh-web-sidecar.mjs    dsh web sidecar 进程             │
+│   bin/dsh-web-sidecar.mjs    sidecar 辅助（装配/入口解析，M5 预留）│
 │   scripts/assemble-profile.mjs  运行 profile 装配（幂等）      │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-**隔离边界（为 Tauri 2.x 迁移做准备）**：
-- **壳层**（`src/managers/*` + `src/helpers/` 中 Windows 专属能力：dwm-theme / explorer / screen / state-store + `src-tauri/src/` 整个 Rust 壳）——未来 Tauri 迁移时整体重写为 Rust 壳；**不得**让插件逻辑渗入壳层。
+**隔离边界（dev-v2 Tauri-only，2026-08 更新）**：
+- **壳层**（`src/managers/*` + `src/helpers/`（state-store；dwm-theme / explorer / screen 等 Windows 专属能力已随 WebView2 壳删除、迁入 Rust 壳）+ `src-tauri/src/` 整个 Rust 壳）——壳能力已整体落在 Rust 侧；**不得**让插件逻辑渗入壳层。
 - **插件层**（client/* + `src/server/*` 路由 + settings-card）——与壳解耦，通过**明确定义的接口**（HTTP 路由 / IPC 桥 / 事件）通信；Tauri 迁移时保留。
 - 新增代码时，先判断属于壳还是插件，落入对应目录；**禁止在壳层写插件业务、在插件层写窗口/托盘/系统调用**。
 
@@ -194,13 +194,13 @@ git checkout dev-v2 && git merge main --ff-only && git push origin dev-v2
 
 ### 5.5 开发与运行隔离（dev-v2 Tauri-only，2026-08 更新）
 
-**原则**：WebView2 时代的 npm launcher / junction / 桌面快捷方式 / 运行 profile 装配链路已随壳层整体删除（launcher 家族、`install-local.mjs`）。dev-v2 起 **Tauri 为唯一壳模式**：日常使用与测试电脑运行 **NSIS 安装器**安装的 Tauri 壳；开发仓库不再以 junction 方式进入运行 profile。
+**原则**：WebView2 时代的 npm launcher / 桌面快捷方式 / `install-local.mjs` 装配链路已随壳层整体删除（launcher 家族）。dev-v2 起 **Tauri 为唯一壳模式**：日常使用与测试电脑运行 **NSIS 安装器**安装的 Tauri 壳；开发仓库以**隔离 DSH_HOME + sidecar 装配**（`DSH_HUB_PACKAGE_ROOT=仓库根`）进入测试 profile——dev 仍会以 junction 方式挂载仓库（幂等自愈机制，非 WebView2 时代遗留）。
 
-- **开发**：`npm run tauri:dev`（=`cargo tauri dev`）——Rust 壳 + Node sidecar（`bin/dsh-web-sidecar.mjs`，内部调用 `scripts/assemble-profile.mjs` 做 profile 装配）本地联动。
+- **开发**：`npm run tauri:dev`（=`cargo tauri dev`）——Rust 壳 + Node sidecar 本地联动（`src-tauri/src/managers/node.rs` 调 `scripts/assemble-profile.mjs` 装配 profile 并 spawn `dsh web --port 0`；`bin/dsh-web-sidecar.mjs` 为独立装配/入口解析辅助，M5 externalBin 预留）。
 - **测试隔离**：dev 测试用**隔离 DSH_HOME**（`DSH_HOME=<临时目录>`），不污染正式运行数据；dev 实例可与已运行的 3080 端口 dsh web **并存**。
 - **运行 / 发布**：`npm run tauri:build`（=`cargo tauri build`）产出 **NSIS 安装器（M5）**；测试电脑安装后首启冒烟，运行真实 `$DSH_HOME`。
 - **多实例门禁**：已由 **Rust 壳 `src-tauri/src/lib.rs`** 承担（single-instance + netstat/CIM 检测，默认拒绝共存），不再依赖 npm launcher 的 PID 锁（`lock.mjs` 已删）。
-- **状态核查**（2026-08）：launcher / junction / 快捷方式等 WebView2 时代产物已从仓库删除；运行 profile 装配由 sidecar 承担。
+- **状态核查**（2026-08）：launcher 家族 / 桌面快捷方式等 WebView2 时代产物已从仓库删除；运行 profile 装配由 Rust 壳（node.rs → `scripts/assemble-profile.mjs`）承担，dev 时以 `DSH_HUB_PACKAGE_ROOT=仓库根` 建 scoped junction（幂等自愈，见 [docs/关键踩坑记录.md#33](docs/关键踩坑记录.md) / #34）。
 
 ### 5.6 自编译安装（install-local 已删除，dev-v2 Tauri-only）
 
@@ -223,10 +223,10 @@ git checkout dev-v2 && git merge main --ff-only && git push origin dev-v2
 | `src/core/` | [src/core/AGENTS.md](src/core/AGENTS.md) | Core 层：命令注册表、生命周期、无业务 |
 | `src/managers/` | [src/managers/AGENTS.md](src/managers/AGENTS.md) | 壳 Manager 红线、壳/插件隔离、命令上行通道 |
 | `src/server/` | [src/server/AGENTS.md](src/server/AGENTS.md) | Server 路由规范、配置三处一致、请求体校验 |
-| `src/services/` | [src/services/AGENTS.md](src/services/AGENTS.md) | Services 层（theme-sync）规范 |
+| `src/services/` | [src/services/AGENTS.md](src/services/AGENTS.md) | Services 层（config-store / pins-store）规范 |
 | `src/helpers/` | [src/helpers/AGENTS.md](src/helpers/AGENTS.md) | Helper 纯函数规范、零依赖、Windows 专属标记 |
 | `src/client/` | [src/client/AGENTS.md](src/client/AGENTS.md) | UI 风格强制、client 注册规范、body portal 约束 |
 | `src-tauri/src/` | [src-tauri/src/AGENTS.md](src-tauri/src/AGENTS.md) | Rust 壳红线：双向管道协议、ACL 三处一致、退出语义、E2E |
-| `bin/` | [bin/AGENTS.md](bin/AGENTS.md) | 启动器流程、进程管理、快捷方式/VBS 约束 |
+| `bin/` | [bin/AGENTS.md](bin/AGENTS.md) | sidecar 辅助（装配/入口解析）、M5 externalBin 预留 |
 
 > **规则**：改动任何目录先读根 `AGENTS.md`；`src/` 各子目录（core/managers/server/services/helpers/controllers/models/utils）先读 `src/AGENTS.md` + 对应子目录 AGENTS.md；`src/client/` 读 `src/client/AGENTS.md`；`src-tauri/src/` 读 `src-tauri/src/AGENTS.md`；`bin/` 读 `bin/AGENTS.md`；全部改动先读本文件。
