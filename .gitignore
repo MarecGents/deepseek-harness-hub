@@ -145,3 +145,6 @@ vite.config.ts.timestamp-*
 # Tauri（M1+）
 src-tauri/target/
 src-tauri/gen/
+
+# dsh-hub build output（打包产物，不入库）
+build/
