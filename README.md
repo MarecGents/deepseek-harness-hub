@@ -32,9 +32,15 @@
   - 打开工作区（自动激活并前置 Explorer）
   - 新建任务（走官方 `ctx.workspaces.startSession` 流程，UI 即时刷新；SPA 未就绪时命令自动重试——`__mgShellReady` 300ms×20 轮询不丢命令）
   - 退出（写 `quit.marker` 后干净退出，避免误判崩溃重启）
+<<<<<<< HEAD
 - **窗口状态记忆与尺寸管理**：最大化状态、分辨率、主题等持久化到 `$DSH_HOME/dsh-hub/config.json`；套用保存尺寸前若处于最大化先退最大化、退出时恢复保存尺寸；无保存尺寸时默认**光标所在屏 3/4**（multi-monitor aware，无上限，下限 480×360）。
 - **主题跟随（system）**：MutationObserver 事件驱动，`apply_page_theme` 命令让标题栏深浅色、webview 背景与**窗口图标（icon-dark / icon-light 翻转）**实时跟随 dsh 页面主题（Tauri 壳 Rust Dwm 实现）。
 - **设置卡片**：dsh 设置 → 插件页提供桌面壳配置（窗口尺寸 / 主题 / 托盘行为 / 会话完成通知 / 提示音 / 多实例开关 / 界面皮肤 / 背景图）。
+=======
+- **窗口状态记忆**：最大化状态、分辨率、主题等持久化到 `$DSH_HOME/dsh-hub/config.json`。
+- **主题同步**：MutationObserver 事件驱动，标题栏深浅色实时跟随 dsh 页面主题（Tauri 壳 Rust Dwm 实现）。
+- **设置卡片**：dsh 设置 → 插件页提供桌面壳配置（窗口尺寸 / 主题 / 托盘行为 / 会话完成通知 / 提示音 / 多实例开关）；皮肤 / 背景图 / 壁纸由卡片内嵌入的 dsh-web-ui「外观中心」面板统一管理。
+>>>>>>> ad16eff (feat(client): embed unified appearance center in settings card)
 - **多实例保护**：启动时检测已有 dsh 实例（任意端口），默认拒绝共存以防会话数据损坏；确需共存可在设置中显式开启（附危险警告）。
 - **右侧栏**：概览（Token 统计）、文件树、Git 变更三页；收起后保留窄栏快捷按钮。
 - **置顶会话**：会话行 hover 置顶（同名会话安全跳过、不误标）；置顶区常驻列表顶部（可独立滚动）；持久化于 `$DSH_HOME/dsh-hub/pins.json`（localStorage 兜底）。注：多标签/多实例下 pins 为整体替换语义（最后写者胜）；同标签内 PUT 依赖 fetch 顺序保序。

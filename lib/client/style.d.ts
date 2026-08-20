@@ -43,6 +43,7 @@ export declare const CARD_CSS_CLASSES: {
     readonly failed: "mg-card-failed";
     readonly saved: "mg-card-saved";
     readonly loading: "mg-card-loading";
+    readonly appearanceHost: "mg-card-appearance-host";
 };
 /** Inject the card stylesheet once (idempotent; no-op when already present). */
 export declare function injectCardStyle(): void;

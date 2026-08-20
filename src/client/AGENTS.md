@@ -7,9 +7,9 @@
 | 文件 | 职责 |
 |---|---|
 | `index.ts` | client 入口：`inject` 声明（slots/workspaces/sessions）、slot 声明合并（`settings.plugin.item`）、设置卡片 + 右侧栏装配、托盘桥 `__mgShellReady` |
-| `settings-card.tsx` | 设置卡片（DSH HUB 设置）：窗口尺寸/主题/托盘行为/通知/提示音/多实例开关/皮肤选择（Setting-Cell 行式），走 `/api/dsh-hub/config` |
-| `skins.ts` | 皮肤注册表：`DshSkin` 定义 + 5 套皮肤（午夜蓝/旧纸张/终端绿/ZCode/极光紫）+ `findSkin`/`applySkin` |
-| `backgrounds.ts` | 背景图注册表：`DshBackground` 定义 + 内置图片（远航）+ `applyBackground`（frame 层双层背景注入）/ `fetchStoredBackground` |
+| `settings-card.tsx` | 设置卡片（DSH HUB 设置）：窗口尺寸/主题/托盘行为/通知/提示音/多实例开关，走 `/api/dsh-hub/config`；皮肤/背景/壁纸由嵌入的 dsh-web-ui 外观中心面板接管（`window.__dshAppearanceCenter__`） |
+| `skins.ts` | 皮肤注册表（已迁至 dsh-web-ui 外观中心，本文件保留为历史实现，不再被引用） |
+| `backgrounds.ts` | 背景图注册表（已迁至 dsh-web-ui 外观中心，本文件保留为历史实现，不再被引用） |
 | `right-sidebar.tsx` | 右侧栏：概览（Token 统计）/ 文件树 / Git 三页，body portal 挂载 |
 | `right-sidebar-style.ts` | 右侧栏样式（CSS 字符串注入，`mg-rs-*` 前缀） |
 | `pin-conversations.ts` | 置顶会话：内容匹配行定位（零 CSS-hash）+ 置顶区/行按钮注入 + pins 状态机（dirtyDelta / ready 门控剪枝 / disposer 移除 DOM） |
