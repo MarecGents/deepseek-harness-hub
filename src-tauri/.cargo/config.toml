@@ -1,9 +1,9 @@
-# cargo 构建配置（windows-gnu 专用）
+# cargo 构建配置（windows-gnu 备选工具链专用）
 #
-# 本机无 Visual Studio / MSVC linker，使用 MinGW-w64 gcc + rustup GNU 工具链。
-# GNU 工具链链接 cdylib（dsh_hub_lib.dll）时，mingw ld 会把 windows crate
-# 导入库的全部符号自动导出，导出序号超过 PE/COFF 上限 → "export ordinal too
-# large"（tauri-apps/tauri#10843）。--exclude-all-symbols 抑制自动导出：
-# 桌面 exe 静态链接 rlib，cdylib 无需导出任何符号。
+# 默认工具链为 MSVC（见 rust-toolchain.toml），webview2-com-sys 静态链接、
+# 无需额外配置。仅当改用 GNU 工具链（rustup target 含 gnu + MinGW-w64 gcc）时，
+# 才需要下面的 rustflags：GNU 链接 cdylib 时 mingw ld 自动导出全部符号，超过
+# PE/COFF 上限 → "export ordinal too large"（tauri-apps/tauri#10843）。
+# --exclude-all-symbols 抑制自动导出（桌面 exe 静态链接 rlib，cdylib 无需导出）。
 [target.x86_64-pc-windows-gnu]
 rustflags = ["-C", "link-arg=-Wl,--exclude-all-symbols"]

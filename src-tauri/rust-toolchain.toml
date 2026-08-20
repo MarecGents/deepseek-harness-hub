@@ -1,0 +1,5 @@
+# Rust 工具链固定（可复现构建）
+# 任何人 clone 后在此目录跑 cargo 命令，rustup 会自动使用 stable MSVC 并自动安装 target。
+[toolchain]
+channel = "stable"
+targets = ["x86_64-pc-windows-msvc"]

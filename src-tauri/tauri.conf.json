@@ -23,8 +23,7 @@
     "externalBin": [],
     "resources": [
       "../scripts/dsh-deps-install.ps1",
-      "../scripts/assemble-profile.mjs",
-      "WebView2Loader.dll"
+      "../scripts/assemble-profile.mjs"
     ],
     "icon": [
       "icons/32x32.png",

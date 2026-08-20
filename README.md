@@ -100,9 +100,9 @@ npm run m1:check         # M1 字段核对断言（tauri.conf/lib.rs，10 项）
 npm run m1:ipc-smoke     # M1 本地窗口 IPC 冒烟断言（需 tauri dev 已运行）
 ```
 
-- 前置：Rust 工具链**二选一** + `@tauri-apps/cli`（已入 devDependencies）：
-  - **VS Build Tools（MSVC，推荐）**：`rustup toolchain install stable-x86_64-pc-windows-msvc`；
-  - **无 VS/MSVC 时**：`rustup toolchain install stable-x86_64-pc-windows-gnu` + MinGW-w64 gcc（本机为 `D:\Tools\Environment\MingGW\mingw64\bin`）。GNU 工具链链接 cdylib 需 `src-tauri/.cargo/config.toml` 的 `--exclude-all-symbols`（已入库：修复 mingw ld `export ordinal too large`，tauri-apps/tauri#10843）。
+- 前置：Rust 工具链（`rust-toolchain.toml` 已固定 stable MSVC，clone 后 rustup 自动安装 target，**无需手动指定工具链**）+ `@tauri-apps/cli`（已入 devDependencies）：
+  - **MSVC（默认，可复现构建）**：装 **Visual Studio Build Tools**（含「使用 C++ 的桌面开发」工作负载，即 MSVC 工具集 + Windows SDK），cargo 经 vswhere 自动定位 `link.exe`，无需任何环境变量。构建：`npm run tauri:build`。
+  - **GNU（备选）**：`rustup toolchain install stable-x86_64-pc-windows-gnu` + MinGW-w64 gcc，并需 `src-tauri/.cargo/config.toml` 的 `--exclude-all-symbols`（修复 mingw ld `export ordinal too large`，tauri-apps/tauri#10843）。注意 GNU 下 `WebView2Loader.dll` 为动态链接（见踩坑 #49），非标准路径不推荐。
 - dev 模式临时页由 `scripts/dev-shell-page.mjs` 伺服（`http://127.0.0.1:17891`，即 `tauri.conf.json` 的 devUrl/beforeDevCommand）；**devUrl 未改指 dsh web 端口**——实际窗口在 sidecar READY 验证后以 `WebviewUrl::External` 导航到 dsh web 端口（`--port 0` 随机）
 - 插件层（`src/client/*`、config/workspace API）全程零改动，壳层重写为 Rust
 
