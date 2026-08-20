@@ -172,12 +172,16 @@ const patchNames = patchInsertNames()
 check('P1 package.json name == tsdown PLUGIN_ID', tsdownId === SCOPED, `package=${SCOPED} tsdown=${tsdownId ?? '(missing)'}`)
 check('P1 cordis.patch.yml insert.name == package name', patchNames.includes(SCOPED), `patch names=[${patchNames.join(', ')}]`)
 
-// P1 profile (informational when the local profile exists)
+// P1 profile：本机真实 profile 的状态不作为门禁——dev 用隔离 DSH_HOME，真实 profile
+// 从未被壳装配是预期状态；「干净安装→装配」由 P4 在隔离 home 验证（junction 指向 npm
+// 全局包，非开发仓库）。此处仅 informational，不 FAIL。
 const bundles = profileBundles()
 if (bundles === null) {
-  console.log('INFO  P1 local web profile not initialised (fresh machine); launcher assembles it')
+  console.log('INFO  P1 local web profile not initialised (fresh machine); sidecar assembles it')
+} else if (!bundles.includes(SCOPED)) {
+  console.log(`INFO  P1 local real profile lacks ${SCOPED} (expected: dev uses isolated DSH_HOME; P4 verifies assembly)`)
 } else {
-  check('P1 web-profile bundles contain scoped name', bundles.includes(SCOPED), `bundles=[${bundles.join(', ')}]`)
+  console.log(`INFO  P1 local real profile already assembled (bundles=[${bundles.join(', ')}])`)
 }
 
 // P2 scoped-only loader entry
