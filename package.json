@@ -1,7 +1,7 @@
 {
   "name": "@marecgents/dsh-hub",
   "version": "0.0.2-rc.2",
-  "description": "DeepSeek Harness desktop hub — native desktop shell (WebView2) for dsh's Web UI with tray, theme sync, window-state memory and a right sidebar. Injects the shell + plugin page only when launched by this project (desktop shortcut or `dsh-hub` command).",
+  "description": "DeepSeek Harness desktop hub — Tauri 2.x shell + dsh web plugin layer. This npm package ships the plugin half (client UI + HTTP routes + cordis.patch.yml); the desktop shell ships as the NSIS installer (see build/).",
   "license": "MIT",
   "type": "module",
   "main": "lib/index.js",

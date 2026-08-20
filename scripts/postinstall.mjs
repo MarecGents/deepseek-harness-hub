@@ -16,7 +16,7 @@
  */
 
 import { spawnSync } from 'node:child_process'
-import { existsSync } from 'node:fs'
+import { existsSync, rmSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -178,7 +178,37 @@ async function installPnpm() {
   return result.status === 0
 }
 
+/**
+ * 清理 WebView2 时代旧版残留（rc.14 及更早）：旧 `dsh-hub` bin shim（指向
+ * launcher.mjs → launcher.vbs）与桌面「DeepSeek Harness.lnk」（指向 wscript）。
+ * npm 升级（旧版 bin 字段有 dsh-hub、新版清空）不会删除旧 shim，导致新机器
+ * 升级后仍能触发「launcher.vbs 找不到」。此处幂等清理。
+ */
+function cleanupLegacy() {
+  if (process.platform !== 'win32') return
+  try {
+    // 1. 旧 dsh-hub bin shim（npm prefix -g 根目录下）。
+    const npmPrefix = spawnSync(process.env.ComSpec, ['/d', '/s', '/c', 'npm prefix -g'], { encoding: 'utf8', windowsHide: true })
+    if (npmPrefix.status === 0) {
+      const prefix = nativePath(npmPrefix.stdout.trim())
+      for (const name of ['dsh-hub.cmd', 'dsh-hub.ps1', 'dsh-hub.exe', 'dsh-hub']) {
+        const p = join(prefix, name)
+        if (existsSync(p)) {
+          rmSync(p, { force: true })
+          console.log(`[dsh-hub] removed legacy bin shim: ${p}`)
+        }
+      }
+    }
+    // 2. 旧桌面快捷方式（target 为 wscript = 旧 launcher.vbs 包装）。
+    const script = "$ws=New-Object -ComObject WScript.Shell; $d=[Environment]::GetFolderPath('Desktop'); $p=Join-Path $d 'DeepSeek Harness.lnk'; if(Test-Path $p){$l=$ws.CreateShortcut($p); if($l.TargetPath -match 'wscript'){ Remove-Item $p -Force }}"
+    spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], { encoding: 'utf8', timeout: 30000, windowsHide: true })
+  } catch {
+    // Best-effort cleanup; must never block install.
+  }
+}
+
 async function main() {
+  cleanupLegacy()
   try {
     const found = findDsh()
     if (found !== null && dshWorks(found)) {
