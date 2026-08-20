@@ -1,10 +1,13 @@
 #!/usr/bin/env node
 /**
  * postinstall.mjs — runs after `npm install dsh-hub`:
- *   1. Checks that the `dsh` CLI is available; installs `@deepseek-ai/dsh`
- *      globally when missing (the Tauri shell's sidecar spawns it).
+ *   1. Checks that the `dsh` CLI is available AND answers `--version`
+ *      (reinstalls @deepseek-ai/dsh globally when missing or broken).
  *   2. Checks the `pnpm` CLI (used by `dsh plugin` for manual plugin
  *      management).
+ *   Global installs go through the fastest reachable npm registry (official +
+ *   mainland-China mirrors, latency-probed), falling back to the official
+ *   registry when every probe fails.
  * Idempotent: safe to re-run, and non-Windows platforms only get the checks.
  *
  * The WebView2-era desktop shortcut / VBS launcher wrapper is intentionally
@@ -19,7 +22,44 @@ import { fileURLToPath } from 'node:url'
 
 const PACKAGE_ROOT = dirname(dirname(fileURLToPath(import.meta.url)))
 
-// ── 1. dsh prerequisite ──────────────────────────────────────────────────────
+// npm registries for the auto-install fallback: official + 3 mainland-China
+// mirrors. Some mirrors 404 on a bare root HEAD, so latency is probed against
+// a real package URL and the ROOT is passed to `npm --registry`.
+const REGISTRIES = [
+  'https://registry.npmjs.org/',
+  'https://registry.npmmirror.com',
+  'https://mirrors.huaweicloud.com/repository/npm/',
+  'https://mirrors.cloud.tencent.com/npm/',
+]
+const REGISTRY_PROBE_PATH = '@deepseek-ai%2Fdsh'
+
+// ── registry probing ─────────────────────────────────────────────────────
+
+/**
+ * HEAD-probe every candidate registry and return the fastest responsive one.
+ * @returns {Promise<string|null>} registry ROOT URL, or null when all fail.
+ */
+async function fastestRegistry() {
+  let best = null
+  let bestMs = Number.MAX_SAFE_INTEGER
+  for (const reg of REGISTRIES) {
+    const probe = `${reg.replace(/\/+$/, '')}/${REGISTRY_PROBE_PATH}`
+    try {
+      const start = Date.now()
+      const res = await fetch(probe, { method: 'HEAD', redirect: 'follow', signal: AbortSignal.timeout(8000) })
+      const ms = Date.now() - start
+      if (res.ok && ms < bestMs) {
+        best = reg
+        bestMs = ms
+      }
+    } catch {
+      // Unresponsive mirror: skip, keep probing the rest.
+    }
+  }
+  return best
+}
+
+// ── 1. dsh prerequisite ──────────────────────────────────────────────────
 
 /** Convert POSIX-style drive paths (`/d/foo`) to native (`D:\foo`) on win32. */
 function nativePath(p) {
@@ -59,7 +99,11 @@ function findDsh() {
   return null
 }
 
-/** True when `dsh` answers with a version string. */
+/**
+ * True when `dsh` answers with a version string.
+ * M5: version detection is the "works" gate — a shim that exists but cannot
+ * run (broken install / wrong node) triggers a reinstall.
+ */
 function dshWorks(cmd) {
   try {
     // npm shims are .cmd batch files; CreateProcess cannot run them directly,
@@ -73,28 +117,18 @@ function dshWorks(cmd) {
   }
 }
 
-function installDsh() {
-  console.log('[dsh-hub] dsh CLI not found; installing @deepseek-ai/dsh globally…')
-  const result = spawnSync(process.env.ComSpec, ['/d', '/s', '/c', 'npm install -g @deepseek-ai/dsh'], {
+/** Install @deepseek-ai/dsh via the fastest reachable registry. */
+async function installDsh() {
+  console.log('[dsh-hub] dsh CLI missing or broken; installing @deepseek-ai/dsh globally…')
+  const registry = (await fastestRegistry()) ?? REGISTRIES[0]
+  console.log(`[dsh-hub] npm registry: ${registry}`)
+  const result = spawnSync(process.env.ComSpec, ['/d', '/s', '/c', `npm install -g @deepseek-ai/dsh --registry "${registry}"`], {
     encoding: 'utf8', timeout: 180000, windowsHide: true, stdio: 'inherit',
   })
   return result.status === 0
 }
 
-try {
-  const found = findDsh()
-  if (found !== null && dshWorks(found)) {
-    console.log(`[dsh-hub] dsh prerequisite OK (${found})`)
-  } else if (installDsh()) {
-    console.log('[dsh-hub] dsh installed; start the shell with: npm run tauri:dev')
-  } else {
-    console.error('[dsh-hub] could not install dsh automatically. Run manually: npm install -g @deepseek-ai/dsh')
-  }
-} catch (error) {
-  console.error('[dsh-hub] dsh prerequisite check failed:', error)
-}
-
-// ── 2. pnpm prerequisite ─────────────────────────────────────────────────────
+// ── 2. pnpm prerequisite ─────────────────────────────────────────────────
 // `dsh plugin` forwards to pnpm, and the shell needs it for manual plugin
 // management. The bundle registration itself uses a junction and does NOT
 // depend on pnpm (see scripts/assemble-profile.mjs), so this is an
@@ -133,24 +167,44 @@ function findPnpm() {
   return null
 }
 
-function installPnpm() {
+/** Install pnpm via the fastest reachable registry. */
+async function installPnpm() {
   console.log('[dsh-hub] pnpm not found; installing pnpm globally…')
-  const result = spawnSync(process.env.ComSpec, ['/d', '/s', '/c', 'npm install -g pnpm'], {
+  const registry = (await fastestRegistry()) ?? REGISTRIES[0]
+  console.log(`[dsh-hub] npm registry: ${registry}`)
+  const result = spawnSync(process.env.ComSpec, ['/d', '/s', '/c', `npm install -g pnpm --registry "${registry}"`], {
     encoding: 'utf8', timeout: 180000, windowsHide: true, stdio: 'inherit',
   })
   return result.status === 0
 }
 
-try {
-  if (findPnpm() !== null) {
-    console.log('[dsh-hub] pnpm prerequisite OK')
-  } else if (installPnpm()) {
-    console.log('[dsh-hub] pnpm installed')
-  } else {
-    console.error('[dsh-hub] could not install pnpm automatically. Run manually: npm install -g pnpm')
+async function main() {
+  try {
+    const found = findDsh()
+    if (found !== null && dshWorks(found)) {
+      console.log(`[dsh-hub] dsh prerequisite OK (${found})`)
+    } else if (await installDsh()) {
+      console.log('[dsh-hub] dsh installed; start the shell with: npm run tauri:dev')
+    } else {
+      console.error('[dsh-hub] could not install dsh automatically. Run manually: npm install -g @deepseek-ai/dsh')
+    }
+  } catch (error) {
+    console.error('[dsh-hub] dsh prerequisite check failed:', error)
   }
-} catch (error) {
-  console.error('[dsh-hub] pnpm prerequisite check failed:', error)
+
+  try {
+    if (findPnpm() !== null) {
+      console.log('[dsh-hub] pnpm prerequisite OK')
+    } else if (await installPnpm()) {
+      console.log('[dsh-hub] pnpm installed')
+    } else {
+      console.error('[dsh-hub] could not install pnpm automatically. Run manually: npm install -g pnpm')
+    }
+  } catch (error) {
+    console.error('[dsh-hub] pnpm prerequisite check failed:', error)
+  }
 }
+
+await main()
 
 void PACKAGE_ROOT

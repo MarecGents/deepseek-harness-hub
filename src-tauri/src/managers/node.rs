@@ -190,8 +190,13 @@ pub fn send_tray_command(app: &tauri::AppHandle, command: &str) {
     }
 }
 
-/// 找 dsh 命令（npm 全局）。
+/// 找 dsh 命令（M5 私有运行时优先，回退 PATH / npm 全局）。
 fn find_dsh() -> Option<PathBuf> {
+    // M5：私有 dsh.cmd shim（<repo_root>\dsh-hub-win\dsh.cmd）存在即用。
+    if let Some(private) = find_private_dsh() {
+        info!("node: using private dsh shim at {}", private.display());
+        return Some(private);
+    }
     // 按 launcher.mjs L61-91 逻辑：PATH + npm prefix -g。
     let path_var = std::env::var("PATH").unwrap_or_default();
     for dir in path_var.split(';') {
@@ -216,8 +221,14 @@ fn find_dsh() -> Option<PathBuf> {
     None
 }
 
-/// 在 PATH 中查找 node 可执行文件（Windows: node.exe）。
+/// 查找 node 可执行文件（Windows: node.exe）。
+/// M5：先探测私有 node（<repo_root>\dsh-hub-win\node\node.exe），再走 PATH。
 fn find_node_in_path() -> Option<PathBuf> {
+    // M5：私有 node 优先（安装器引导的私有运行时）。
+    if let Some(private) = find_private_node() {
+        info!("node: using private node at {}", private.display());
+        return Some(private);
+    }
     let path_var = std::env::var("PATH").unwrap_or_default();
     let name = if cfg!(windows) { "node.exe" } else { "node" };
     for dir in path_var.split(';') {
@@ -303,7 +314,20 @@ fn resolve_dsh_entry(dsh_cmd: &Path) -> Result<(PathBuf, PathBuf), String> {
 /// 仓库根目录（scripts/assemble-profile.mjs 所在处）：
 /// 开发态 = CARGO_MANIFEST_DIR（src-tauri/）的父目录；
 /// 已打包态 = exe 相邻目录（M5 externalBin 内嵌资产路径预留）。
+///
+/// M5：打包态优先 —— 安装器把 scripts/* 资源复制到 exe 相邻目录（$INSTDIR\scripts\），
+/// 若 exe 旁存在 scripts/assemble-profile.mjs 就直接用 exe 目录（$INSTDIR），
+/// 保证私有运行时解析落在 <$INSTDIR>\dsh-hub-win 而非开发机残留路径。
 fn repo_root() -> PathBuf {
+    // 打包态：exe 相邻目录（$INSTDIR）。
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(exe_dir) = exe.parent() {
+            if exe_dir.join("scripts").join("assemble-profile.mjs").exists() {
+                return exe_dir.to_path_buf();
+            }
+        }
+    }
+    // 开发态：CARGO_MANIFEST_DIR 的父目录（src-tauri/ 的上级 = 仓库根）。
     let dev_root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap_or(Path::new("."));
     if dev_root.join("scripts").join("assemble-profile.mjs").exists() {
         return dev_root.to_path_buf();
@@ -312,6 +336,37 @@ fn repo_root() -> PathBuf {
         .ok()
         .and_then(|exe| exe.parent().map(Path::to_path_buf))
         .unwrap_or_else(|| dev_root.to_path_buf())
+}
+
+/// M5 私有运行时根：<repo_root>\dsh-hub-win（NSIS 安装期引导脚本写入）。
+fn private_runtime_root() -> PathBuf {
+    repo_root().join("dsh-hub-win")
+}
+
+/// 私有 node.exe（存在才返回）。M5：安装器引导的私有运行时优先于 PATH。
+fn find_private_node() -> Option<PathBuf> {
+    let node = private_runtime_root().join("node").join("node.exe");
+    node.is_file().then_some(node)
+}
+
+/// 私有 dsh.cmd shim（存在才返回）。M5：优先于 PATH / npm global。
+fn find_private_dsh() -> Option<PathBuf> {
+    let dsh = private_runtime_root().join("dsh.cmd");
+    dsh.is_file().then_some(dsh)
+}
+
+/// 私有 node 目录注入子进程 PATH（M5）：目标机器可能没有系统级 Node，
+/// dsh 自身派生的 node 子进程（MCP 等）依赖 PATH 里的 node —— 只注入
+/// 子进程环境，不改系统 PATH，不污染全局。
+fn prepend_private_node_path(cmd: &mut Command) {
+    let Some(node) = find_private_node() else { return };
+    let Some(node_dir) = node.parent() else { return };
+    let mut path = node_dir.to_string_lossy().to_string();
+    if let Ok(existing) = std::env::var("PATH") {
+        path.push(';');
+        path.push_str(&existing);
+    }
+    cmd.env("PATH", path);
 }
 
 /// 装配 web profile（调 scripts/assemble-profile.mjs，幂等）。
@@ -330,10 +385,19 @@ pub fn assemble_profile() -> Result<(), String> {
     }
     info!("node: assembling profile via {}", assemble_script.display());
     let script = format!("node {}", assemble_script.display());
+    // 打包态：junction 指向私有插件包目录（安装器引导脚本
+    // `npm i -g @marecgents/dsh-hub --prefix <repo_root>\dsh-hub-win` 的落点）；
+    // dev 态：指向仓库根（插件内容就在仓库）。私有包目录不存在则回退 repo_root。
+    let private_pkg = repo_root
+        .join("dsh-hub-win")
+        .join("node_modules")
+        .join("@marecgents")
+        .join("dsh-hub");
+    let package_root = if private_pkg.is_dir() { private_pkg } else { repo_root.clone() };
     let mut asm = Command::new("cmd");
     asm.args(["/d", "/s", "/c", script.as_str()])
         .env("DSH_HOME", crate::state::dsh_home())
-        .env("DSH_HUB_PACKAGE_ROOT", repo_root);
+        .env("DSH_HUB_PACKAGE_ROOT", package_root);
     // Q3：子进程 CREATE_NO_WINDOW，防控制台闪现。
     #[cfg(target_os = "windows")]
     {
@@ -418,6 +482,8 @@ fn spawn_inner(state: Arc<NodeState>, app: tauri::AppHandle) -> Result<(), Strin
         .env("DSH_HOME", crate::state::dsh_home())
         .env("DSH_HUB_LAUNCHED", "1")
         .env("DSH_HUB_SHELL", "tauri");
+    // M5：私有 node 目录注入子进程 PATH（无系统 Node 时 dsh 子进程仍可用）。
+    prepend_private_node_path(&mut cmd);
     // Q3：dsh.cmd 经 cmd.exe 解析会闪控制台，加 CREATE_NO_WINDOW。
     #[cfg(target_os = "windows")]
     {
@@ -493,6 +559,8 @@ fn spawn_via_cmd_shim(state: Arc<NodeState>, app: tauri::AppHandle, dsh_cmd: &Pa
         .env("DSH_HOME", crate::state::dsh_home())
         .env("DSH_HUB_LAUNCHED", "1")
         .env("DSH_HUB_SHELL", "tauri");
+    // M5：私有 node 目录注入子进程 PATH（与 spawn_inner 一致）。
+    prepend_private_node_path(&mut cmd);
     #[cfg(target_os = "windows")]
     {
         use std::os::windows::process::CommandExt;
