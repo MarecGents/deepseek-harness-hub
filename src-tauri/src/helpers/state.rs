@@ -1,9 +1,11 @@
-// state.rs — M2 窗口状态持久化（T2.2）
+// state.rs — M2 窗口状态持久化（T2.2）+ 壳配置读取（S6）
 //
 // 模块类别：Helper（壳）
-// 职责：$DSH_HOME 解析 + 窗口状态 JSON 读写（只存 maximized，与 rc.14 一致）。
+// 职责：$DSH_HOME 解析 + 窗口状态 JSON 读写（只存 maximized，与 rc.14 一致）
+//       + $DSH_HOME/dsh-hub/config.json 字段读取（read_shell_config_str）。
 // 迁移映射：src/services/state-store.ts。
-// 外部接口：dsh_home() / load_window_state() / save_window_state()。
+// 外部接口：dsh_home() / load_window_state() / save_window_state() /
+//           read_shell_config_str(key, default)。
 
 use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
@@ -35,6 +37,20 @@ pub struct WindowState {
 /// 状态文件路径：$DSH_HOME/dsh-hub-window-state.json（与 rc.14 一致）。
 fn state_path() -> PathBuf {
     dsh_home().join("dsh-hub-window-state.json")
+}
+
+/// 读 $DSH_HOME/dsh-hub/config.json 的字符串字段（S6：desktopIcon）。
+/// 文件缺失 / JSON 非法 / 字段缺失或非字符串 → default。与 lib.rs 的
+/// read_shell_config_bool 同构（后者保留为 bool 专用；本函数供 commands /
+/// lib 在壳侧读取配置，避免重复手写 JSON 解析）。
+pub fn read_shell_config_str(key: &str, default: &str) -> String {
+    let config_path = dsh_home().join("dsh-hub").join("config.json");
+    match std::fs::read_to_string(&config_path) {
+        Ok(content) => serde_json::from_str::<serde_json::Value>(&content)
+            .map(|value| value.get(key).and_then(|v| v.as_str()).unwrap_or(default).to_string())
+            .unwrap_or_else(|_| default.to_string()),
+        Err(_) => default.to_string(),
+    }
 }
 
 /// 校验下界（防止 0 尺寸退化——SOP T2.2 / 关键踩坑记录 #7）。

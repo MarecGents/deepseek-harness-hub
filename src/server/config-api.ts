@@ -225,6 +225,9 @@ export function makeConfigRoutes(onChange?: (value: ShellConfig, changed?: { siz
               // Background id is likewise an opaque short string (same cap as
               // skin); unknown ids are ignored by the client and treated as 'none'.
               if (typeof record.background === 'string' && record.background.length > 0 && record.background.length <= 64) patch.background = record.background
+              // Desktop-icon id is an opaque short string (same cap as skin);
+              // unknown ids fall back to the white whale on the Rust side.
+              if (typeof record.desktopIcon === 'string' && record.desktopIcon.length > 0 && record.desktopIcon.length <= 64) patch.desktopIcon = record.desktopIcon
 
               const value = writeShellConfig(patch)
               onChange?.(value, { size: sizeChanged })

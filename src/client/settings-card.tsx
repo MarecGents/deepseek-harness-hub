@@ -16,6 +16,7 @@ import { IconChevronDownOutline14, Menu } from '@deepseek-ai/dsh-client-ui-primi
 import { CARD_CSS_CLASSES as c } from './style.ts'
 import { SKINS, DEFAULT_SKIN_ID, applySkin, markSkinUserPicked } from './skins.ts'
 import { BACKGROUNDS, DEFAULT_BACKGROUND_ID, applyBackground, markBackgroundUserPicked } from './backgrounds.ts'
+import { DESKTOP_ICONS, DEFAULT_DESKTOP_ICON_ID } from './desktop-icons.ts'
 
 /** Owner share of a plugin card (the section supplies nothing). */
 export interface DesktopSettingsCardProps {
@@ -36,6 +37,7 @@ interface ShellConfig {
   allowMultipleInstances: boolean
   skin: string
   background: string
+  desktopIcon: string
 }
 
 /** Localized copy kept inline (the card is small; no locale plugin needed). */
@@ -76,6 +78,9 @@ const COPY = {
   backgroundDefaultName: '无',
   backgroundDefaultDesc: '不显示背景图',
   backgroundApplyFailed: '背景切换失败，请重试',
+  desktopIconSection: '桌面图标',
+  desktopIconHint: '点击即保存并应用到窗口标题栏与任务栏图标；「深鲸原版」为官方鲸鱼（跟随明暗主题）',
+  desktopIconApplyFailed: '图标切换失败，请重试',
   discard: '放弃',
   save: '保存',
   saving: '保存中…',
@@ -110,6 +115,25 @@ async function saveConfig(patch: Partial<ShellConfig>): Promise<ShellConfig | nu
   }
 }
 
+/**
+ * Fire the Tauri `set_desktop_icon` invoke down-link from the page
+ * (D-2 channel: page → Rust via `__TAURI_INTERNALS__`, gated by the
+ * `allow-set-desktop-icon` ACL entry; the host config onChange re-applies
+ * through the DSH_CMD up-link as a fallback). Best-effort: when the bridge is
+ * absent (plain browser / dev-server detached from the shell) the icon still
+ * applies on next startup from the persisted config.
+ */
+function invokeDesktopIcon(iconId: string): void {
+  try {
+    const internals = (window as unknown as {
+      __TAURI_INTERNALS__?: { invoke?: (c: string, a?: Record<string, unknown>) => Promise<unknown> }
+    }).__TAURI_INTERNALS__
+    internals?.invoke?.('set_desktop_icon', { iconId }).catch?.(() => {})
+  } catch {
+    // Best-effort; a failed page invoke must never break the settings save.
+  }
+}
+
 /** Render the desktop-shell settings card. */
 export function DesktopSettingsCard(_props: DesktopSettingsCardProps): ReactNode {
   const [open, setOpen] = useState(false)
@@ -125,6 +149,8 @@ export function DesktopSettingsCard(_props: DesktopSettingsCardProps): ReactNode
   const [backgroundId, setBackgroundId] = useState<string>(DEFAULT_BACKGROUND_ID)
   const [backgroundFailed, setBackgroundFailed] = useState(false)
   const [backgroundMenuOpen, setBackgroundMenuOpen] = useState(false)
+  const [desktopIconId, setDesktopIconId] = useState<string>(DEFAULT_DESKTOP_ICON_ID)
+  const [desktopIconFailed, setDesktopIconFailed] = useState(false)
   // B7: monotonic request sequence — only the LATEST config write's response
   // may commit state; a slow older response must not clobber a newer one
   // (overlapping onSave + skin pick, or two quick skin picks).
@@ -146,6 +172,7 @@ export function DesktopSettingsCard(_props: DesktopSettingsCardProps): ReactNode
       setDraft(initial)
       setSkinId(initial === null ? DEFAULT_SKIN_ID : initial.skin)
       setBackgroundId(initial === null ? DEFAULT_BACKGROUND_ID : initial.background)
+      setDesktopIconId(initial === null || typeof initial.desktopIcon !== 'string' ? DEFAULT_DESKTOP_ICON_ID : initial.desktopIcon)
       setLoading(false)
     })
     return () => { alive = false }
@@ -271,6 +298,36 @@ export function DesktopSettingsCard(_props: DesktopSettingsCardProps): ReactNode
         applyBackground(previous)
         setBackgroundId(previous)
         setBackgroundFailed(true)
+        setSaving(false)
+      }
+    })
+  }
+
+  /** Apply a desktop icon immediately: invoke the shell + persist the id.
+   * The window/taskbar glyph is re-applied live; unknown ids fall back to the
+   * white whale on the Rust side. */
+  const onPickDesktopIcon = (id: string): void => {
+    if (id === desktopIconId) return
+    // Last-good value for a failed-persist rollback (not 'default').
+    const previous = desktopIconId
+    setDesktopIconFailed(false)
+    setDesktopIconId(id)
+    // Live apply through the page → Rust invoke down-link (D-2); the host
+    // config onChange (DSH_CMD) and next startup re-apply the same id.
+    invokeDesktopIcon(id)
+    const seq = ++saveSeq.current
+    setSaving(true)
+    void saveConfig({ desktopIcon: id }).then((value) => {
+      // Superseded by a newer pick/save — never roll back a newer pick (B7).
+      if (seq !== saveSeq.current) return
+      if (value !== null) {
+        setConfig((prev) => prev === null ? prev : { ...prev, desktopIcon: id })
+        setDraft((prev) => prev === null ? prev : { ...prev, desktopIcon: id })
+        setSaving(false)
+      } else {
+        // Persist failed — keep the UI honest: restore the previous selection.
+        setDesktopIconId(previous)
+        setDesktopIconFailed(true)
         setSaving(false)
       }
     })
@@ -487,6 +544,40 @@ export function DesktopSettingsCard(_props: DesktopSettingsCardProps): ReactNode
                         {' — '}{COPY.backgroundHint}
                       </div>
                       {backgroundFailed ? <p className={c.failed} role="status">{COPY.backgroundApplyFailed}</p> : null}
+                    </div>
+                  )}
+                  {/* Desktop icon picker — visual grid of preview thumbnails
+                      (S6). One click applies + persists; the native window and
+                      taskbar glyph switch immediately via the Tauri invoke
+                      down-link, unknown ids fall back to the white whale. */}
+                  {draft !== null && (
+                    <div className={c.section}>
+                      <div className={c.sectionTitle}>{COPY.desktopIconSection}</div>
+                      <div className={c.hint}>{COPY.desktopIconHint}</div>
+                      <div className={c.iconGrid} role="radiogroup" aria-label={COPY.desktopIconSection}>
+                        {DESKTOP_ICONS.map((icon) => (
+                          <button
+                            key={icon.id}
+                            type="button"
+                            role="radio"
+                            aria-checked={desktopIconId === icon.id}
+                            className={clsx(c.iconCell, desktopIconId === icon.id && c.iconSelected)}
+                            onClick={() => { onPickDesktopIcon(icon.id) }}
+                            title={`${icon.name} — ${icon.description}`}
+                          >
+                            <img
+                              className={c.iconPreview}
+                              src={icon.url}
+                              alt={icon.name}
+                              width={56}
+                              height={56}
+                              draggable={false}
+                            />
+                            <span className={c.iconName}>{icon.name}</span>
+                          </button>
+                        ))}
+                      </div>
+                      {desktopIconFailed ? <p className={c.failed} role="status">{COPY.desktopIconApplyFailed}</p> : null}
                     </div>
                   )}
                 </>

@@ -110,6 +110,14 @@ export interface TauriShellHandle {
   applySize(width: number, height: number): void
 
   /**
+   * Apply a desktop/window icon id immediately (from the settings card's
+   * desktop-icon picker, S6). Delegates to the Tauri `set_desktop_icon`
+   * command (DSH_CMD up-link → node.rs → commands.rs); unknown ids fall back
+   * to the white whale on the Rust side. Idempotent.
+   */
+  setDesktopIcon(id: string): void
+
+  /**
    * Request the current session's workspace path from the shell.
    * In Tauri mode the page itself reports the path (D4), so this is a stub
    * that invokes `get_workspace_path` (T4.8) and returns null unless the
@@ -211,6 +219,11 @@ export function openDesktopShellTauri(
     applySize: (width: number, height: number) => {
       if (guard()) return
       void invoke('set_window_size', { width, height })
+    },
+
+    setDesktopIcon: (id: string) => {
+      if (guard()) return
+      void invoke('set_desktop_icon', { iconId: id })
     },
 
     getCurrentWorkspacePath: (cb: (path: string | null) => void) => {

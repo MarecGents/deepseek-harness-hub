@@ -83,6 +83,14 @@ fn dispatch_dsh_cmd(app: &tauri::AppHandle, cmd_json: &str) {
                 }
             }
         }
+        // S6：设置桌面图标（tauri-shell.ts setDesktopIcon 上行）。设置卡页面
+        // 同时走页面→Rust invoke（ACL allow-set-desktop-icon）；本臂保证 host
+        // 侧 config onChange 重放（DSH_CMD）也生效，二者幂等。
+        "set_desktop_icon" => {
+            if let Some(icon_id) = value.get("iconId").and_then(|v| v.as_str()) {
+                let _ = crate::commands::set_desktop_icon(app.clone(), icon_id.to_string());
+            }
+        }
         "notify_task_complete" => {
             let title = value.get("title").and_then(|v| v.as_str()).unwrap_or("DeepSeek Harness");
             let body = value.get("body").and_then(|v| v.as_str()).unwrap_or("任务完成");

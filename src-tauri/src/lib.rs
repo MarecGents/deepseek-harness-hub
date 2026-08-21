@@ -425,6 +425,7 @@ pub fn run() {
             commands::apply_page_theme,
             commands::set_window_size,
             commands::get_workspace_path,
+            commands::set_desktop_icon,
             commands::window_minimize,
             commands::window_toggle_maximize,
             commands::window_close,
@@ -450,6 +451,12 @@ pub fn run() {
             if let Err(e) = theme::apply_theme(&win, tauri::Theme::Dark) {
                 warn!("window: apply theme failed: {}", e);
             }
+            // S6: 启动即应用已保存的桌面图标（设置卡选择；'default' = 主题翻转
+            // 鲸鱼，未知 id 回退白鲸）。页面加载后 apply_page_theme 会按实际
+            // 明暗重新应用（'default' 翻转 / 鲸鱼娘固定），此处保证占位页
+            // 期间图标即正确。
+            let desktop_icon = state::read_shell_config_str("desktopIcon", "default");
+            theme::apply_desktop_icon(&win, &desktop_icon);
 
             // 事件接线（M2 resize 记忆 + T3.2 closeToTray/minimizeToTray；原 READY
             // 后建窗段落，逻辑原样搬移至此——占位页期间即生效）。注意：事件闭包

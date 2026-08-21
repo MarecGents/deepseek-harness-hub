@@ -30,6 +30,7 @@
     "allow-apply-page-theme",
     "allow-set-window-size",
     "allow-get-workspace-path",
+    "allow-set-desktop-icon",
     "allow-window-minimize",
     "allow-window-toggle-maximize",
     "allow-window-close",

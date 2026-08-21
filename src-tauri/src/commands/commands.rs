@@ -1,9 +1,10 @@
-// commands.rs — M4 Tauri commands（T4.8）
+// commands.rs — M4 Tauri commands（T4.8）+ S6 桌面图标
 //
 // 模块类别：Server（壳）
 // 职责：注册 Tauri invoke 命令。
 //   - set_window_theme(dark): 主题切换
 //   - set_window_size(w, h): 窗口大小设置
+//   - set_desktop_icon(icon_id): 用户可选桌面/任务栏图标（S6，鲸鱼娘预设）
 //   - get_workspace_path(): 获取当前工作区路径（D4 决策：页面主动上报，壳侧预置桩）
 //   - window_minimize / window_toggle_maximize / window_close: 自绘标题栏窗口控制
 //
@@ -90,7 +91,9 @@ pub fn set_window_theme(app: tauri::AppHandle, theme: String) -> Result<(), Stri
 /// 三件事：
 ///   1. DWM 标题栏主题（crate::theme::apply_theme）
 ///   2. webview 背景色：dark=#18181b / light=#f6f8fa
-///   3. 窗口图标翻转：dark=icon-dark.png（白鲸）/ light=icon-light.png（黑鲸）
+///   3. 窗口图标：用户未选鲸鱼娘（desktopIcon == 'default'）→ 主题翻转
+///      （dark=icon-dark.png 白鲸 / light=icon-light.png 黑鲸，既有行为不回退）；
+///      用户已选鲸鱼娘 → 固定应用该图标（未知 id 回退白鲸）。
 #[tauri::command]
 pub fn apply_page_theme(app: tauri::AppHandle, dark: bool) -> Result<(), String> {
     let theme = if dark { tauri::Theme::Dark } else { tauri::Theme::Light };
@@ -106,12 +109,29 @@ pub fn apply_page_theme(app: tauri::AppHandle, dark: bool) -> Result<(), String>
         if let Err(e) = win.set_background_color(Some(color)) {
             log::warn!("apply_page_theme: set_background_color failed: {}", e);
         }
-        crate::theme::apply_window_icon(&win, dark);
+        let desktop_icon = crate::state::read_shell_config_str("desktopIcon", "default");
+        if desktop_icon == "default" {
+            crate::theme::apply_window_icon(&win, dark);
+        } else {
+            crate::theme::apply_desktop_icon(&win, &desktop_icon);
+        }
         log::info!("apply_page_theme: theme applied (dark={})", dark);
         Ok(())
     } else {
         Err("main window not found".to_string())
     }
+}
+
+/// 设置桌面/任务栏图标（S6，PR #25）：设置卡「桌面图标」网格选择 → 页面 invoke
+/// 下行（D-2，ACL allow-set-desktop-icon）或 host DSH_CMD 上行（node.rs 分发）。
+/// icon_id：'default'（主题翻转鲸鱼）或 5 个鲸鱼娘之一；未知 id 回退白鲸
+/// （icon-dark.png，见 theme::apply_desktop_icon）。
+#[tauri::command]
+pub fn set_desktop_icon(app: tauri::AppHandle, icon_id: String) -> Result<(), String> {
+    let win = app.get_webview_window("main").ok_or("main window not found")?;
+    crate::theme::apply_desktop_icon(&win, &icon_id);
+    log::info!("set_desktop_icon: applied '{}'", icon_id);
+    Ok(())
 }
 
 /// 窗口大小设置命令。

@@ -11,6 +11,7 @@ fn main() {
                 "apply_page_theme",
                 "set_window_size",
                 "get_workspace_path",
+                "set_desktop_icon",
                 "window_minimize",
                 "window_toggle_maximize",
                 "window_close",

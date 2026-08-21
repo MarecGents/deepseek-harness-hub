@@ -1,9 +1,11 @@
-// theme.rs — M2 主题管理（T2.3）
+// theme.rs — M2 主题管理（T2.3）+ S6 用户可选桌面图标
 //
 // 模块类别：Helper（壳）
-// 职责：窗口主题应用（Tauri set_theme + DWM 暗色标题栏）+ 窗口图标随主题翻转。
+// 职责：窗口主题应用（Tauri set_theme + DWM 暗色标题栏）+ 窗口图标
+//       （主题翻转鲸鱼 / 用户选择的鲸鱼娘，set_icon）。
 // 迁移映射：src/services/dwm-theme.ts（koffi DwmSetWindowAttribute）。
-// 外部接口：apply_theme(window, Theme)；apply_window_icon(window, dark)。
+// 外部接口：apply_theme(window, Theme)；apply_window_icon(window, dark)；
+//           apply_desktop_icon(window, icon_id)。
 //
 // DWM 暗色标题栏参照 spacedrive windows.rs L627-697：
 //   attr 20 (DWMWA_USE_IMMERSIVE_DARK_MODE) / 34 (BORDER_COLOR) / 35 (CAPTION_COLOR)
@@ -86,6 +88,45 @@ pub fn apply_window_icon(win: &WebviewWindow, dark: bool) {
     match tauri::image::Image::from_bytes(bytes) {
         Ok(img) => match win.set_icon(img) {
             Ok(_) => log::info!("theme: window icon set ({})", name),
+            Err(e) => log::warn!("theme: set_icon({}) failed: {}", name, e),
+        },
+        Err(e) => log::warn!("theme: decode {} failed: {}", name, e),
+    }
+}
+
+/// 用户选择的桌面图标（S6，PR #25）。icon_id：
+///   - `'default'` → 主题翻转鲸鱼：dark → icon-dark.png（白鲸）/ light →
+///     icon-light.png（黑鲸），按窗口当前主题（win.theme()）选择；未知/无
+///     主题时取 dark（白鲸，与启动默认一致）。
+///   - `'whale-girl-*'` → 固定鲸鱼娘 PNG（include_bytes! 内嵌，256×256，
+///     与 assets/icons/ 同名资产一致；两者在构建期各自打包，互不依赖）。
+///   - 其它（未知 id）→ 回退白鲸（icon-dark.png，与 apply_window_icon(dark)
+///     同款；主题翻转行为不受影响——'default' 走 apply_window_icon 分支）。
+///
+/// 图标切换失败仅 warn（不得破坏设置保存链路）。
+pub fn apply_desktop_icon(win: &WebviewWindow, icon_id: &str) {
+    let (bytes, name): (&[u8], &str) = match icon_id {
+        "whale-girl-sad" => (include_bytes!("../../icons/whale-girl-sad.png"), "whale-girl-sad"),
+        "whale-girl-happy" => (include_bytes!("../../icons/whale-girl-happy.png"), "whale-girl-happy"),
+        "whale-girl-duo" => (include_bytes!("../../icons/whale-girl-duo.png"), "whale-girl-duo"),
+        "whale-girl-maid" => (include_bytes!("../../icons/whale-girl-maid.png"), "whale-girl-maid"),
+        "whale-girl-blue" => (include_bytes!("../../icons/whale-girl-blue.png"), "whale-girl-blue"),
+        "default" => {
+            let dark = win.theme().unwrap_or(Theme::Dark) == Theme::Dark;
+            if dark {
+                (include_bytes!("../../icons/icon-dark.png"), "whale-dark")
+            } else {
+                (include_bytes!("../../icons/icon-light.png"), "whale-light")
+            }
+        }
+        _ => {
+            log::warn!("theme: unknown desktop icon id '{}', falling back to whale (icon-dark)", icon_id);
+            (include_bytes!("../../icons/icon-dark.png"), "whale")
+        }
+    };
+    match tauri::image::Image::from_bytes(bytes) {
+        Ok(img) => match win.set_icon(img) {
+            Ok(_) => log::info!("theme: desktop icon set ({})", name),
             Err(e) => log::warn!("theme: set_icon({}) failed: {}", name, e),
         },
         Err(e) => log::warn!("theme: decode {} failed: {}", name, e),
