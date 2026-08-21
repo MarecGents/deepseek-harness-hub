@@ -152,6 +152,7 @@ export function openSessionMenu(params: SessionMenuParams): void {
     },
     {
       label: '归档会话',
+      danger: true,
       run: () => { void runtime.workspaces?.archiveSession?.(params.id)?.catch(() => {}) },
     },
     'sep',
@@ -200,6 +201,13 @@ export function openSessionMenu(params: SessionMenuParams): void {
   menu.setAttribute('role', 'menu')
   menu.setAttribute('aria-label', `会话菜单：${params.title}`)
   menu.dataset.mgCtxmenu = params.id
+
+  // Visual header: confirm the target at a glance (aria-label alone is not
+  // visible); truncated to one line so long titles cannot stretch the menu.
+  const head = document.createElement('div')
+  head.className = 'mg-ctxmenu__head'
+  head.textContent = params.title
+  menu.appendChild(head)
 
   let firstItem: HTMLButtonElement | undefined
   for (const entry of entries) {

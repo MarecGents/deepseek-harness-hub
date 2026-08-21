@@ -37,6 +37,10 @@ export function injectSessionMenuStyle(): void {
   background:var(--dsw-specific-sidebar-nav-item-hover,var(--dsw-alias-interactive-bg-hover));
   outline:none}
 .mg-ctxmenu__item[disabled]{opacity:.45;cursor:not-allowed}
+.mg-ctxmenu__head{padding:6px 10px 5px;margin:-2px -2px 4px;
+  color:var(--dsw-alias-label-tertiary);font-size:11px;line-height:16px;
+  border-bottom:1px solid var(--dsw-alias-border-l1);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .mg-ctxmenu__sep{height:1px;margin:4px 6px;
   background:var(--dsw-alias-border-l1);border:0}
 .mg-ctxmenu__danger{color:var(--dsw-alias-state-error-primary)}

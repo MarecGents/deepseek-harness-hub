@@ -499,17 +499,8 @@ export function installPinnedConversations(ctx: unknown): () => void {
         itemTitle.textContent = title
         itemTitle.title = `${title}（悬停可重命名）`
         open.append(icon, itemTitle)
-        const rename = document.createElement('button')
-        rename.type = 'button'
-        rename.className = c.itemRename
-        rename.dataset.mgPinRename = id
-        rename.textContent = '重命名'
-        rename.setAttribute('aria-label', `重命名：${title}`)
-        rename.title = '重命名'
-        rename.addEventListener('click', (event) => {
-          event.stopPropagation()
-          beginRename(id)
-        })
+        // Inline rename button removed — 重命名 lives in the context menu now
+        // (right-click / ⋯); the pinned row keeps only the quick unpin glyph.
         const unpin = document.createElement('button')
         unpin.type = 'button'
         unpin.className = c.itemUnpin
@@ -525,7 +516,7 @@ export function installPinnedConversations(ctx: unknown): () => void {
             ?? tree.querySelector<HTMLElement>(`.${c.pinBtn}`)
           next?.focus({ preventScroll: true })
         })
-        item.append(open, rename, unpin)
+        item.append(open, unpin)
         // Full-action context menu (same set as official tree rows get via
         // the delegated handler below — pinned items are first-class too).
         item.addEventListener('contextmenu', (event) => {
@@ -665,6 +656,39 @@ export function installPinnedConversations(ctx: unknown): () => void {
     })
   }
   document.addEventListener('contextmenu', onRowContextMenu)
+
+  // Intercept the official ⋯ (row-actions) trigger: its 3-item menu (rename /
+  // fork / archive) is a strict subset of our full-action menu, so clicking it
+  // opens OUR menu anchored at the button instead. Structural anchor only —
+  // the actions span is the row's LAST element child; no CSS-module hashes.
+  const onRowActionsClick = (event: MouseEvent): void => {
+    if (!alive) return
+    if (event.button !== 0 || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return
+    const target = event.target instanceof Element ? event.target : null
+    if (target === null) return
+    if (target.closest('[data-mg-pin-item]')) return // pinned rows have their own buttons
+    const row = target.closest<HTMLElement>('div[role="treeitem"]:not([aria-expanded])')
+    if (row === null) return
+    const actions = row.lastElementChild
+    if (actions === null || !actions.contains(target)) return
+    const match = mapRowByContent(row)
+    if (match === undefined) return
+    const summary = sessionSnapshot()?.byId?.[match.id]
+    if (summary === undefined || summary.blank === true) return
+    event.preventDefault()
+    event.stopPropagation()
+    const rect = target.getBoundingClientRect()
+    openSessionMenu({
+      x: rect.left,
+      y: rect.bottom + 4,
+      id: match.id,
+      title: summary.displayTitle ?? match.id,
+      pinned: pinnedSet.has(match.id),
+      ctx: runtime,
+      onTogglePin: () => togglePin(match.id),
+    })
+  }
+  document.addEventListener('click', onRowActionsClick, true)
   // Render immediately from local state (render path is NOT phase-gated);
   // then fold in the persisted list without clobbering in-flight deltas.
   setPinned(lsRead())
@@ -728,6 +752,7 @@ export function installPinnedConversations(ctx: unknown): () => void {
     unsubWorkspaces()
     window.removeEventListener('storage', onStorage)
     document.removeEventListener('contextmenu', onRowContextMenu)
+    document.removeEventListener('click', onRowActionsClick, true)
     closeSessionMenu()
     // Remove every injected node so a re-install (HMR / include.refresh)
     // rebuilds from scratch instead of stacking stale closures.
