@@ -2,7 +2,7 @@
 
 > **`@marecgents/dsh-hub`** —— DeepSeek Harness（`dsh`）的桌面端框架：以原生 Tauri 2.x 窗口运行 dsh Web UI，提供托盘、主题同步、窗口记忆、右侧栏与系统通知。
 >
-> **版本状态（2026-08-16）**：`0.0.1-rc.14` 是 **WebView2 壳的最终 rc 版本**（`dev-v1` 分支已冻结）。rc.13 发布后曾暴露全新环境首启崩溃 bug（`ERR_MODULE_NOT_FOUND`，见 [docs/关键踩坑记录.md#33](docs/关键踩坑记录.md)），rc.14 为修复版。正式版将在 **Tauri 2.x 壳**（`dev-v2`）迁移完成并达到良好体验后发布——多端支持（Windows / macOS / Linux）、~10MB 体积、自定义壳 UI。迁移期间插件层（client + config/workspace API）原样保留，壳层整体重写（见 [外部档案 docs/dsh桌面端技术路线-2026-08-16.md](../docs/dsh桌面端技术路线-2026-08-16.md)）。
+> **版本状态（2026-08-21）**：`dev-v2`（Tauri 2.x 壳）已到 **M5 打包闭环**——`0.0.2-rc.3` NSIS 安装器经全新联网电脑真机验证：**安装即用**（安装期自动下载私有 Node + dsh + 插件到安装目录，无需系统预装 Node），首启自动进 dsh UI。`0.0.1-rc.14` 是 WebView2 壳最终 rc（`dev-v1` 分支已冻结）。正式版将在体验达标后发布（多端支持 / 自定义壳 UI，见 [外部档案 docs/dsh桌面端技术路线-2026-08-16.md](../docs/dsh桌面端技术路线-2026-08-16.md)）。
 
 [![npm version](https://img.shields.io/npm/v/@marecgents/dsh-hub)](https://www.npmjs.com/package/@marecgents/dsh-hub)
 [![npm rc](https://img.shields.io/npm/v/@marecgents/dsh-hub/rc)](https://www.npmjs.com/package/@marecgents/dsh-hub)
@@ -48,13 +48,10 @@
 
 ### 方式一：安装发布版（推荐，dev-v2 Tauri-only）
 
-桌面壳为 **Tauri 原生应用**，安装 = 运行 `cargo tauri build` 产出的 **NSIS 安装器**（M5）：
+桌面壳为 **Tauri 原生应用**，安装 = 运行 **NSIS 安装器**（`build/<version>/DeepSeek Harness Hub_<version>_x64-setup.exe`，或按 [BUILD.md](BUILD.md) 自编译）：
 
-```sh
-npm run tauri:build        # = cargo tauri build → src-tauri/target/release/bundle/nsis/
-```
-
-- 安装器安装「DeepSeek Harness Hub」，从开始菜单 / 桌面启动。**注意**：NSIS 链路（M5）尚未闭环——安装后首启仍需本机 **Node + 全局 dsh**（sidecar 解析 node/dsh 入口后 spawn `dsh web`）；「无需 Node 环境」是 M5 收口（externalBin 内嵌资产）后的目标，当前不成立（见 [FUNCTIONS.md](FUNCTIONS.md)「仍待收口（M5）」）。
+- **安装即用（M5 闭环）**：安装期自动联网下载**私有 Node**（多源测速选最快）并安装 `@deepseek-ai/dsh` + `@marecgents/dsh-hub` + `pnpm` 到 `<安装目录>\dsh-hub-win\`（私有环境，不污染系统）——**无需系统预装 Node**。进度见安装器详情页 + `<安装目录>\dsh-hub-bootstrap.log`。
+- **首启**：窗口显示「启动中」占位页 → 后台启动私有 dsh web → READY 后自动导航进 dsh UI（**不弹浏览器**）。
 - 插件层 npm 包 `@marecgents/dsh-hub` 仍随 dsh 生态发布（见「发布」），postinstall 仅做 `dsh` / `pnpm` 依赖检查。
 - **WebView2 时代已移除**：`npm i -g` launcher 安装链路、`koffi` 原生依赖、postinstall 创建的桌面快捷方式与 `dsh-hub` 命令 shim。
 
@@ -79,15 +76,16 @@ npm run tauri:dev          # = cargo tauri dev：Rust 壳 + dsh web sidecar 本�
 
 ### 方式三：构建本地安装器（自编译，等同发布安装）
 
-从源码构建 **NSIS 安装器**——产物与发布安装器一致（`cargo tauri build`，M5）：
+从源码构建 **NSIS 安装器**——产物与发布安装器一致。**推荐一键打包**（自动检测工具链位置，位置无关，见 [BUILD.md](BUILD.md)）：
 
 ```sh
-npm run tauri:build        # = cargo tauri build → src-tauri/target/release/bundle/nsis/
+npm run build:installer    # 一键打包：检测 Node/npm/cargo/rustup → MSVC(vswhere→vcvars64.bat) 或 GNU(gcc) → build → build:client → tauri:build → 复制到 build/<version>/ + SHA256 校验
+npm run tauri:build        # 仅打包（需 vcvars/MSVC 环境或 GNU 配置，见 BUILD.md）
 # 运行安装器 → 安装「DeepSeek Harness Hub」→ 启动
 ```
 
+> **前置依赖**（详见 [BUILD.md](BUILD.md)）：Node ≥24、rustup（`rust-toolchain.toml` 自动管 MSVC）、**VS Build Tools** 或 MinGW-w64 gcc；NSIS 与 WebView2 由 tauri CLI / embedBootstrapper 自动处理。
 > 旧的 `npm run install:local`（`scripts/install-local.mjs`：npm pack → 全局包 + 快捷方式）已随 WebView2 壳删除。
-> 本地构建链路与发布一致；发布前先用隔离 DSH_HOME 冒烟（见「方式二」）。
 
 ### Tauri 2.x 壳开发（M1+，dev-v2）
 
