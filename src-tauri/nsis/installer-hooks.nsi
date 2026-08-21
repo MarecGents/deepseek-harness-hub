@@ -10,9 +10,12 @@
 ;
 ; Only NSIS_HOOK_POSTINSTALL is defined here. It bootstraps the private Node
 ; runtime + dsh dependencies into $INSTDIR\dsh-hub-win by running the bundled
-; scripts\dsh-deps-install.ps1 resource. stdout lines ("DEP: ...") are merged
-; into the installer detail log via nsExec::ExecToLog, so the user sees live
-; progress on the INSTFILES page.
+; scripts\dsh-deps-install.ps1 resource.
+;
+; Window policy: we deliberately do NOT use nsExec::ExecToLog here — it creates
+; a visible console window to capture stdout (users saw two popup consoles).
+; Instead we use ExecWait + powershell -WindowStyle Hidden (no console window at
+; all) and the script appends its "DEP: xx%" progress to $INSTDIR\dsh-hub-bootstrap.log.
 ;
 ; A non-zero bootstrap exit is tolerated (details are logged, installation is
 ; NOT aborted): at first launch the shell falls back to PATH-based node/dsh
@@ -20,10 +23,12 @@
 ; block installation.
 
 !macro NSIS_HOOK_POSTINSTALL
-  DetailPrint "dsh-hub: bootstrapping private Node runtime + dsh dependencies (install-time)..."
-  nsExec::ExecToLog 'powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "$INSTDIR\_up_\scripts\dsh-deps-install.ps1" -InstallDir "$INSTDIR"'
-  Pop $0
+  DetailPrint "dsh-hub: bootstrapping private Node runtime + dsh dependencies (install-time, 1-3 min)..."
+  DetailPrint "dsh-hub: progress log: $INSTDIR\dsh-hub-bootstrap.log"
+  ExecWait '"powershell.exe" -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "$INSTDIR\_up_\scripts\dsh-deps-install.ps1" -InstallDir "$INSTDIR"' $0
   ${If} $0 != 0
-    DetailPrint "dsh-hub: bootstrap exited with code $0 - the app will fall back to PATH/node at first launch"
+    DetailPrint "dsh-hub: bootstrap exited with code $0 - see $INSTDIR\dsh-hub-bootstrap.log; app will fall back to PATH/node at first launch"
+  ${Else}
+    DetailPrint "dsh-hub: private Node runtime bootstrap complete"
   ${EndIf}
 !macroend

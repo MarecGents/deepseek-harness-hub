@@ -35,6 +35,7 @@
   "scripts": {
     "build": "tsc",
     "build:client": "node ./scripts/build-client.mjs",
+    "build:installer": "node ./scripts/build-installer.mjs",
     "prepack": "npm run build && npm run build:client",
     "postinstall": "node ./scripts/postinstall.mjs",
     "postuninstall": "node ./scripts/postuninstall.mjs",
