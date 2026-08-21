@@ -73,6 +73,11 @@ interface ClientCtxLike {
       getSnapshot?: () => SessionsListLike | undefined
     }
     open?: (id: string) => void
+    binding?: (id: string) => {
+      session?: {
+        rename?: (title: string) => Promise<{ ok: boolean; value?: { title?: string }; error?: { message?: string } }>
+      }
+    } | undefined
   }
   workspaces?: {
     list?: {
@@ -111,7 +116,11 @@ export function installPinnedConversations(ctx: unknown): () => void {
   const missingStreak = new Map<string, number>()
   let alive = true
   let inSearch = false
-  const debouncedSync = debounce(() => { if (alive) sync() }, 250)
+  /** Pinned item currently in inline rename mode (session id), or null. */
+  let editingId: string | null = null
+  // While renaming, ignore observer/debounced refreshes so typing inside the
+  // injected input never triggers a rebuild that would drop the draft.
+  const debouncedSync = debounce(() => { if (alive && editingId === null) sync() }, 250)
 
   // ── Persistence ─────────────────────────────────────────────────────────
   async function apiGetPins(): Promise<string[] | null> {
@@ -200,6 +209,35 @@ export function installPinnedConversations(ctx: unknown): () => void {
       ? pinned.filter((value) => value !== id)
       : [...pinned, id].slice(0, MAX_PINS)
     persist(next)
+    sync()
+  }
+
+  /** Ask the official session binding to rename a pinned session. */
+  async function renamePinnedSession(id: string, title: string): Promise<string | null> {
+    const session = runtime.sessions?.binding?.(id)?.session
+    if (session?.rename === undefined) return null
+    try {
+      const result = await session.rename(title)
+      if (result.ok !== true || typeof result.value?.title !== 'string') return null
+      return result.value.title
+    } catch {
+      // Transport/business failure — leave the row in edit mode so the user
+      // can retry; the caller handles null by keeping editingId.
+      return null
+    }
+  }
+
+  /** Open inline rename for one pinned item. */
+  function beginRename(id: string): void {
+    if (!alive) return
+    editingId = id
+    sync()
+  }
+
+  /** Close inline rename (cancel or after a successful save). */
+  function endRename(): void {
+    if (editingId === null) return
+    editingId = null
     sync()
   }
 
@@ -372,7 +410,7 @@ export function installPinnedConversations(ctx: unknown): () => void {
 
     // Rebuild only when the content actually changed — replaceChildren always
     // mutates, which would keep the MutationObserver forever dirty.
-    const sig = `${inSearch ? ':search' : ''}|${live.length === 0 ? ':empty' : ''}|${live.map((id) => byId[id]?.displayTitle ?? id).join('\u0001')}`
+    const sig = `${inSearch ? ':search' : ''}|${live.length === 0 ? ':empty' : ''}|edit:${editingId ?? ''}|${live.map((id) => byId[id]?.displayTitle ?? id).join('\u0001')}`
     if (section.dataset.sig === sig) {
       section.hidden = inSearch || live.length === 0
       return
@@ -397,36 +435,97 @@ export function installPinnedConversations(ctx: unknown): () => void {
       const item = document.createElement('div')
       item.className = c.item
       item.dataset.mgPinItem = id
-      const open = document.createElement('button')
-      open.type = 'button'
-      open.className = c.itemOpen
-      open.addEventListener('click', () => {
-        runtime.sessions?.open?.(id)
-      })
-      const icon = document.createElement('span')
-      icon.className = c.itemIcon
-      icon.innerHTML = PIN_FILLED_SVG
-      const itemTitle = document.createElement('span')
-      itemTitle.className = c.itemTitle
-      itemTitle.textContent = title
-      itemTitle.title = title
-      open.append(icon, itemTitle)
-      const unpin = document.createElement('button')
-      unpin.type = 'button'
-      unpin.className = c.itemUnpin
-      unpin.dataset.mgPinUnpin = id
-      unpin.setAttribute('aria-label', `取消置顶：${title}`)
-      unpin.title = '取消置顶'
-      unpin.innerHTML = PIN_FILLED_SVG
-      unpin.addEventListener('click', () => {
-        togglePin(id)
-        // Move focus so the keyboard user is not stranded on a removed item.
-        const next = item.nextElementSibling?.querySelector<HTMLElement>(`.${c.itemOpen}`)
-          ?? item.previousElementSibling?.querySelector<HTMLElement>(`.${c.itemOpen}`)
-          ?? tree.querySelector<HTMLElement>(`.${c.pinBtn}`)
-        next?.focus({ preventScroll: true })
-      })
-      item.append(open, unpin)
+
+      if (editingId === id) {
+        // Inline rename form — replaces the row actions while editing.
+        const edit = document.createElement('div')
+        edit.className = c.itemEdit
+        const input = document.createElement('input')
+        input.className = c.itemEditInput
+        input.value = title
+        input.spellcheck = false
+        input.setAttribute('aria-label', `重命名会话：${title}`)
+        const save = document.createElement('button')
+        save.type = 'button'
+        save.className = c.itemEditSave
+        save.textContent = '保存'
+        const cancel = document.createElement('button')
+        cancel.type = 'button'
+        cancel.className = c.itemEditCancel
+        cancel.textContent = '取消'
+        const submit = (): void => {
+          const next = input.value.trim().replace(/\s+/g, ' ')
+          if (next === '') {
+            input.focus()
+            return
+          }
+          void renamePinnedSession(id, next).then((accepted) => {
+            if (!alive) return
+            // On success the official byId updates and sync re-renders;
+            // on failure keep the edit row open so the user can retry.
+            if (accepted !== null) endRename()
+          })
+        }
+        save.addEventListener('click', submit)
+        cancel.addEventListener('click', () => endRename())
+        input.addEventListener('keydown', (event) => {
+          if (event.key === 'Enter') {
+            event.preventDefault()
+            submit()
+          } else if (event.key === 'Escape') {
+            event.preventDefault()
+            endRename()
+          }
+        })
+        edit.append(input, save, cancel)
+        item.append(edit)
+        // Focus after the node is attached (the section is replaced below).
+        queueMicrotask(() => {
+          if (alive && editingId === id) input.focus()
+        })
+      } else {
+        const open = document.createElement('button')
+        open.type = 'button'
+        open.className = c.itemOpen
+        open.addEventListener('click', () => {
+          runtime.sessions?.open?.(id)
+        })
+        const icon = document.createElement('span')
+        icon.className = c.itemIcon
+        icon.innerHTML = PIN_FILLED_SVG
+        const itemTitle = document.createElement('span')
+        itemTitle.className = c.itemTitle
+        itemTitle.textContent = title
+        itemTitle.title = `${title}（悬停可重命名）`
+        open.append(icon, itemTitle)
+        const rename = document.createElement('button')
+        rename.type = 'button'
+        rename.className = c.itemRename
+        rename.dataset.mgPinRename = id
+        rename.textContent = '重命名'
+        rename.setAttribute('aria-label', `重命名：${title}`)
+        rename.title = '重命名'
+        rename.addEventListener('click', (event) => {
+          event.stopPropagation()
+          beginRename(id)
+        })
+        const unpin = document.createElement('button')
+        unpin.type = 'button'
+        unpin.className = c.itemUnpin
+        unpin.dataset.mgPinUnpin = id
+        unpin.setAttribute('aria-label', `取消置顶：${title}`)
+        unpin.title = '取消置顶'
+        unpin.innerHTML = PIN_FILLED_SVG
+        unpin.addEventListener('click', () => {
+          togglePin(id)
+          // Move focus so the keyboard user is not stranded on a removed item.
+          const next = item.nextElementSibling?.querySelector<HTMLElement>(`.${c.itemOpen}`)
+            ?? item.previousElementSibling?.querySelector<HTMLElement>(`.${c.itemOpen}`)
+            ?? tree.querySelector<HTMLElement>(`.${c.pinBtn}`)
+          next?.focus({ preventScroll: true })
+        })
+        item.append(open, rename, unpin)
+      }
       list.appendChild(item)
     }
 

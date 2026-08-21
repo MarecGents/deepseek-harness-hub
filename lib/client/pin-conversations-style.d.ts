@@ -25,7 +25,12 @@ export declare const PIN_CSS_CLASSES: {
     readonly itemOpen: "mg-pin-item-open";
     readonly itemTitle: "mg-pin-item-title";
     readonly itemIcon: "mg-pin-item-icon";
+    readonly itemRename: "mg-pin-item-rename";
     readonly itemUnpin: "mg-pin-item-unpin";
+    readonly itemEdit: "mg-pin-item-edit";
+    readonly itemEditInput: "mg-pin-item-edit-input";
+    readonly itemEditSave: "mg-pin-item-edit-save";
+    readonly itemEditCancel: "mg-pin-item-edit-cancel";
     readonly pinBtn: "mg-pin-btn";
     readonly pinBtnOn: "mg-pin-btn--on";
     readonly rowPinned: "mg-pin-row-pinned";
