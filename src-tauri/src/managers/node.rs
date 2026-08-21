@@ -208,9 +208,15 @@ fn find_dsh() -> Option<PathBuf> {
         }
     }
     // 兜底：npm prefix -g。
-    let npm_prefix = Command::new("cmd")
-        .args(["/d", "/s", "/c", "npm prefix -g"])
-        .output().ok()?;
+    let mut npm_cmd = Command::new("cmd");
+    npm_cmd.args(["/d", "/s", "/c", "npm prefix -g"]);
+    // CREATE_NO_WINDOW：cmd 是 console 程序，不隐藏会闪命令行窗口。
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        npm_cmd.creation_flags(0x08000000);
+    }
+    let npm_prefix = npm_cmd.output().ok()?;
     let prefix = String::from_utf8_lossy(&npm_prefix.stdout).trim().to_string();
     for name in &["dsh.cmd", "dsh.exe", "dsh"] {
         let candidate = Path::new(&prefix).join(name);

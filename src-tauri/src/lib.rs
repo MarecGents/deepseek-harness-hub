@@ -97,7 +97,15 @@ fn read_allow_multiple_instances() -> bool {
 fn detect_running_dsh_instances() -> Vec<u32> {
     // 通道 1：监听端口 → PID（netstat）。
     let mut listener_pids: std::collections::HashSet<u32> = std::collections::HashSet::new();
-    if let Ok(out) = std::process::Command::new("netstat").args(["-ano", "-p", "tcp"]).output() {
+    let mut netstat = std::process::Command::new("netstat");
+    netstat.args(["-ano", "-p", "tcp"]);
+    // CREATE_NO_WINDOW：netstat 是 console 程序，不隐藏会闪命令行窗口。
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        netstat.creation_flags(0x08000000);
+    }
+    if let Ok(out) = netstat.output() {
         let text = String::from_utf8_lossy(&out.stdout);
         for line in text.lines() {
             let cols: Vec<&str> = line.split_whitespace().collect();
@@ -115,10 +123,15 @@ fn detect_running_dsh_instances() -> Vec<u32> {
         "Get-CimInstance Win32_Process -Filter \"{filter}\" | Where-Object {{ $_.CommandLine -match 'dsh.*web' }} | Select-Object -ExpandProperty ProcessId"
     );
     let mut matched = Vec::new();
-    if let Ok(out) = std::process::Command::new("powershell.exe")
-        .args(["-NoProfile", "-NonInteractive", "-Command", &script])
-        .output()
+    let mut ps = std::process::Command::new("powershell.exe");
+    ps.args(["-NoProfile", "-NonInteractive", "-Command", &script]);
+    // CREATE_NO_WINDOW：powershell 是 console 程序，不隐藏会闪命令行窗口。
+    #[cfg(target_os = "windows")]
     {
+        use std::os::windows::process::CommandExt;
+        ps.creation_flags(0x08000000);
+    }
+    if let Ok(out) = ps.output() {
         for pid in String::from_utf8_lossy(&out.stdout).lines() {
             if let Ok(n) = pid.trim().parse::<u32>() {
                 if listener_pids.contains(&n) {
