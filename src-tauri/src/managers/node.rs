@@ -398,7 +398,6 @@ pub fn assemble_profile() -> Result<(), String> {
         ));
     }
     info!("node: assembling profile via {}", assemble_script.display());
-    let script = format!("node {}", assemble_script.display());
     // 打包态：junction 指向私有插件包目录（安装器引导脚本
     // `npm i -g @marecgents/dsh-hub --prefix <repo_root>\dsh-hub-win` 的落点）；
     // dev 态：指向仓库根（插件内容就在仓库）。私有包目录不存在则回退 repo_root。
@@ -408,8 +407,13 @@ pub fn assemble_profile() -> Result<(), String> {
         .join("@marecgents")
         .join("dsh-hub");
     let package_root = if private_pkg.is_dir() { private_pkg } else { repo_root.clone() };
-    let mut asm = Command::new("cmd");
-    asm.args(["/d", "/s", "/c", script.as_str()])
+    // 直接 spawn node（不走 cmd /c）：安装目录可能含空格（如
+    // "D:\Tools\DeepSeek Harness Hub"），cmd /c 拼路径不带引号会拆断
+    // （Cannot find module 'D:\Tools\DeepSeek'）。node 优先用私有 node
+    // （打包态引导），否则 PATH 里的 node（dev）。
+    let node_exe = find_private_node().unwrap_or_else(|| PathBuf::from("node"));
+    let mut asm = Command::new(node_exe);
+    asm.arg(&assemble_script)
         .env("DSH_HOME", crate::state::dsh_home())
         .env("DSH_HUB_PACKAGE_ROOT", package_root);
     // Q3：子进程 CREATE_NO_WINDOW，防控制台闪现。
