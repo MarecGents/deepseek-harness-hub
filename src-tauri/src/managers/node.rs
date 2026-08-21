@@ -490,14 +490,14 @@ fn spawn_inner(state: Arc<NodeState>, app: tauri::AppHandle) -> Result<(), Strin
     };
 
     let mut cmd = if entry.as_os_str().is_empty() {
-        info!("node: spawning {} web --port 0", node.display());
+        info!("node: spawning {} web --port 0 --no-open", node.display());
         let mut c = Command::new(&node);
-        c.args(["web", "--port", "0"]);
+        c.args(["web", "--port", "0", "--no-open"]);
         c
     } else {
-        info!("node: spawning {} {} web --port 0", node.display(), entry.display());
+        info!("node: spawning {} {} web --port 0 --no-open", node.display(), entry.display());
         let mut c = Command::new(&node);
-        c.arg(&entry).args(["web", "--port", "0"]);
+        c.arg(&entry).args(["web", "--port", "0", "--no-open"]);
         c
     };
     cmd.stdin(Stdio::piped())
@@ -576,7 +576,7 @@ fn spawn_via_cmd_shim(state: Arc<NodeState>, app: tauri::AppHandle, dsh_cmd: &Pa
     info!("node: spawning via cmd shim: {} web --port 0", dsh_cmd.display());
     let comspec = std::env::var("COMSPEC").unwrap_or_else(|_| "cmd.exe".to_string());
     let mut cmd = Command::new(comspec);
-    cmd.args(["/d", "/s", "/c", &format!("\"{}\" web --port 0", dsh_cmd.display())])
+    cmd.args(["/d", "/s", "/c", &format!("\"{}\" web --port 0 --no-open", dsh_cmd.display())])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())

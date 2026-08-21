@@ -570,48 +570,44 @@ pub fn run() {
             // app.state 取 stdin 句柄（rc.14 tray-helper 模式）。
             app.manage(node_state.clone());
 
-            // 4. 等 READY（dsh web: http://127.0.0.1:N）。
-            //    start_dsh 里后台线程解析 stdout，state.port 在 READY 后更新。
-            //    轮询 state.port（最多 60s）；窗口已显示（占位页），超时走回退。
-            let port = {
+            // 4. 等 READY + 导航（后台线程，不阻塞 setup）：窗口已显示占位页
+            //    （"连接中"），dsh web 冷启动（私有 node + 全新 ~/.dsh）可能远
+            //    超 60s——阻塞等待会让窗口期间无响应（拖动/关闭都卡）。后台轮询
+            //    state.port（最长 300s）→ READY 验证 → win.navigate 复用窗口。
+            //    失败仅 warn（保持占位页），setup 立即返回让事件循环接管窗口。
+            let nav_state = node_state.clone();
+            let nav_win = win.clone();
+            std::thread::spawn(move || {
                 let start = std::time::Instant::now();
-                loop {
-                    let p = *node_state.port.lock().unwrap();
+                let port = loop {
+                    let p = *nav_state.port.lock().unwrap();
                     if let Some(port) = p {
                         break port;
                     }
-                    if start.elapsed().as_secs() > 60 {
-                        fallback("READY timeout (60s)");
-                        return Ok(());
+                    if start.elapsed().as_secs() > 300 {
+                        warn!("m4: READY timeout (300s), staying on placeholder page");
+                        return;
                     }
                     std::thread::sleep(std::time::Duration::from_millis(200));
+                };
+                info!("m4: sidecar READY on port {port}");
+                // READY 先验证再导航（强制步骤，T4.4）。
+                if let Err(e) = wait_for_ready(port) {
+                    warn!("m4: READY verification failed ({e}), staying on placeholder page");
+                    return;
                 }
-            };
-
-            info!("m4: sidecar READY on port {port}");
-
-            // 5. READY 先验证再导航（强制步骤，T4.4）。
-            if let Err(e) = wait_for_ready(port) {
-                fallback(&format!("READY verification failed ({e})"));
-                return Ok(());
-            }
-
-            // 6. 导航到 dsh web URL（复用已显示窗口，不重建窗口）。
-            //    initialization_script 在每次导航重新注入（shell-init.js 标题栏/
-            //    Splash/声音在 dsh web 页同样生效）。
-            let url = format!("http://127.0.0.1:{port}");
-            info!("m4: navigating to {}", url);
-            let external_url = match tauri::Url::parse(&url) {
-                Ok(u) => u,
-                Err(e) => {
-                    fallback(&format!("invalid sidecar URL: {e}"));
-                    return Ok(());
+                // 导航到 dsh web URL（复用已显示窗口）。
+                let url = format!("http://127.0.0.1:{port}");
+                info!("m4: navigating to {}", url);
+                match tauri::Url::parse(&url) {
+                    Ok(u) => {
+                        if let Err(e) = nav_win.navigate(u) {
+                            warn!("m4: navigate failed ({e}), staying on placeholder page");
+                        }
+                    }
+                    Err(e) => warn!("m4: invalid sidecar URL ({e})"),
                 }
-            };
-            if let Err(e) = win.navigate(external_url) {
-                fallback(&format!("navigate failed ({e})"));
-                return Ok(());
-            }
+            });
 
             // Tray "Open workspace" 路径回传：client 经 invoke('open_workspace_path')
             // 上行（D-2：事件系统在 remote origin 不可用，页面→Rust 走命令）。
@@ -621,7 +617,7 @@ pub fn run() {
             #[cfg(debug_assertions)]
             e2e::maybe_run_e2e(win.clone());
 
-            info!("dsh-hub shell started (M4: full dsh web UI on port {port})");
+            info!("dsh-hub shell started (placeholder shown; navigating to dsh web on READY)");
             Ok(())
         })
         .run(tauri::generate_context!())

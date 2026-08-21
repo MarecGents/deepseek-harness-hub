@@ -2,107 +2,23 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8" />
-<title>DeepSeek Harness Hub — M3 系统服务</title>
+<title>DeepSeek Harness Hub — 启动中</title>
 <style>
   html, body { height: 100%; margin: 0; background: #101418; color: #d6dbe1;
     font-family: system-ui, sans-serif; display: flex; align-items: center; justify-content: center; }
-  .card { max-width: 520px; width: 100%; padding: 32px; }
-  .badge { font-size: 14px; letter-spacing: .5px; opacity: .8; }
-  .title { font-size: 20px; font-weight: 600; margin-bottom: 8px; }
-  .sub { font-size: 12px; color: #8b9bb5; margin-bottom: 24px; line-height: 1.6; }
-  .row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #1d2536; font-size: 13px; }
-  .label { color: #8b9bb5; }
-  .val { font-family: 'SF Mono', 'Cascadia Code', monospace; font-size: 12px; }
-  .val.ok { color: #7dd3a8; }
-  .val.err { color: #f08080; }
-  .val.info { color: #7bb8d8; }
-  .sep { height: 1px; background: #1d2536; margin: 16px 0; }
-  .btn { display: inline-block; margin-top: 16px; padding: 6px 16px; background: #1d2536; color: #d6dbe1; border: none; border-radius: 4px; font-size: 12px; cursor: pointer; }
-  .btn:hover { background: #2a3a50; }
+  .card { max-width: 520px; width: 100%; padding: 32px; text-align: center; }
+  .title { font-size: 20px; font-weight: 600; margin-bottom: 12px; }
+  .sub { font-size: 13px; color: #8b9bb5; line-height: 1.7; }
+  .spinner { width: 36px; height: 36px; margin: 0 auto 20px; border: 3px solid #1d2536;
+    border-top-color: #7bb8d8; border-radius: 50%; animation: spin 1s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
 </style>
 </head>
 <body>
   <div class="card">
-    <div class="badge">DeepSeek Harness Hub</div>
-    <div class="title">M3 系统服务</div>
-    <div class="sub">托盘（4 菜单）· 关闭到托盘 · 单实例聚焦 · 通知 · 主题切换 · quit.marker。仍显示临时页（完整 dsh web UI 在 M4 才进窗口）。</div>
-
-    <div id="status">
-      <div class="row"><span class="label">IPC 状态</span><span id="ipc" class="val">运行中…</span></div>
-      <div class="row"><span class="label">托盘菜单</span><span id="tray" class="val">—</span></div>
-      <div class="row"><span class="label">关闭行为</span><span id="close" class="val">—</span></div>
-      <div class="row"><span class="label">单实例</span><span id="single" class="val">—</span></div>
-      <div class="row"><span class="label">通知</span><span id="notify" class="val">—</span></div>
-      <div class="row"><span class="label">主题</span><span id="theme" class="val">—</span></div>
-    </div>
-
-    <div class="sep"></div>
-
-    <div class="sub">M3 与 M2 的区别：M2 只管理窗口尺寸/主题；M3 增加系统服务层——托盘常驻（退出到托盘）、单实例聚焦（D1 决策）、通知 toast、quit.marker 语义、OS 主题检测。</div>
-
-    <button class="btn" id="toggle-theme" onclick="toggleTheme()">切换主题（dark ↔ light）</button>
+    <div class="spinner"></div>
+    <div class="title">DeepSeek Harness Hub</div>
+    <div class="sub">正在启动 dsh 服务并载入工作区…<br>首次启动可能需要数十秒（初始化数据目录与插件），请稍候。</div>
   </div>
-
-  <script>
-    const tauri = window.__TAURI_INTERNALS__
-    const report = (v) => { try { fetch('/smoke?result=' + encodeURIComponent(v)) } catch (e) {} }
-
-    function setVal(id, val, cls) {
-      const el = document.getElementById(id)
-      if (!el) return  // M3 行不存在时静默跳过（防御性写法，防止再出 null 崩溃）
-      el.textContent = val
-      el.className = 'val' + (cls ? ' ' + cls : '')
-    }
-
-    async function init() {
-      // IPC 冒烟：invoke ping
-      if (tauri && tauri.invoke) {
-        try {
-          const r = await tauri.invoke('ping')
-          setVal('ipc', 'ping → ' + r, 'ok')
-          report('pong')
-        } catch (e) {
-          setVal('ipc', '失败: ' + e, 'err')
-          report('ERR:' + e)
-        }
-      } else {
-        setVal('ipc', 'dev 远程页：IPC 仅在本地窗口可用', 'info')
-      }
-
-      // M3 状态（本地窗口有 Tauri IPC 才能验证，远程页显示默认状态）
-      if (tauri && tauri.invoke) {
-        setVal('tray', '4 菜单就绪（show/open-workspace/new-task/quit）', 'ok')
-        setVal('close', 'closeToTray=true → 隐藏到托盘（不退出）', 'ok')
-        setVal('single', '聚焦已有窗口（D1 决策）', 'ok')
-        setVal('notify', 'toast 就绪（notification 插件）', 'ok')
-        setVal('theme', 'Dark（启动默认）', 'ok')
-      } else {
-        setVal('tray', 'dev 远程页：壳服务需本地窗口', 'info')
-        setVal('close', '—', '')
-        setVal('single', '—', '')
-        setVal('notify', '—', '')
-        setVal('theme', 'dev 远程页', 'info')
-      }
-    }
-
-    async function toggleTheme() {
-      if (!tauri || !tauri.invoke) {
-        setVal('theme', 'dev 远程页：无法切换', 'err')
-        return
-      }
-      const el = document.getElementById('theme')
-      if (!el) return  // 防御
-      const current = el.textContent
-      const next = current.includes('Dark') ? 'light' : 'dark'
-      try {
-        await tauri.invoke('set_window_theme', { theme: next })
-        setVal('theme', next === 'dark' ? 'Dark' : 'Light', 'ok')
-      } catch (e) {
-        setVal('theme', '切换失败: ' + e, 'err')
-      }
-    }
-
-    init()
-  </script>
 </body>
 </html>
