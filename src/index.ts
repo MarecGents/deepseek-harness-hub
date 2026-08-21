@@ -42,6 +42,7 @@ import { dshHome } from './services/state-store.js'
 import { openFolderInExplorer } from './services/explorer.js'
 import { makeWorkspaceRoutes } from './services/workspace-api.js'
 import { makePinsRoutes } from './services/pins-api.js'
+import { makeSessionPathsRoutes } from './services/session-paths-api.js'
 
 /** Stable Cordis plugin name (referenced by cordis.patch.yml's insert row). */
 export const name = '@marecgents/dsh-hub'
@@ -292,6 +293,7 @@ export function apply(ctx: Context, config: Config): void {
       }),
       ...makeWorkspaceRoutes(),
       ...makePinsRoutes(),
+      ...makeSessionPathsRoutes(),
     ].map((route) => server.register(route))
     routesDisposed = () => {
       for (const dispose of disposers) void dispose()

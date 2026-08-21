@@ -31,6 +31,7 @@
  */
 
 import { PIN_CSS_CLASSES as c, injectPinStyle } from './pin-conversations-style.ts'
+import { closeSessionMenu, openSessionMenu } from './session-menu.ts'
 
 /** Route prefix of the host pins API (mirrors services/pins-api.ts). */
 const PINS_API = '/api/dsh-hub/pins'
@@ -525,6 +526,22 @@ export function installPinnedConversations(ctx: unknown): () => void {
           next?.focus({ preventScroll: true })
         })
         item.append(open, rename, unpin)
+        // Full-action context menu (same set as official tree rows get via
+        // the delegated handler below — pinned items are first-class too).
+        item.addEventListener('contextmenu', (event) => {
+          event.preventDefault()
+          event.stopPropagation()
+          openSessionMenu({
+            x: event.clientX,
+            y: event.clientY,
+            id,
+            title,
+            pinned: true,
+            ctx: runtime,
+            onTogglePin: () => togglePin(id),
+            onRename: () => beginRename(id),
+          })
+        })
       }
       list.appendChild(item)
     }
@@ -619,6 +636,35 @@ export function installPinnedConversations(ctx: unknown): () => void {
 
   // ── Boot ────────────────────────────────────────────────────────────────
   injectPinStyle()
+
+  // Delegated context menu for EVERY official session row (置顶与否都一样):
+  // right-click resolves the row → session id via the same content matching
+  // the pin buttons use, then opens the full-action menu. Rows that cannot be
+  // matched (project rows, duplicates) keep the native menu (no hijack).
+  const onRowContextMenu = (event: MouseEvent): void => {
+    if (!alive) return
+    if (event.target instanceof Element && event.target.closest('[data-mg-pin-item]')) return // pinned items handle themselves
+    const row = event.target instanceof Element
+      ? event.target.closest<HTMLElement>('div[role="treeitem"]:not([aria-expanded])')
+      : null
+    if (row === null) return
+    const match = mapRowByContent(row)
+    if (match === undefined) return
+    const summary = sessionSnapshot()?.byId?.[match.id]
+    if (summary === undefined || summary.blank === true) return
+    event.preventDefault()
+    openSessionMenu({
+      x: event.clientX,
+      y: event.clientY,
+      id: match.id,
+      title: summary.displayTitle ?? match.id,
+      pinned: pinnedSet.has(match.id),
+      ctx: runtime,
+      onTogglePin: () => togglePin(match.id),
+      onRename: () => beginRename(match.id),
+    })
+  }
+  document.addEventListener('contextmenu', onRowContextMenu)
   // Render immediately from local state (render path is NOT phase-gated);
   // then fold in the persisted list without clobbering in-flight deltas.
   setPinned(lsRead())
@@ -681,6 +727,8 @@ export function installPinnedConversations(ctx: unknown): () => void {
     unsubSessions()
     unsubWorkspaces()
     window.removeEventListener('storage', onStorage)
+    document.removeEventListener('contextmenu', onRowContextMenu)
+    closeSessionMenu()
     // Remove every injected node so a re-install (HMR / include.refresh)
     // rebuilds from scratch instead of stacking stale closures.
     for (const el of Array.from(document.querySelectorAll<HTMLElement>(`[data-mg-pin], [data-mg-pin-item], .${c.section}`))) {
