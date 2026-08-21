@@ -6,12 +6,14 @@
 //       关闭到托盘（T3.2）、quit.marker 语义（T3.6）。
 // 迁移映射：src/desktop.ts + bin/launcher.mjs → Rust 壳层。
 //
-// 启动流程（T4.4 SOP §5.4 步骤 4）：
+// 启动流程（T4.4 SOP §5.4 步骤 4，先建窗 → 后台准备 → READY 后 navigate）：
+//   0. 先建窗（占位页 frontendDist ../dev/index.html + shell-init.js 标题栏/Splash）
 //   1. 多实例检测前置（T4.2 双通道）
 //   2. 启动 Node sidecar（T4.1）→ spawn dsh web --port 0
 //   3. 等 stdout READY（dsh web: http://127.0.0.1:N）
-//   4. READY 先验证再导航（HTTP 探测确认）
-//   5. WebviewUrl::External("http://127.0.0.1:N") 建窗
+//   4. READY 先验证再导航（TCP 探测确认）
+//   5. win.navigate("http://127.0.0.1:N") 复用窗口（不重建；initialization_script
+//      每次导航重新注入，Splash/标题栏依然生效）
 
 // 分层（SPT 架构借鉴，2026-08-18 重构）：
 //   managers/ = 壳 Manager（tray/node/window/single_instance）
@@ -437,115 +439,21 @@ pub fn run() {
             #[cfg(target_os = "windows")]
             register_toast_aumid();
 
-            // ── M4 流程（T4.4 SOP §5.4 步骤 4）──
-            // 1. 多实例门禁（T4.2 双通道）：预启 CLI dsh web 必拦截 / 确认。
-            if !enforce_multi_instance(app) {
-                std::process::exit(1);
-            }
-
-            // 2. 托盘。
-            let _tray = tray::setup_tray(app)?;
-
-            // 2. 启动 Node sidecar（T4.1）。
-            let node_state = std::sync::Arc::new(node::NodeState::new());
-            match node::start_dsh(node_state.clone(), app.handle().clone()) {
-                Ok(_) => {
-                    info!("m4: dsh web sidecar starting…");
-                }
-                Err(e) => {
-                    warn!("m4: sidecar start failed ({e}), falling back to temporary page");
-                    let win = window::build_main_window(app)?;
-                    let _ = theme::apply_theme(&win, tauri::Theme::Dark);
-                    restore_window_state(&win);
-                    // 回退 1：sidecar 未 spawn（start_dsh Err），无需 kill；
-                    // 但 smoke 收尾前必须已托管 NodeState（maybe_smoke_exit 经
-                    // stop_dsh 收尾依赖托管，未托管时退化为只写 marker）。
-                    app.manage(node_state);
-                    maybe_smoke_exit(app);
-                    return Ok(());
-                }
-            }
-            // 成功路径也需托管 NodeState：托盘命令管道（send_tray_command）经
-            // app.state 取 stdin 句柄（rc.14 tray-helper 模式）。
-            app.manage(node_state.clone());
-
-            // 3. 等 READY（dsh web: http://127.0.0.1:N）。
-            //    start_dsh 里后台线程解析 stdout，state.port 在 READY 后更新。
-            //    轮询 state.port（最多 60s）。
-            let port = {
-                let start = std::time::Instant::now();
-                loop {
-                    let p = *node_state.port.lock().unwrap();
-                    if let Some(port) = p {
-                        break port;
-                    }
-                    if start.elapsed().as_secs() > 60 {
-                        warn!("m4: READY timeout, falling back to temporary page");
-                        let win = window::build_main_window(app)?;
-                        restore_window_state(&win);
-                        let _ = theme::apply_theme(&win, tauri::Theme::Dark);
-                        app.manage(node_state.clone());
-                        maybe_smoke_exit(app);
-                        // 回退 2：sidecar 已 spawn（READY 超时）→ 先杀进程防孤儿占用
-                        // 端口；supervisor 见 child 槽位被消费后静默待命（不重启）。
-                        node::kill_sidecar(&node_state);
-                        return Ok(());
-                    }
-                    std::thread::sleep(std::time::Duration::from_millis(200));
-                }
-            };
-
-            info!("m4: sidecar READY on port {port}");
-
-            // 4. READY 先验证再导航（强制步骤）。
-            if let Err(e) = wait_for_ready(port) {
-                warn!("m4: READY verification failed ({e}), falling back");
-                let win = window::build_main_window(app)?;
-                restore_window_state(&win);
-                let _ = theme::apply_theme(&win, tauri::Theme::Dark);
-                app.manage(node_state.clone());
-                maybe_smoke_exit(app);
-                // 回退 3：sidecar 已 spawn（验证失败）→ 先杀进程防孤儿占用端口；
-                // supervisor 见 child 槽位被消费后静默待命（不重启）。
-                node::kill_sidecar(&node_state);
-                return Ok(());
-            }
-
-            // 5. 导航到 dsh web URL（WebviewUrl::External）。
-            let url = format!("http://127.0.0.1:{port}");
-            info!("m4: navigating to {}", url);
-
-            // 构建窗口指向 dsh web（而非临时页）。
-            // WebviewUrl::External 解析为远程 URL。
-            let external_url = tauri::WebviewUrl::External(url.parse().map_err(|e| {
-                format!("invalid sidecar URL: {e}")
-            })?);
-
-            // 注入壳初始化脚本（自绘标题栏 42px + 托盘菜单 + 声音，见 shell-init.js）。
-            // D-2 通道：页面→Rust 走 invoke 命令；Rust→页面走 win.eval。
-            let init_script = include_str!("shell-init.js");
-
-            let win = tauri::WebviewWindowBuilder::new(app, "main", external_url)
-                .title("DeepSeek Harness Hub")
-                .inner_size(1440.0, 810.0)  // 3/4 屏幕（M2 window 计算值）
-                .min_inner_size(480.0, 360.0)
-                .center()
-                .decorations(false)
-                .transparent(false)
-                // Q4：浏览器侧 HTMLAudio 播放提示音——WebView2 默认自动播放策略
-                // 可能拦截无用户手势的音频，放开限制（声音在 DSH_CMD 通道触发）。
-                .additional_browser_args("--autoplay-policy=no-user-gesture-required")
-                .initialization_script(init_script)
-                .build()?;
-
+            // ── M4 流程（T4.4 SOP §5.4 步骤 4，先建窗 → 后台准备 → READY 后 navigate）──
+            // 0. 先建窗（占位页立即显示，不再等 READY）：WebviewUrl::default() =
+            //    frontendDist ../dev/index.html（M3 临时页）；build_main_window 注入
+            //    shell-init.js（标题栏/Splash/声音）+ autoplay 放行。READY 后
+            //    win.navigate 复用本窗口（不重建），initialization_script 每次导航
+            //    重新注入，Splash/标题栏依然生效。
+            let win = window::build_main_window(app)?;
             restore_window_state(&win);
-            // 6. 应用主题（M2 DWM）。
-            theme::apply_theme(&win, tauri::Theme::Dark)?;
+            if let Err(e) = theme::apply_theme(&win, tauri::Theme::Dark) {
+                warn!("window: apply theme failed: {}", e);
+            }
 
-            // T4.4：--smoke 诊断模式 —— 建窗成功即验证通过，写 quit.marker 后自动退出。
-            maybe_smoke_exit(app);
-
-            // 7. 事件接线（M2 resize + M3 closeToTray）。
+            // 事件接线（M2 resize 记忆 + T3.2 closeToTray/minimizeToTray；原 READY
+            // 后建窗段落，逻辑原样搬移至此——占位页期间即生效）。注意：事件闭包
+            // move 的是 win 的 clone，原 win 保留给后续 win.navigate 使用。
             let win_handle = win.clone();
             let prev_max = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(
                 win.is_maximized().unwrap_or(false),
@@ -582,7 +490,6 @@ pub fn run() {
             // 用 on_window_event + api.prevent_close()：只有 JS 侧有 listener 时
             // tauri 才 prevent_close（manager/window.rs has_js_listener 检查），
             // Rust 侧 win.listen 不满足该条件，窗口会真正关闭导致进程退出。
-            let win_handle = win.clone();
             let on_close_win = win.clone();
             let on_min_win = win.clone();
             let on_sync_app = win.app_handle().clone();
@@ -616,7 +523,95 @@ pub fn run() {
                     _ => {}
                 }
             });
-            let _ = win_handle;
+
+            // T4.4：--smoke 诊断模式 —— 建窗成功即验证通过（占位页已显示），
+            // 写 quit.marker + process::exit(0)。此时 sidecar 尚未启动，无需
+            // stop_dsh 收尾（也未托管 NodeState，maybe_smoke_exit 走写 marker 分支）。
+            // 普通启动零开销返回。
+            maybe_smoke_exit(app);
+
+            // 1. 多实例门禁（T4.2 双通道）：预启 CLI dsh web 必拦截 / 确认。
+            //    对话框显示在已建窗口之上（用户能看到）。
+            if !enforce_multi_instance(app) {
+                std::process::exit(1);
+            }
+
+            // 2. 托盘。
+            let _tray = tray::setup_tray(app)?;
+
+            // 3. 启动 Node sidecar（T4.1）。
+            let node_state = std::sync::Arc::new(node::NodeState::new());
+
+            // 失败回退（start_dsh Err / READY 超时 / wait_for_ready 失败 / navigate
+            // 失败共用）：复用已显示的占位窗口（不重建），restore + theme 幂等；
+            // manage 仅在未托管时执行；kill_sidecar 在 sidecar 未 spawn 时是 no-op
+            // （child 槽位空），已 spawn 时防孤儿进程占用端口。
+            let fallback = |reason: &str| {
+                warn!("m4: {reason} — keeping placeholder page");
+                restore_window_state(&win);
+                let _ = theme::apply_theme(&win, tauri::Theme::Dark);
+                if app.try_state::<std::sync::Arc<node::NodeState>>().is_none() {
+                    app.manage(node_state.clone());
+                }
+                maybe_smoke_exit(app);
+                node::kill_sidecar(&node_state);
+            };
+
+            match node::start_dsh(node_state.clone(), app.handle().clone()) {
+                Ok(_) => {
+                    info!("m4: dsh web sidecar starting…");
+                }
+                Err(e) => {
+                    fallback(&format!("sidecar start failed ({e})"));
+                    return Ok(());
+                }
+            }
+            // 成功路径也需托管 NodeState：托盘命令管道（send_tray_command）经
+            // app.state 取 stdin 句柄（rc.14 tray-helper 模式）。
+            app.manage(node_state.clone());
+
+            // 4. 等 READY（dsh web: http://127.0.0.1:N）。
+            //    start_dsh 里后台线程解析 stdout，state.port 在 READY 后更新。
+            //    轮询 state.port（最多 60s）；窗口已显示（占位页），超时走回退。
+            let port = {
+                let start = std::time::Instant::now();
+                loop {
+                    let p = *node_state.port.lock().unwrap();
+                    if let Some(port) = p {
+                        break port;
+                    }
+                    if start.elapsed().as_secs() > 60 {
+                        fallback("READY timeout (60s)");
+                        return Ok(());
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(200));
+                }
+            };
+
+            info!("m4: sidecar READY on port {port}");
+
+            // 5. READY 先验证再导航（强制步骤，T4.4）。
+            if let Err(e) = wait_for_ready(port) {
+                fallback(&format!("READY verification failed ({e})"));
+                return Ok(());
+            }
+
+            // 6. 导航到 dsh web URL（复用已显示窗口，不重建窗口）。
+            //    initialization_script 在每次导航重新注入（shell-init.js 标题栏/
+            //    Splash/声音在 dsh web 页同样生效）。
+            let url = format!("http://127.0.0.1:{port}");
+            info!("m4: navigating to {}", url);
+            let external_url = match tauri::Url::parse(&url) {
+                Ok(u) => u,
+                Err(e) => {
+                    fallback(&format!("invalid sidecar URL: {e}"));
+                    return Ok(());
+                }
+            };
+            if let Err(e) = win.navigate(external_url) {
+                fallback(&format!("navigate failed ({e})"));
+                return Ok(());
+            }
 
             // Tray "Open workspace" 路径回传：client 经 invoke('open_workspace_path')
             // 上行（D-2：事件系统在 remote origin 不可用，页面→Rust 走命令）。

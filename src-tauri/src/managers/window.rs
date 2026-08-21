@@ -1,7 +1,8 @@
 // window.rs — M2 窗口管理（T2.1，项 6：光标屏 3/4）
 //
 // 模块类别：Manager（壳）
-// 职责：主窗口构建（尺寸解析 / 最小尺寸 / 居中 / 最大化恢复），
+// 职责：主窗口构建（尺寸解析 / 最小尺寸 / 居中 / 最大化恢复）+ 壳初始化脚本
+//       注入（shell-init.js 标题栏/Splash/声音）+ autoplay 放行，
 //       对齐 desktop.ts L231-251 / L335-337 窗口逻辑。
 // 迁移映射：src/desktop.ts 的 openDesktopShell / ensureVisible。
 // 外部接口：build_main_window(app) -> WebviewWindow；default_three_quarter_size(app_handle)。
@@ -101,6 +102,12 @@ pub fn build_main_window(app: &App) -> Result<WebviewWindow, Box<dyn std::error:
         DEFAULT_WIDTH as u32, DEFAULT_HEIGHT as u32
     );
 
+    // 壳初始化脚本（shell-init.js：自绘标题栏 42px + Splash + 声音 + 主题跟随，
+    // 见 shell-init.js 头注释）。initialization_script 在每次导航（含 READY 后
+    // lib.rs 的 win.navigate 到 dsh web）都会重新注入 —— 占位页与 dsh web 页
+    // 共享标题栏/Splash（先建窗后 navigate 的 UX 前提）。
+    // Q4：浏览器侧 HTMLAudio 播放提示音——WebView2 默认自动播放策略可能拦截
+    // 无用户手势的音频，放开限制（声音在 DSH_CMD 通道触发）。
     let win = WebviewWindowBuilder::new(app, "main", WebviewUrl::default())
         .title("DeepSeek Harness Hub")
         .inner_size(calc_w, calc_h)
@@ -108,6 +115,8 @@ pub fn build_main_window(app: &App) -> Result<WebviewWindow, Box<dyn std::error:
         .center()
         .decorations(false)
         .transparent(false)
+        .additional_browser_args("--autoplay-policy=no-user-gesture-required")
+        .initialization_script(include_str!("../shell-init.js"))
         .build()?;
 
     Ok(win)
