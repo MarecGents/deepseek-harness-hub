@@ -39,8 +39,11 @@ pub fn setup_tray(app: &App) -> Result<TrayIcon, Box<dyn std::error::Error>> {
     app.manage(Mutex::new(TrayMenuHandles { toggle: toggle_item }));
 
     // 内嵌 PNG 图标（tauri `image` feature 解码 PNG）。
-    let icon_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("icons").join("32x32.png");
-    let icon = tauri::image::Image::from_path(icon_path).map_err(|e| format!("load tray icon: {e}"))?;
+    // include_bytes! 编译期内嵌：打包态不存在 CARGO_MANIFEST_DIR/icons/32x32.png
+    // 的文件路径（env! 展开为打包机的源路径，安装到新电脑后 from_path 必失败，
+    // 曾导致 setup 返回 Err → expect panic → 窗口刚显示进程就消失）。
+    let icon = tauri::image::Image::from_bytes(include_bytes!("../../icons/32x32.png"))
+        .map_err(|e| format!("load tray icon: {e}"))?;
 
     let tray = TrayIconBuilder::new()
         .icon(icon)
