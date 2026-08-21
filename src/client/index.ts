@@ -33,6 +33,7 @@ import { injectRightSidebarStyle } from './right-sidebar-style.ts'
 import { applySkin, fetchStoredSkin, hasUserPickedSkin } from './skins.ts'
 import { applyBackground, fetchStoredBackground, hasUserPickedBackground } from './backgrounds.ts'
 import { installPinnedConversations } from './pin-conversations.ts'
+import { installConversationRail } from './conversation-rail.ts'
 
 /**
  * Tray-bridge ready flag, set at module scope — the very first thing that
@@ -298,5 +299,14 @@ export function apply(ctx: ClientContext): void {
     ctx.effect(() => installPinnedConversations(ctx), 'dsh-hub: pinned conversations')
   } catch (error) {
     console.warn('[dsh-hub] pinned conversations install failed:', error)
+  }
+
+  // Conversation rail (对话定位条): a left gutter over the conversation
+  // column with one clickable bar per turn. Body-portal overlay; the effect
+  // disposer removes it on reload. Read-only against the session snapshot.
+  try {
+    ctx.effect(() => installConversationRail(ctx), 'dsh-hub: conversation rail')
+  } catch (error) {
+    console.warn('[dsh-hub] conversation rail install failed:', error)
   }
 }

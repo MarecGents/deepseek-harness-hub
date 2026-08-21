@@ -27,6 +27,14 @@
  * pruning only removes pins after two consecutive ready snapshots miss the id
  * (or an explicit unpin).
  *
+ * Full-action context menu: right-clicking any session row (official tree rows
+ * and pinned items alike) opens the hub session menu (session-menu.ts), and
+ * the official ⋯ row-actions trigger is intercepted so it opens the same
+ * menu. The pinned section's inline rename form (editingId state) is entered
+ * through the menu's 重命名任务 item; while editing, the debounced sync is
+ * paused so typing never flushes the draft, and a failed rename keeps the
+ * editor open for retry.
+ *
  * @module dsh-hub/client/pin-conversations
  */
 /** Pinned-conversations controller; install() returns the disposer. */
