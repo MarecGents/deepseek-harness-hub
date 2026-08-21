@@ -131,4 +131,120 @@ pub fn apply_desktop_icon(win: &WebviewWindow, icon_id: &str) {
         },
         Err(e) => log::warn!("theme: decode {} failed: {}", name, e),
     }
+
+    // Windows 任务栏按钮图标来自 AUMID/.lnk 关联（而非窗口 WM_SETICON）——
+    // 同步更新快捷方式与注册图标源，让任务栏/桌面快捷方式跟随所选图标。
+    #[cfg(target_os = "windows")]
+    update_shell_icon_sources(icon_id);
+}
+
+/// 找到所选图标的 .ico 文件路径（.lnk IconLocation 需要 .ico，不支持 .png）。
+/// 打包态：`$INSTDIR\icons\`（tauri.conf.json resources 打包）；dev 态：仓库 `src-tauri/icons\`。
+fn desktop_icon_ico_path(icon_id: &str) -> Option<std::path::PathBuf> {
+    let name = if icon_id == "default" {
+        "whale.ico".to_string()
+    } else {
+        format!("whale-girl-{}.ico", icon_id)
+    };
+    // 打包态：exe 相邻目录。
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            let cand = dir.join("icons").join(&name);
+            if cand.exists() {
+                return Some(cand);
+            }
+        }
+    }
+    // dev 态：仓库 icons。
+    let dev = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("icons").join(&name);
+    if dev.exists() {
+        return Some(dev);
+    }
+    None
+}
+
+/// 更新 Windows 任务栏图标来源：开始菜单 + 桌面 .lnk 的 IconLocation、
+/// AUMID 注册 IconUri，并广播 SHCNE_ASSOCCHANGED 让 Explorer 重读。
+/// 失败仅 warn（不得破坏图标设置链路）。
+#[cfg(target_os = "windows")]
+fn update_shell_icon_sources(icon_id: &str) {
+    use windows::core::{Interface, PCWSTR};
+    use windows::Win32::System::Com::{
+        CoCreateInstance, CoInitializeEx, CoUninitialize, IPersistFile, CLSCTX_INPROC_SERVER,
+        COINIT_APARTMENTTHREADED, STGM_READWRITE,
+    };
+    use windows::Win32::UI::Shell::{IShellLinkW, ShellLink, SHChangeNotify, SHCNE_ASSOCCHANGED, SHCNF_IDLIST};
+
+    let Some(ico) = desktop_icon_ico_path(icon_id) else {
+        log::warn!("theme: no .ico for '{}' (taskbar icon source not updated)", icon_id);
+        return;
+    };
+
+    // 定位两个 .lnk（与 register_toast_aumid 相同路径）。
+    let mut lnk_paths: Vec<std::path::PathBuf> = Vec::new();
+    if let Some(appdata) = std::env::var_os("APPDATA") {
+        let start_menu = std::path::Path::new(&appdata)
+            .join("Microsoft").join("Windows").join("Start Menu").join("Programs")
+            .join("DeepSeek Harness Hub.lnk");
+        lnk_paths.push(start_menu);
+    }
+    // 桌面（OneDrive 重定向用 SHGetKnownFolderPath 才准；此处近似 USERPROFILE\Desktop）。
+    if let Some(profile) = std::env::var_os("USERPROFILE") {
+        let desktop = std::path::Path::new(&profile).join("Desktop").join("DeepSeek Harness Hub.lnk");
+        if desktop.exists() {
+            lnk_paths.push(desktop);
+        }
+    }
+
+    let wide_ico: Vec<u16> = ico.to_string_lossy().encode_utf16().chain(std::iter::once(0)).collect();
+    unsafe {
+        if CoInitializeEx(None, COINIT_APARTMENTTHREADED).is_err() {
+            log::warn!("theme: CoInitializeEx failed");
+            return;
+        }
+        for lnk in &lnk_paths {
+            if !lnk.exists() {
+                continue;
+            }
+            let wide_lnk: Vec<u16> = lnk.to_string_lossy().encode_utf16().chain(std::iter::once(0)).collect();
+            let link: Result<IShellLinkW, _> = CoCreateInstance(&ShellLink, None, CLSCTX_INPROC_SERVER);
+            match link {
+                Ok(link) => {
+                    let pf: Result<IPersistFile, _> = link.cast();
+                    match pf {
+                        Ok(pf) => {
+                            if pf.Load(PCWSTR(wide_lnk.as_ptr()), STGM_READWRITE).is_ok() {
+                                link.SetIconLocation(PCWSTR(wide_ico.as_ptr()), 0).ok();
+                                let _ = pf.Save(PCWSTR(wide_lnk.as_ptr()), true);
+                                log::info!("theme: updated shortcut icon → {}", lnk.display());
+                            }
+                        }
+                        Err(e) => log::warn!("theme: cast IPersistFile failed: {}", e),
+                    }
+                }
+                Err(e) => log::warn!("theme: CoCreateInstance ShellLink failed: {}", e),
+            }
+        }
+        CoUninitialize();
+    }
+
+    // AUMID 注册 IconUri → 所选 .ico（任务栏按 AppUserModelId 关联取图标）。
+    {
+        use std::os::windows::process::CommandExt;
+        let key = "HKCU\\Software\\Classes\\AppUserModelId\\com.marecgents.dsh-hub";
+        let ico_str = ico.to_string_lossy().to_string();
+        let mut c = std::process::Command::new("reg");
+        c.args(["add", key, "/v", "IconUri", "/t", "REG_SZ", "/d", &ico_str, "/f"]);
+        c.creation_flags(0x08000000);
+        match c.output() {
+            Ok(out) if out.status.success() => log::info!("theme: AUMID IconUri → {}", ico_str),
+            Ok(out) => log::warn!("theme: AUMID IconUri reg failed: {}", String::from_utf8_lossy(&out.stderr)),
+            Err(e) => log::warn!("theme: AUMID IconUri reg error: {}", e),
+        }
+    }
+
+    // 广播变更让 Explorer 重读（任务栏/快捷方式图标刷新）。
+    unsafe {
+        SHChangeNotify(SHCNE_ASSOCCHANGED, SHCNF_IDLIST, None, None);
+    }
 }

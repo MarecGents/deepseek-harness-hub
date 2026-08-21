@@ -23,7 +23,8 @@
     "externalBin": [],
     "resources": [
       "../scripts/dsh-deps-install.ps1",
-      "../scripts/assemble-profile.mjs"
+      "../scripts/assemble-profile.mjs",
+      "icons/*.ico"
     ],
     "icon": [
       "icons/32x32.png",

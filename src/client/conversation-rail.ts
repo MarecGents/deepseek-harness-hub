@@ -20,8 +20,17 @@
 
 import { RAIL_CSS_CLASSES as c, injectConversationRailStyle } from './conversation-rail-style.ts'
 
-/** Stable anchor for the dsh AppFrame conversation slot. */
-const CONVERSATION_SLOT_SELECTOR = '[data-slot="conversation"]'
+/**
+ * Stable anchor for the conversation column.
+ * The official slot wrapper `[data-slot="conversation"]` is rendered with
+ * `display: contents` (dsh ui-renderer scoped-slots ANCHOR_STYLE) — it has NO
+ * box, `getBoundingClientRect()` returns all-zero geometry, so the rail's
+ * zero-size guard would keep it hidden forever (verified 0.1.1 shipped
+ * client.js). Use the wrapper's child (`ConversationRoot`), the same pattern
+ * backgrounds.ts already relies on. `[data-conversation-scroll]` (0.1.x scroll
+ * container) is the fallback when the slot system is absent.
+ */
+const CONVERSATION_SLOT_SELECTOR = '[data-slot="conversation"] > div, [data-conversation-scroll]'
 
 /** Loose runtime service views (mirrors the project's client style). */
 interface SessionSummaryLike {
@@ -75,6 +84,10 @@ export function installConversationRail(ctx: unknown): () => void {
   }
 
   function findScrollContainer(from: HTMLElement): HTMLElement | null {
+    // 0.1.x: the conversation scroll viewport is `data-conversation-scroll`
+    // (rendered by dsh-client-ui-conversation); prefer it over the generic walk.
+    const explicit = from.querySelector<HTMLElement>('[data-conversation-scroll]')
+    if (explicit !== null) return explicit
     const candidates = [from, ...Array.from(from.querySelectorAll<HTMLElement>('*'))]
     for (const el of candidates) {
       if (el.scrollHeight > el.clientHeight + 1) {
