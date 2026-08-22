@@ -421,10 +421,6 @@ pub fn run() {
             notify::notify_task_complete,
         ])
         .setup(|app| {
-            // Q4：toast 显示所需 AUMID 注册（Windows 未打包应用，幂等）。
-            #[cfg(target_os = "windows")]
-            register_toast_aumid();
-
             // ── M4 流程（T4.4 SOP §5.4 步骤 4，先建窗 → 后台准备 → READY 后 navigate）──
             // 0. 先建窗（占位页立即显示，不再等 READY）：WebviewUrl::default() =
             //    frontendDist ../dev/index.html（M3 临时页）；build_main_window 注入
@@ -442,6 +438,20 @@ pub fn run() {
             // 期间图标即正确。
             let desktop_icon = state::read_shell_config_str("desktopIcon", "default");
             theme::apply_desktop_icon(&win, &desktop_icon);
+
+            // Q4：toast 显示所需 AUMID 注册（Windows 未打包应用，幂等）。
+            // 移后台线程：多次 reg.exe spawn + COM 快捷方式保存曾排在建窗前的
+            // 关键路径上（拖慢首绘 ~0.5s）。注册建好 .lnk 后强制补一次壳图标源
+            // 同步——apply_desktop_icon 与本线程有竞态窗口（当时 .lnk 可能还没
+            // 建好，IconLocation 更新被跳过），sync_shell_icon_sources 绕过去重。
+            #[cfg(target_os = "windows")]
+            {
+                let icon_id = desktop_icon.clone();
+                std::thread::spawn(move || {
+                    register_toast_aumid();
+                    theme::sync_shell_icon_sources(&icon_id);
+                });
+            }
 
             // 事件接线（M2 resize 记忆 + T3.2 closeToTray/minimizeToTray；原 READY
             // 后建窗段落，逻辑原样搬移至此——占位页期间即生效）。注意：事件闭包
@@ -589,7 +599,11 @@ pub fn run() {
                     warn!("m4: READY verification failed ({e}), staying on placeholder page");
                     return;
                 }
-                // 导航到 dsh web URL（复用已显示窗口）。
+                // 导航到 dsh web URL（复用已显示窗口）。平滑过渡：占位页先淡出
+                // （220ms，dev/index.html 的 __mgFadeout），再切换到 dsh 页——
+                // dsh 页自带同款 Splash 覆盖层（同底色/同鲸鱼脉冲）接管视觉。
+                let _ = nav_win.eval("window.__mgFadeout && window.__mgFadeout()");
+                std::thread::sleep(std::time::Duration::from_millis(240));
                 let url = format!("http://127.0.0.1:{port}");
                 info!("m4: navigating to {}", url);
                 match tauri::Url::parse(&url) {
