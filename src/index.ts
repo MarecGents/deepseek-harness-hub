@@ -42,8 +42,10 @@ import { makeConfigRoutes } from './server/config-api.js'
 import { hasStoredWindowSize, migrateLegacyPaths, readShellConfig, storedNotifyOnTaskComplete, storedSoundEnabled } from './services/config-store.js'
 import { makeWorkspaceRoutes } from './server/workspace-api.js'
 import { makePinsRoutes } from './server/pins-api.js'
+import { makeSessionPathsRoutes } from './server/session-paths-api.js'
 import { makeBackgroundsRoutes } from './server/backgrounds-api.js'
 import { makeSoundsRoutes } from './server/sounds-api.js'
+import { makeIconsRoutes } from './server/icons-api.js'
 import { getFocusedSessionState, setupSessionRuntime, type SessionShellLike } from './controllers/session-runtime.ts'
 import { setupTrayPipe } from './controllers/tray-pipe.ts'
 import { effectiveConfig, getActiveCwd, newTaskInWeb, openWorkspaceDir, sendDshCmd, setActiveCwd } from './controllers/shell-runtime.ts'
@@ -159,11 +161,17 @@ export function apply(ctx: Context, config: Config): void {
       ...makeConfigRoutes((saved, changed) => {
         shell?.applyTheme(saved.theme)
         if (changed?.size === true) shell?.applySize(saved.width, saved.height)
+        // S6: re-apply the desktop icon on every config write so the
+        // settings-card pick takes effect even if the page invoke down-link
+        // was unavailable (dev-server / non-Tauri embed); idempotent.
+        shell?.setDesktopIcon(saved.desktopIcon)
       }),
       ...makeWorkspaceRoutes(),
       ...makePinsRoutes(),
+      ...makeSessionPathsRoutes(),
       ...makeBackgroundsRoutes(),
       ...makeSoundsRoutes(),
+      ...makeIconsRoutes(),
     ].map((route) => server.register(route))
     routesDisposed = () => {
       for (const dispose of disposers) void dispose()

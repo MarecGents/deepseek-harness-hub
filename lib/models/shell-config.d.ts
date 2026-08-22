@@ -42,6 +42,12 @@ export interface ShellConfig {
     skin: string;
     /** Active background image id ('none' = no image, native background). */
     background: string;
+    /**
+     * Active desktop/window icon id ('default' = theme-aware DeepSeek whale
+     * 白鲸/黑鲸, or one of the whale-girl presets; unknown ids fall back to the
+     * white whale on the Rust side).
+     */
+    desktopIcon: string;
 }
 /** Defaults (mirror the plugin Config composition values). */
 export declare const DEFAULT_SHELL_CONFIG: ShellConfig;

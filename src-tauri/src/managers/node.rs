@@ -83,6 +83,14 @@ fn dispatch_dsh_cmd(app: &tauri::AppHandle, cmd_json: &str) {
                 }
             }
         }
+        // S6：设置桌面图标（tauri-shell.ts setDesktopIcon 上行）。设置卡页面
+        // 同时走页面→Rust invoke（ACL allow-set-desktop-icon）；本臂保证 host
+        // 侧 config onChange 重放（DSH_CMD）也生效，二者幂等。
+        "set_desktop_icon" => {
+            if let Some(icon_id) = value.get("iconId").and_then(|v| v.as_str()) {
+                let _ = crate::commands::set_desktop_icon(app.clone(), icon_id.to_string());
+            }
+        }
         "notify_task_complete" => {
             let title = value.get("title").and_then(|v| v.as_str()).unwrap_or("DeepSeek Harness");
             let body = value.get("body").and_then(|v| v.as_str()).unwrap_or("任务完成");
@@ -318,34 +326,50 @@ fn resolve_dsh_entry(dsh_cmd: &Path) -> Result<(PathBuf, PathBuf), String> {
 }
 
 /// 仓库根目录（assemble-profile.mjs 所在处）：
-/// 开发态 = CARGO_MANIFEST_DIR（src-tauri/）的父目录；
-/// 已打包态 = exe 相邻目录（$INSTDIR）。
+/// 已打包态 = exe 相邻目录（$INSTDIR）；开发态 = CARGO_MANIFEST_DIR（src-tauri/）的父目录。
 ///
-/// M5：打包态 resources 实际落在 `$INSTDIR\_up_\scripts\`（Tauri 2 NSIS 约定），
-/// 故以 `_up_\scripts\assemble-profile.mjs` 存在判打包态；dev 态在仓库根 `scripts\`。
+/// M5：打包态 resources 落在 `$INSTDIR\_up_\`（Tauri 2 NSIS 约定：tauri.conf.json
+/// 里的 `../` 前缀资源映射为 `_up_`），含 scripts + **完整插件包**（package.json +
+/// lib + assets，踩坑 #63 后打包）；dev 态在仓库根 `scripts\`。
+///
+/// ⚠️ 判断顺序**完整打包态优先**：exe 相邻 `_up_` 同具 package.json + lib +
+/// scripts/assemble-profile.mjs 才判打包——这是安装器布局的最强信号，且天然排除
+/// 历史「target/debug 残缺 _up_ 残留（仅 scripts）误判」事故（踩坑冒烟实测过）。
+/// 此前「dev 态优先」的顺序有个缺陷：在打包机上直接运行安装后的 exe 时，
+/// 编译期嵌入的 CARGO_MANIFEST_DIR 路径仍然存在，会永远误判为 dev、junction
+/// 指向仓库而非安装包自带的 _up_ 全量插件。
+/// 注：`cargo tauri build` 会把 resources staging 到 target/release/_up_（完整
+/// 布局），因此打包机上直接运行 target/release/dsh-hub.exe 也判打包态——语义
+/// 自洽（release 产物 + 同期冻结的插件副本，与安装到目标机的行为一致）；
+/// `cargo tauri dev` 用 target/debug（无 staging）→ 正常判 dev 态。
 fn repo_root() -> PathBuf {
-    // 打包态：exe 相邻目录（$INSTDIR）。
+    let dev_root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap_or(Path::new("."));
+    // 打包态：exe 相邻 _up_ 为完整插件包（$INSTDIR）。
     if let Ok(exe) = std::env::current_exe() {
         if let Some(exe_dir) = exe.parent() {
-            if exe_dir
-                .join("_up_")
-                .join("scripts")
-                .join("assemble-profile.mjs")
-                .exists()
+            let up = exe_dir.join("_up_");
+            if up.join("package.json").is_file()
+                && up.join("lib").is_dir()
+                && up.join("scripts").join("assemble-profile.mjs").is_file()
             {
                 return exe_dir.to_path_buf();
             }
         }
     }
     // 开发态：CARGO_MANIFEST_DIR 的父目录（src-tauri/ 的上级 = 仓库根）。
-    let dev_root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap_or(Path::new("."));
     if dev_root.join("scripts").join("assemble-profile.mjs").exists() {
         return dev_root.to_path_buf();
     }
-    std::env::current_exe()
+    // 兜底：exe 相邻目录（残缺 _up_/scripts 也能定位装配脚本），最后 dev 路径。
+    if let Some(exe_dir) = std::env::current_exe()
         .ok()
         .and_then(|exe| exe.parent().map(Path::to_path_buf))
-        .unwrap_or_else(|| dev_root.to_path_buf())
+    {
+        if exe_dir.join("_up_").join("scripts").join("assemble-profile.mjs").exists() {
+            return exe_dir;
+        }
+    }
+    dev_root.to_path_buf()
 }
 
 /// assemble-profile.mjs 的绝对路径：打包态在 `$INSTDIR\_up_\scripts\`，dev 态在仓库根 `scripts\`。
@@ -404,15 +428,29 @@ pub fn assemble_profile() -> Result<(), String> {
         ));
     }
     info!("node: assembling profile via {}", assemble_script.display());
-    // 打包态：junction 指向私有插件包目录（安装器引导脚本
-    // `npm i -g @marecgents/dsh-hub --prefix <repo_root>\dsh-hub-win` 的落点）；
-    // dev 态：指向仓库根（插件内容就在仓库）。私有包目录不存在则回退 repo_root。
+    // junction 目标三级优先（踩坑 #63：安装器曾从 npm registry 拉旧版插件 →
+    // 安装包永远缺最新功能）：
+    //   1. `$INSTDIR\_up_`——安装器 resources 自带的全量插件包（package.json +
+    //      lib + assets + scripts，构建期随壳一起打包，与壳永远同版本）；
+    //   2. `dsh-hub-win\node_modules\@marecgents\dsh-hub`——安装期引导脚本从
+    //      registry 装的副本（老安装升级 / _up_ 资源缺失时的兜底，可能滞后）；
+    //   3. repo_root——dev 态（插件内容就在仓库）。
+    // 既有 junction 指向旧目标时，assemble-profile.mjs 会自动 relink（自愈）。
+    let up_pkg = repo_root.join("_up_");
     let private_pkg = repo_root
         .join("dsh-hub-win")
         .join("node_modules")
         .join("@marecgents")
         .join("dsh-hub");
-    let package_root = if private_pkg.is_dir() { private_pkg } else { repo_root.clone() };
+    let package_root = if up_pkg.join("package.json").is_file() && up_pkg.join("lib").is_dir() {
+        info!("node: plugin package root = installer-bundled _up_ ({})", up_pkg.display());
+        up_pkg
+    } else if private_pkg.is_dir() {
+        warn!("node: _up_ plugin payload missing, falling back to npm-installed copy (may be stale)");
+        private_pkg
+    } else {
+        repo_root.clone()
+    };
     // 直接 spawn node（不走 cmd /c）：安装目录可能含空格（如
     // "D:\Tools\DeepSeek Harness Hub"），cmd /c 拼路径不带引号会拆断
     // （Cannot find module 'D:\Tools\DeepSeek'）。node 优先用私有 node

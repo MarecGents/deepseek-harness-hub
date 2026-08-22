@@ -27,6 +27,10 @@ export const PIN_CSS_CLASSES = {
   itemTitle: 'mg-pin-item-title',
   itemIcon: 'mg-pin-item-icon',
   itemUnpin: 'mg-pin-item-unpin',
+  itemEdit: 'mg-pin-item-edit',
+  itemEditInput: 'mg-pin-item-edit-input',
+  itemEditSave: 'mg-pin-item-edit-save',
+  itemEditCancel: 'mg-pin-item-edit-cancel',
   pinBtn: 'mg-pin-btn',
   pinBtnOn: 'mg-pin-btn--on',
   rowPinned: 'mg-pin-row-pinned',
@@ -150,6 +154,57 @@ const STYLE_TEXT = `
 .${css.itemUnpin}:focus-visible {
   outline: 2px solid var(--dsw-alias-brand-primary, #3964fe);
   outline-offset: -1px;
+}
+
+/* Inline rename form replaces the open/unpin row while editing. */
+.${css.itemEdit} {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.${css.itemEditInput} {
+  flex: 1;
+  min-width: 0;
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--dsw-alias-border-l2, rgb(0 0 0 / 12%));
+  border-radius: 6px;
+  background: var(--dsw-alias-bg-base, #ffffff);
+  color: var(--dsw-alias-label-primary, #0f1115);
+  font: inherit;
+  font-size: 13px;
+  line-height: 28px;
+  outline: none;
+}
+.${css.itemEditInput}:focus {
+  border-color: var(--dsw-alias-brand-primary, #3964fe);
+  box-shadow: 0 0 0 1px var(--dsw-alias-brand-primary, #3964fe);
+}
+.${css.itemEditSave},
+.${css.itemEditCancel} {
+  flex: none;
+  height: 26px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 6px;
+  background: var(--dsw-alias-interactive-bg-hover, rgb(0 0 0 / 6%));
+  color: var(--dsw-alias-label-primary, #0f1115);
+  font-size: 12px;
+  line-height: 26px;
+  cursor: pointer;
+}
+.${css.itemEditSave}:hover,
+.${css.itemEditCancel}:hover {
+  background: var(--dsw-alias-interactive-bg-hover, rgb(0 0 0 / 10%));
+}
+.${css.itemEditSave} {
+  background: var(--dsw-alias-brand-primary, #3964fe);
+  color: var(--dsw-alias-brand-primary-invert, #ffffff);
+}
+.${css.itemEditSave}:hover {
+  background: color-mix(in srgb, var(--dsw-alias-brand-primary, #3964fe) 88%, #000000);
 }
 
 /* Row pin button: zero-width expand (keyboard-reachable, zero layout shift). */

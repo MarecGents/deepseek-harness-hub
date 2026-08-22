@@ -23,7 +23,13 @@
     "externalBin": [],
     "resources": [
       "../scripts/dsh-deps-install.ps1",
-      "../scripts/assemble-profile.mjs"
+      "../scripts/assemble-profile.mjs",
+      "../package.json",
+      "../cordis.patch.yml",
+      "../lib/**/*",
+      "../assets/**/*",
+      "../bin/**/*",
+      "icons/*.ico"
     ],
     "icon": [
       "icons/32x32.png",

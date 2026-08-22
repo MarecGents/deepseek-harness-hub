@@ -1,6 +1,6 @@
 # AGENTS.md — dsh-hub 开发约束（总纲）
 
-> **本文件是 dsh-hub 的全部开发 harness（总纲）。** 开发/修改任何部分之前，**必须**先阅读本文件，并阅读对应职能目录下的子 harness（见文末「分层 harness 索引」）。
+> **本文件是 dsh-hub 的全部开发 harness（总纲）。** 开发/修改任何部分之前，**必须**先阅读本文件，并阅读 [PROCESS_QUALITY.md](PROCESS_QUALITY.md)（SOP + 质量管理流程约束，铁律 7）与对应职能目录下的子 harness（见文末「分层 harness 索引」）。
 >
 > dsh-hub 是 **DeepSeek Harness（dsh）的桌面端框架**：以原生窗口（Tauri 2.x，dev-v2 Tauri-only；WebView2 时代壳已删除）承载 dsh Web UI，并提供系统托盘、主题同步、窗口记忆、右侧栏、会话通知等桌面能力。它是 **dsh 生态的插件 + 桌面壳**，**绝不修改 dsh 底层源码**。
 
@@ -19,6 +19,7 @@
 4. **多实例防护不可削弱**：默认拒绝与已运行的 dsh 共存（`allowMultipleInstances=false`）。多个 dsh 共享 `$DSH_HOME` 会话存储，同会话双写会损坏会话日志（seq 冲突，已实际发生并需手工修复，见 [docs/关键踩坑记录.md#24](docs/关键踩坑记录.md)）。任何修改不得默认放开共存。
 5. **settings 命名空间约束**：`settingsNamespace('dsh-hub')` 强制小写 kebab-case；带 scope 的包名（`@marecgents/dsh-hub`）不能用作 settings ns 或 API 前缀。第三方配置 UI 一律走插件自有 HTTP 路由 `/api/dsh-hub/*`。
 6. **发布前检查不可跳过**：每次 `npm publish` 之前**必须**运行 `node scripts/verify-release.mjs` 且**全部 PASS**（含「干净安装 → 首启装配」冒烟），FAIL 立即停止排查，**禁止发布**。发布流程与检查细则见 §5（rc.10–rc.13 曾因跳过"全新环境安装验证"连发 4 版首启即崩的包，见 [docs/关键踩坑记录.md#33](docs/关键踩坑记录.md)）。
+7. **开发流程必须遵循 PROCESS_QUALITY**：任何开发任务（迁移、功能、修复、文档、发布）**必须严格遵循 [PROCESS_QUALITY.md](PROCESS_QUALITY.md) 的 SOP（标准作业程序）与质量管理规范**——含阶段输入/输出/门禁（Gate）逐项核查、验收表、回归基线、DMAIC 改进循环。**禁止跳过阶段门禁**；与本文件铁律冲突时，以本文件（AGENTS.md）为准。
 
 ---
 

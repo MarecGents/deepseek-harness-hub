@@ -7,8 +7,11 @@
 //     菜单项：显示/隐藏主界面（label 随窗口可见性动态）、打开工作区、新建会话、
 //     退出。打开工作区/新建会话经 win.eval 派发同页 CustomEvent → client 处理
 //     （D-2：事件系统在 remote origin 不可用，Rust→页面用 eval）。
+//   - 托盘图标随用户桌面图标选择（S6）：'default' 主题翻转白/黑鲸、鲸鱼娘固定，
+//     与窗口/任务栏图标共用 theme::desktop_icon_png 内嵌资产。
 //
-// 外部接口：setup_tray(app)；sync_toggle_label(app)（窗口可见性变化时刷新菜单 label）。
+// 外部接口：setup_tray(app)；set_tray_icon(app, icon_id)；
+//           sync_toggle_label(app)（窗口可见性变化时刷新菜单 label）。
 
 use std::sync::Mutex;
 use tauri::{
@@ -23,6 +26,9 @@ const MENU_TOGGLE: &str = "toggle";
 const MENU_OPEN_WORKSPACE: &str = "open-workspace";
 const MENU_NEW_TASK: &str = "new-task";
 const MENU_QUIT: &str = "quit";
+
+/// 托盘 ID（set_tray_icon 经 tray_by_id 定位；默认 id 不稳定，显式声明）。
+const TRAY_ID: &str = "dsh-hub-tray";
 
 /// 托盘菜单句柄（供 sync_toggle_label 动态改「显示/隐藏主界面」label）。
 pub struct TrayMenuHandles {
@@ -45,7 +51,7 @@ pub fn setup_tray(app: &App) -> Result<TrayIcon, Box<dyn std::error::Error>> {
     let icon = tauri::image::Image::from_bytes(include_bytes!("../../icons/32x32.png"))
         .map_err(|e| format!("load tray icon: {e}"))?;
 
-    let tray = TrayIconBuilder::new()
+    let tray = TrayIconBuilder::with_id(TRAY_ID)
         .icon(icon)
         .menu(&menu)
         .on_menu_event(handle_menu_event)
@@ -89,6 +95,28 @@ pub fn setup_tray(app: &App) -> Result<TrayIcon, Box<dyn std::error::Error>> {
     sync_toggle_label(app.handle());
     info!("tray: setup complete (native menu, left-click=show)");
     Ok(tray)
+}
+
+/// 托盘图标跟随用户桌面图标选择（S6，PR #25）：'default' 随主题翻转白/黑鲸，
+/// 鲸鱼娘固定。与窗口 SMALL/BIG 图标共用 theme::desktop_icon_png 内嵌资产
+/// （同份 static，零额外打包）。失败仅 warn（不得破坏设置链路）。
+pub fn set_tray_icon(app: &tauri::AppHandle, icon_id: &str) {
+    let Some(tray) = app.tray_by_id(TRAY_ID) else {
+        log::warn!("tray: set_tray_icon skipped (tray '{}' not found)", TRAY_ID);
+        return;
+    };
+    let dark = app
+        .get_webview_window("main")
+        .map(|w| w.theme().unwrap_or(tauri::Theme::Dark) == tauri::Theme::Dark)
+        .unwrap_or(true);
+    let (bytes, name) = crate::theme::desktop_icon_png(dark, icon_id);
+    match tauri::image::Image::from_bytes(bytes) {
+        Ok(img) => match tray.set_icon(Some(img)) {
+            Ok(_) => info!("tray: icon set ({})", name),
+            Err(e) => log::warn!("tray: set_icon({}) failed: {}", name, e),
+        },
+        Err(e) => log::warn!("tray: decode {} failed: {}", name, e),
+    }
 }
 
 /// 刷新「显示/隐藏主界面」菜单项 label（Q1）。

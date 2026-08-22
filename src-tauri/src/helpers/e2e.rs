@@ -120,6 +120,18 @@ fn run_e2e(win: WebviewWindow) {
     let _ = win.eval("window.__TAURI_INTERNALS__.invoke('play_sound', { kind: 'success' }).catch(function(){});");
     sleep(1);
 
+    // S6：桌面图标命令（页面→Rust invoke，ACL allow-set-desktop-icon）。
+    // 已知 id → dsh.log 应出现 "desktop icon set (whale-girl-sad)"；未知 id →
+    // "unknown desktop icon id"（回退白鲸）——两行日志即命令+回退链路的证据。
+    info!("e2e: invoking set_desktop_icon (known + unknown ids)");
+    let _ = win.eval("window.__TAURI_INTERNALS__.invoke('set_desktop_icon', { iconId: 'whale-girl-sad' }).catch(function(){});");
+    sleep(1);
+    let _ = win.eval("window.__TAURI_INTERNALS__.invoke('set_desktop_icon', { iconId: 'not-a-real-icon' }).catch(function(){});");
+    sleep(1);
+    // 恢复默认（主题翻转鲸鱼），后续断言不受影响。
+    let _ = win.eval("window.__TAURI_INTERNALS__.invoke('set_desktop_icon', { iconId: 'default' }).catch(function(){});");
+    sleep(1);
+
     // 显示/隐藏切换（Q7）：window_toggle_visible —— 可见未最小化→隐藏；否则→显示。
     info!("e2e: invoking window_toggle_visible");
     let _ = win.eval("window.__TAURI_INTERNALS__.invoke('window_toggle_visible').catch(function(){});");
