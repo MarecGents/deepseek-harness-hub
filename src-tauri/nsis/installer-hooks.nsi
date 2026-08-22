@@ -111,6 +111,19 @@ FunctionEnd
 !insertmacro TRIM_NEWLINES_FUNC
 
 !macro NSIS_HOOK_PREUNINSTALL
+  ; ── Kill running shell + private sidecar BEFORE deleting anything ──
+  ; Root cause of "uninstall not clean": the shell hides to tray on window
+  ; close (closeToTray=true) and its private node sidecar
+  ; ($INSTDIR\dsh-hub-win\node.exe) stays alive — deleting a locked install
+  ; dir fails and leaves a partial tree. Kill by exact identity:
+  ;   1. dsh-hub.exe (the shell; /T also takes its direct child tree)
+  ;   2. any node.exe whose command line references dsh-hub-win (the private
+  ;      sidecar — scoped match so the system node is never touched)
+  nsExec::ExecToStack 'taskkill /IM dsh-hub.exe /F /T'
+  Pop $0
+  nsExec::ExecToStack "powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -Command $\"Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object { $$_.CommandLine -like '*dsh-hub-win*' } | ForEach-Object { Stop-Process -Id $$_.ProcessId -Force -ErrorAction SilentlyContinue }$\""
+  Pop $0
+  Sleep 500
   ; Fast path first (see header): one native recursive delete per known
   ; small directory beats the template's per-file Delete walk. The BULK
   ; directory (dsh-hub-win, tens of thousands of runtime-downloaded files)

@@ -508,6 +508,66 @@ pub fn start_dsh(state: Arc<NodeState>, app: tauri::AppHandle) -> Result<(), Str
 /// - Windows：优先解析 .cmd shim → node.exe + entry 直接 spawn（CreateProcess
 ///   不能执行 .cmd）；解析失败退 cmd /c 兜底。非 Windows：直接 spawn dsh。
 /// - 成功后在 state.child 放入新 child（supervisor 每轮 take 出来 try_wait）。
+/// KILL_ON_JOB_CLOSE 作业对象（单例，句柄故意泄漏到进程结束）：sidecar 及其
+/// 整个子进程树绑进作业——壳进程无论正常退出、崩溃还是被外部强杀（卸载器
+/// KillProcess / 任务管理器），内核随最后一个作业句柄关闭终止作业内全部
+/// 进程，根治 node.exe 孤儿锁文件（卸载不净的根因，踩坑 #68）。
+/// Windows 8+ 支持嵌套作业；子进程默认继承所属作业，dsh web 再派生的进程
+/// 一样随作业陪葬（本壳语义下 sidecar 绝不应比壳活得久——多实例会话损坏）。
+#[cfg(target_os = "windows")]
+fn assign_sidecar_to_kill_job(child: &std::process::Child) {
+    use std::sync::OnceLock;
+    use windows::core::PCWSTR;
+    use windows::Win32::Foundation::HANDLE;
+    use windows::Win32::System::JobObjects::{
+        AssignProcessToJobObject, CreateJobObjectW, JobObjectExtendedLimitInformation,
+        JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+        SetInformationJobObject,
+    };
+
+    /// HANDLE 是裸指针（未实现 Send/Sync），但 Job Object 句柄跨线程共享是
+    /// 安全的（不转移所有权，仅复用内核句柄值）——包一层标记类型。
+    struct SyncHandle(HANDLE);
+    unsafe impl Send for SyncHandle {}
+    unsafe impl Sync for SyncHandle {}
+
+    static JOB: OnceLock<SyncHandle> = OnceLock::new();
+    let job = JOB.get_or_init(|| {
+        unsafe {
+            match CreateJobObjectW(None, PCWSTR::null()) {
+                Ok(job) => {
+                    let mut info = JOBOBJECT_EXTENDED_LIMIT_INFORMATION::default();
+                    info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+                    let size = std::mem::size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32;
+                    if let Err(e) = SetInformationJobObject(
+                        job,
+                        JobObjectExtendedLimitInformation,
+                        &info as *const _ as *const core::ffi::c_void,
+                        size,
+                    ) {
+                        warn!("node: SetInformationJobObject failed: {}", e);
+                        return SyncHandle(HANDLE(std::ptr::null_mut()));
+                    }
+                    SyncHandle(job)
+                }
+                Err(e) => {
+                    warn!("node: CreateJobObjectW failed: {}", e);
+                    SyncHandle(HANDLE(std::ptr::null_mut()))
+                }
+            }
+        }
+    })
+    .0;
+    if job.is_invalid() {
+        return;
+    }
+    use std::os::windows::io::AsRawHandle;
+    let process = HANDLE(child.as_raw_handle());
+    if let Err(e) = unsafe { AssignProcessToJobObject(job, process) } {
+        warn!("node: AssignProcessToJobObject failed: {}", e);
+    }
+}
+
 fn spawn_inner(state: Arc<NodeState>, app: tauri::AppHandle) -> Result<(), String> {
     // 重启后端口会变：先清 READY 状态，supervisor 重新等新端口。
     *state.ready.lock().unwrap() = false;
@@ -554,6 +614,10 @@ fn spawn_inner(state: Arc<NodeState>, app: tauri::AppHandle) -> Result<(), Strin
     }
 
     let mut child = cmd.spawn().map_err(|e| format!("spawn dsh web failed: {e}"))?;
+
+    // 壳死则 sidecar 树陪葬（防孤儿 node.exe 锁文件；见函数注释）。
+    #[cfg(target_os = "windows")]
+    assign_sidecar_to_kill_job(&child);
 
     let stdout = child.stdout.take().expect("stdout pipe");
     let stderr = child.stderr.take();
@@ -630,6 +694,10 @@ fn spawn_via_cmd_shim(state: Arc<NodeState>, app: tauri::AppHandle, dsh_cmd: &Pa
     }
 
     let mut child = cmd.spawn().map_err(|e| format!("spawn dsh web via cmd failed: {e}"))?;
+
+    // 壳死则 sidecar 树陪葬（防孤儿 node.exe 锁文件；同 spawn_inner）。
+    #[cfg(target_os = "windows")]
+    assign_sidecar_to_kill_job(&child);
 
     let stdout = child.stdout.take().expect("stdout pipe");
     let stderr = child.stderr.take();
