@@ -33,6 +33,7 @@ import { injectRightSidebarStyle } from './right-sidebar-style.ts'
 import { applySkin, fetchStoredSkin, hasUserPickedSkin } from './skins.ts'
 import { applyBackground, fetchStoredBackground, hasUserPickedBackground } from './backgrounds.ts'
 import { installPinnedConversations } from './pin-conversations.ts'
+import { installModelSelect } from './model-select.tsx'
 import { installConversationRail, refreshConversationRailPalette } from './conversation-rail.ts'
 
 /**
@@ -61,7 +62,7 @@ export interface SettingsPluginItemOwnerProps {
 }
 
 /** Required services: slots (card), workspaces + sessions (tray + sidebar data). */
-export const inject = ['slots', 'workspaces', 'sessions']
+export const inject = ['slots', 'workspaces', 'sessions', 'modelDirectories']
 
 /** Resolve the current session's workspace from the client runtime. */
 function currentWorkspace(ctx: ClientContext): { path?: string; id?: string } | null {
@@ -235,6 +236,9 @@ export function apply(ctx: ClientContext): void {
 
   const slots = ctx.get('slots')
   if (slots === undefined) return
+
+  // Replace the built-in composer model seat with the nested provider -> model menu.
+  installModelSelect(ctx)
 
   // Inject the card + right-sidebar stylesheets (idempotent).
   injectCardStyle()
