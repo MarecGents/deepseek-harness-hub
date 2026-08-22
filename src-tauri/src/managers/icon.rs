@@ -23,6 +23,11 @@ use tauri::{AppHandle, Manager};
 ///     必须重应用（过去以 id 为键导致强制主题模式 + 同 id 重试 stale）。
 ///   - shell/titlebar：icon_id（静态输出，.ico / SVG 与主题无关）。
 pub struct IconManager {
+    /// 全局 apply 串行锁：双通道（页面 invoke + host DSH_CMD）、apply_page_theme、
+    /// 启动恢复等多源可能并发进入 apply——各面各自加锁 + SendMessageW 同步阻塞
+    /// （连续切换时窗口线程忙）会竞争/排队混乱甚至卡死。串行化后每次 apply
+    /// 完整顺序执行（排队而非竞争），面级幂等照常生效。
+    apply_lock: Mutex<()>,
     window: Mutex<Option<(String, bool)>>,
     tray: Mutex<Option<(String, bool)>>,
     shell: Mutex<Option<String>>,
@@ -34,6 +39,7 @@ pub struct IconManager {
 impl Default for IconManager {
     fn default() -> Self {
         Self {
+            apply_lock: Mutex::new(()),
             window: Mutex::new(None),
             tray: Mutex::new(None),
             shell: Mutex::new(None),
@@ -44,10 +50,11 @@ impl Default for IconManager {
 }
 
 impl IconManager {
-    /// 唯一业务入口：应用桌面图标到全部面。
+    /// 唯一业务入口：应用桌面图标到全部面（串行执行，防并发竞争/卡死）。
     /// 面级幂等：仅执行与上次「成功」应用不同的面；失败仅 warn 不 panic。
     /// `dark` 由调用方给出（窗口主题 / apply_page_theme 的 dark 参数）。
     pub fn apply(&self, app: &AppHandle, icon_id: &str, dark: bool) {
+        let _guard = self.apply_lock.lock().unwrap();
         self.apply_window_face(app, icon_id, dark);
         self.apply_tray_face(app, icon_id, dark);
         self.apply_shell_face(app, icon_id);
@@ -63,6 +70,7 @@ impl IconManager {
     /// AUMID 后台注册线程收尾：.lnk 刚建好时补上启动竞态窗口内漏掉的
     /// IconLocation 更新（强制清 shell 面去重后重跑）。
     pub fn sync_after_shortcuts(&self, app: &AppHandle, icon_id: &str) {
+        let _guard = self.apply_lock.lock().unwrap();
         *self.shell.lock().unwrap() = None;
         self.apply_shell_face(app, icon_id);
     }
