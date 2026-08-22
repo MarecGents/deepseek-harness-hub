@@ -94,6 +94,7 @@ dsh-hub 是**双 half** 结构，且**套壳代码与插件代码必须严格模
 - 遵循 dsh 官方组件样式：设置卡片参照 `ui-settings-plugins` 的 `PluginCard.module.css` / `fields.module.css`；tab 参照 `ConversationRoot.module.css`；tooltip 参照 `ui-primitives/Tooltip.module.css`。
 - 右侧栏用 **body portal** 挂载（不占用官方 details slot），自管宽度；收起 rail 与左弹 tooltip 逻辑保持。
 - **背景图（background image）豁免（与皮肤并列的新视觉层）**：`src/client/backgrounds.ts` 通过注入 `<style id="mg-dsh-background">` 给**应用 frame 层**（锚点 `#root div[style*="grid-template-columns"]`，结构契约非 CSS-module hash）叠加 `linear-gradient(蒙层) + url()` 双层背景，并把**左/中/右三栏表面设为 75% 半透明**（`color-mix(原 token 75%, transparent)`，背景图透出 ~25%；左栏 token `--dsw-specific-sidebar-fill`，中/右栏内容根 `--dsw-alias-bg-base`；锚点为 `[data-slot="sidebar"/"conversation"/"details"] > div` 官方 slot 契约）；**自研右侧栏（body portal）因 fixed 合成不透出背后，改为把背景图画在自身上**（多层背景 `[fill 75% 渐变] + [黑蒙] + [url]` + `background-attachment: fixed` 对齐 + 内部 `[class*="mg-rs-"]` 透明）——允许 `!important` 图片层（类比皮肤豁免），但禁止硬编码 hex 颜色；`'none'` 哨兵清空注入；图片资产放 `assets/backgrounds/`，由 `src/server/backgrounds-api.ts` 静态路由 `/api/dsh-hub/backgrounds/*` 服务（正则白名单防穿越）；蒙层 + 75% 表面双重保证文字可读；锚点均为升级冒烟项（见 docs/关键踩坑记录.md #32）。
+- **对话定位条自适应配色（计算色豁免）**：`src/client/conversation-rail.ts` 在运行时采样 rail 下方有效背景（表面 computed color × 背景图 cover 采样混合），按采样色相经 HSL 推导 tick/active 颜色并写入 rail 根元素 CSS 变量（`--mg-rail-*`，样式层保留 token 回退）——运行时计算色无法用静态 token 表达，类比背景图豁免；禁止在样式层新增硬编码 hex（回退字面量除外）。
 - 产品文案用中文；代码注释用英文（与 dsh 官方一致）。
 
 ### 3.1 皮肤（skins）风格豁免

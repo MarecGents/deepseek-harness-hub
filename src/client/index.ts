@@ -33,7 +33,7 @@ import { injectRightSidebarStyle } from './right-sidebar-style.ts'
 import { applySkin, fetchStoredSkin, hasUserPickedSkin } from './skins.ts'
 import { applyBackground, fetchStoredBackground, hasUserPickedBackground } from './backgrounds.ts'
 import { installPinnedConversations } from './pin-conversations.ts'
-import { installConversationRail } from './conversation-rail.ts'
+import { installConversationRail, refreshConversationRailPalette } from './conversation-rail.ts'
 
 /**
  * Tray-bridge ready flag, set at module scope — the very first thing that
@@ -253,6 +253,7 @@ export function apply(ctx: ClientContext): void {
   void fetchStoredBackground().then((backgroundId) => {
     if (hasUserPickedBackground()) return
     applyBackground(backgroundId)
+    refreshConversationRailPalette() // backdrop restored after boot — re-derive rail colors
   })
 
   try {
