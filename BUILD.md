@@ -6,6 +6,10 @@
 > 产物：NSIS 安装器 `build/<version>/DeepSeek Harness Hub_<version>_x64-setup.exe`
 > （完整链路：`npm install` → `npm run build` → `npm run build:client` → `npm run tauri:build`（=`cargo tauri build`）→ 产物复制 + SHA256 校验）。
 >
+> **安装/卸载体验（踩坑 #67 后）**：安装期 bootstrap（私有 Node 运行时下载）异步执行，`DEP:` 进度行
+> 实时镜像到安装器详情视图（ps1 `-LogPath` 落日志 + 钩子 700ms 轮询）；卸载走 `PREUNINSTALL`
+> 快速通道（已知大目录一次性 `RMDir /r`，模板逐文件 Delete 变 no-op），并 best-effort 清理
+> profile 的 bundles 条目与悬空 junction（防卸载后 `dsh web` 崩溃）。
 > **自包含（踩坑 #63 后）**：安装器经 `tauri.conf.json` `bundle.resources` 携带**全部运行时内容**——
 > Rust 壳 exe + 完整插件包（`../package.json`、`../cordis.patch.yml`、`../lib/**/*`、`../assets/**/*`、
 > `../bin/**/*` → 安装到 `$INSTDIR\_up_\`）+ 桌面图标 .ico（`icons/*.ico` → `$INSTDIR\icons\`）+ 装配脚本。

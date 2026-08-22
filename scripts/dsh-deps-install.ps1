@@ -334,5 +334,5 @@ if (-not (Test-PrivateDepsReady)) {
 Write-Dep "95% cleaning up temporary files"
 Remove-Item -LiteralPath $WorkDir -Recurse -Force -ErrorAction SilentlyContinue
 Write-Dep "100% private runtime ready: node=$NodeExe dsh=$DshCmd"
-Write-Output "DEP: done"
+Write-Dep "done"  # stdout + 日志哨兵（NSIS 轮询据此结束安装进度镜像）
 exit 0
