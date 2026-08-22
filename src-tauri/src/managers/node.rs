@@ -329,10 +329,21 @@ fn resolve_dsh_entry(dsh_cmd: &Path) -> Result<(PathBuf, PathBuf), String> {
 /// 开发态 = CARGO_MANIFEST_DIR（src-tauri/）的父目录；
 /// 已打包态 = exe 相邻目录（$INSTDIR）。
 ///
-/// M5：打包态 resources 实际落在 `$INSTDIR\_up_\scripts\`（Tauri 2 NSIS 约定），
-/// 故以 `_up_\scripts\assemble-profile.mjs` 存在判打包态；dev 态在仓库根 `scripts\`。
+/// M5：打包态 resources 实际落在 `$INSTDIR\_up_\scripts\`（Tauri 2 NSIS 约定）；
+/// dev 态在仓库根 `scripts\`。
+///
+/// ⚠️ 判断顺序**开发态优先**：dev 编译产物 `target/debug/` 下可能残留 `_up_\scripts\`
+/// （打包模拟/构建残留），若打包态判断在前会被误判为 $INSTDIR，导致 DSH_HUB_PACKAGE_ROOT
+/// 指向 target/debug、junction 建错、sidecar 无法解析插件（踩坑冒烟实测）。
+/// dev 态（CARGO_MANIFEST_DIR 父目录存在 scripts）优先；打包态（_up_ 存在）在后——
+/// 打包后 env!(CARGO_MANIFEST_DIR) 是打包机路径、目标机不存在，dev 态判断自然为 false。
 fn repo_root() -> PathBuf {
-    // 打包态：exe 相邻目录（$INSTDIR）。
+    // 开发态：CARGO_MANIFEST_DIR 的父目录（src-tauri/ 的上级 = 仓库根）。
+    let dev_root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap_or(Path::new("."));
+    if dev_root.join("scripts").join("assemble-profile.mjs").exists() {
+        return dev_root.to_path_buf();
+    }
+    // 打包态：exe 相邻目录（$INSTDIR，_up_/scripts 存在）。
     if let Ok(exe) = std::env::current_exe() {
         if let Some(exe_dir) = exe.parent() {
             if exe_dir
@@ -344,11 +355,6 @@ fn repo_root() -> PathBuf {
                 return exe_dir.to_path_buf();
             }
         }
-    }
-    // 开发态：CARGO_MANIFEST_DIR 的父目录（src-tauri/ 的上级 = 仓库根）。
-    let dev_root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap_or(Path::new("."));
-    if dev_root.join("scripts").join("assemble-profile.mjs").exists() {
-        return dev_root.to_path_buf();
     }
     std::env::current_exe()
         .ok()
