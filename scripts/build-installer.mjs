@@ -300,6 +300,59 @@ function copyWithSha256(src, dst) {
 }
 
 // ---------------------------------------------------------------------------
+// 打包态依赖守卫（踩坑 #64：_up_ 缺 node_modules → 目标机 ERR_MODULE_NOT_FOUND）
+// ---------------------------------------------------------------------------
+
+/**
+ * 扫描 lib/ host 产物（排除浏览器 bundle：lib/client.js 与 lib/client/）的外部
+ * import，逐个核对：node:* 内置 或 已列入 tauri.conf.json resources 的
+ * `_up_/node_modules` 依赖闭包。缺任一 → 构建失败（防止"打包态缺依赖"再次溜出）。
+ */
+function assertHostImportCoverage() {
+  const libDir = join(PACKAGE_ROOT, 'lib')
+  // resources 形如 ../node_modules/@deepseek-ai/cordis/**/*：split 后 ['..','node_modules','@deepseek-ai','cordis','**','*']
+  const bundledPkgs = new Set(
+    JSON.parse(readFileSync(join(PACKAGE_ROOT, 'src-tauri', 'tauri.conf.json'), 'utf8'))
+      .bundle.resources
+      .filter((r) => r.startsWith('../node_modules/'))
+      .map((r) => {
+        const parts = r.split('/')
+        return parts[2].startsWith('@') ? `${parts[2]}/${parts[3]}` : parts[2]
+      })
+  )
+  const isHostFile = (rel) => !rel.startsWith('client/') && rel !== 'client.js' && rel.endsWith('.js')
+  const importRe = /(?:from|import)\s*\(?\s*['"]([^.'"][^'"]*)['"]/g
+  const external = new Set()
+  const walk = (dir) => {
+    for (const f of readdirSync(dir)) {
+      const p = join(dir, f)
+      const st = statSync(p)
+      if (st.isDirectory()) { walk(p); continue }
+      const rel = p.slice(libDir.length + 1).replaceAll('\\', '/')
+      if (!isHostFile(rel)) continue
+      const src = readFileSync(p, 'utf8')
+      for (const m of src.matchAll(importRe)) {
+        const spec = m[1]
+        if (!spec.startsWith('node:')) external.add(spec)
+      }
+    }
+  }
+  walk(libDir)
+  const missing = [...external].filter((spec) => {
+    // 深路径 import（pkg/sub）按包名归一
+    const parts = spec.split('/')
+    const pkg = spec.startsWith('@') ? `${parts[0]}/${parts[1]}` : parts[0]
+    return !bundledPkgs.has(pkg)
+  })
+  if (missing.length) {
+    log.fail(`host 依赖打包守卫：lib host 产物 import 了未打包的外部包 → ${missing.join(', ')}；` +
+      `请把对应 ../node_modules/<pkg>/**/* 加入 src-tauri/tauri.conf.json bundle.resources（_up_/node_modules 闭包，含其传递依赖）`)
+    process.exit(1)
+  }
+  log.ok(`host 依赖打包守卫：外部 import ${[...external].join(', ')} 均已覆盖（node 内置或已打包闭包）`)
+}
+
+// ---------------------------------------------------------------------------
 // 主流程
 // ---------------------------------------------------------------------------
 
@@ -360,6 +413,10 @@ function main() {
   if (r.status !== 0) fail('npm run build', 'host 编译（tsc → lib/）失败')
   r = npm(['run', 'build:client'])
   if (r.status !== 0) fail('npm run build:client', 'client bundle 构建失败（确认全局 @deepseek-ai/dsh CLI 已安装：build-client 依赖其 SDK 树做 junction）')
+
+  // 2.5) host 依赖打包守卫（踩坑 #64）：lib host 产物的外部 import 必须已被
+  //      resources 打包进 _up_/node_modules，否则目标机 ERR_MODULE_NOT_FOUND。
+  assertHostImportCoverage()
 
   // 3) Tauri 打包（release + NSIS）
   log.section('Tauri 打包（release + NSIS）')
