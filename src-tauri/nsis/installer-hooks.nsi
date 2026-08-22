@@ -112,10 +112,12 @@ FunctionEnd
 
 !macro NSIS_HOOK_PREUNINSTALL
   ; Fast path first (see header): one native recursive delete per known
-  ; directory beats thousands of template per-file Delete instructions.
+  ; small directory beats the template's per-file Delete walk. The BULK
+  ; directory (dsh-hub-win, tens of thousands of runtime-downloaded files)
+  ; is deliberately NOT touched here — it goes to the asynchronous final
+  ; cleanup so the uninstall UI completes in seconds (大厂 pattern).
   RMDir /r "$INSTDIR\_up_"
   RMDir /r "$INSTDIR\icons"
-  RMDir /r "$INSTDIR\dsh-hub-win"
   Delete "$INSTDIR\dsh-hub-bootstrap.log"
 !macroend
 
@@ -123,9 +125,13 @@ FunctionEnd
   ; Sweep (instant no-ops after the pre-pass) + final non-recursive removal.
   RMDir /r "$INSTDIR\_up_"
   RMDir /r "$INSTDIR\icons"
-  RMDir /r "$INSTDIR\dsh-hub-win"
   Delete "$INSTDIR\dsh-hub-bootstrap.log"
   RMDir "$INSTDIR"
+  ; Bulk leftovers (dsh-hub-win ~35k files + the dir skeleton itself) go to a
+  ; HIDDEN BACKGROUND cleaner fired after everything else — the uninstall UI
+  ; finishes in seconds while the heavy disk deletion continues silently
+  ; (same pattern as big-vendor installers). Failure leaves at most an inert
+  ; file tree (uninstall key is already gone) — harmless, deletable by hand.
   DetailPrint "dsh-hub: cleaning profile bundle entry (best-effort)"
   ; NSIS 中 $$ 转义为字面 $；PowerShell 单行：从 bundles 移除 @marecgents/dsh-hub
   ; + 删除 junction（Test-Path 会跟随悬空链接返回 false，改查 ReparsePoint 属性；
@@ -134,4 +140,10 @@ FunctionEnd
   ${If} $0 != 0
     DetailPrint "dsh-hub: profile cleanup exited with code $0 (non-fatal)"
   ${EndIf}
+  ; ExecShell (ShellExecute) = OS 级脱离进程：卸载器退出不等它（实测 Exec 的
+  ; CreateProcess 子进程仍被卸载器生命周期拖住，3.5 万文件 ~50s 删除全部计入
+  ; 可见卸载时长）。窗口策略：powershell -WindowStyle Hidden 无黑框。末尾对
+  ; $INSTDIR 3s 后重试一次——清理器首删时卸载器临时副本可能仍握着目录句柄，
+  ; 实测会留下空目录骨架。
+  ExecShell "open" "powershell.exe" '-NoLogo -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -Command "Remove-Item -LiteralPath \"$INSTDIR\dsh-hub-win\" -Recurse -Force -ErrorAction SilentlyContinue; Remove-Item -LiteralPath \"$INSTDIR\" -Recurse -Force -ErrorAction SilentlyContinue; Start-Sleep -Seconds 3; Remove-Item -LiteralPath \"$INSTDIR\" -Recurse -Force -ErrorAction SilentlyContinue"'
 !macroend
