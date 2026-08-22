@@ -29,6 +29,17 @@
       "../lib/**/*",
       "../assets/**/*",
       "../bin/**/*",
+      "../node_modules/@deepseek-ai/cordis/**/*",
+      "../node_modules/@deepseek-ai/cordis-plugin-include/**/*",
+      "../node_modules/@deepseek-ai/cordis-plugin-loader/**/*",
+      "../node_modules/@deepseek-ai/cosmokit/**/*",
+      "../node_modules/@deepseek-ai/dsh-brand/**/*",
+      "../node_modules/@deepseek-ai/dsh-invariants/**/*",
+      "../node_modules/@deepseek-ai/dsh-settings/**/*",
+      "../node_modules/@deepseek-ai/schemastery/**/*",
+      "../node_modules/@standard-schema/spec/**/*",
+      "../node_modules/argparse/**/*",
+      "../node_modules/js-yaml/**/*",
       "icons/*.ico"
     ],
     "icon": [
