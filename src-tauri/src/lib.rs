@@ -286,7 +286,7 @@ fn create_toast_shortcuts(exe: &std::path::Path) {
     let start_menu = std::path::Path::new(&appdata)
         .join("Microsoft").join("Windows").join("Start Menu").join("Programs");
     // 桌面路径（处理 OneDrive 重定向）：SHGetKnownFolderPath(FOLDERID_Desktop)。
-    let desktop = known_desktop_path();
+    let desktop = theme::known_desktop_path();
 
     let targets: Vec<(std::path::PathBuf, &str)> = vec![
         (start_menu, "start-menu"),
@@ -310,6 +310,15 @@ fn create_toast_shortcuts(exe: &std::path::Path) {
             let wd = wide(&exe.parent().unwrap_or(std::path::Path::new("")).to_string_lossy());
             let _ = link.SetWorkingDirectory(PCWSTR(wd.as_ptr()));
             let _ = link.SetDescription(PCWSTR(wide("DeepSeek Harness Hub").as_ptr()));
+            // 先写 AUMID 属性、最后 Save（微软官方顺序）——曾在 Save 之后 SetValue
+            // 且未再保存，AUMID 从未落盘（.lnk 缺 AUMID，toast 归组/图标关联失效）。
+            let props: IPropertyStore = match link.cast() {
+                Ok(p) => p,
+                Err(_) => { CoUninitialize(); continue; }
+            };
+            let mut pv = PROPVARIANT::from("com.marecgents.dsh-hub");
+            let _ = props.SetValue(&PKEY_APP_USER_MODEL_ID, &pv);
+            let _ = PropVariantClear(&mut pv);
             let persist: IPersistFile = match link.cast() {
                 Ok(p) => p,
                 Err(_) => { CoUninitialize(); continue; }
@@ -320,14 +329,6 @@ fn create_toast_shortcuts(exe: &std::path::Path) {
                 CoUninitialize();
                 continue;
             }
-            // 写 AppUserModelID 属性（toast 显示必需）。
-            let props: IPropertyStore = match link.cast() {
-                Ok(p) => p,
-                Err(_) => { CoUninitialize(); continue; }
-            };
-            let mut pv = PROPVARIANT::from("com.marecgents.dsh-hub");
-            let _ = props.SetValue(&PKEY_APP_USER_MODEL_ID, &pv);
-            let _ = PropVariantClear(&mut pv);
             CoUninitialize();
             info!("shortcut({tag}): created {} with AUMID", lnk.display());
         }
@@ -340,24 +341,8 @@ fn wide(s: &str) -> Vec<u16> {
     s.encode_utf16().chain(std::iter::once(0)).collect()
 }
 
-/// 解析桌面路径（FOLDERID_Desktop，处理 OneDrive 重定向）。
-#[cfg(target_os = "windows")]
-fn known_desktop_path() -> std::path::PathBuf {
-    use windows::Win32::System::Com::CoTaskMemFree;
-    use windows::Win32::UI::Shell::{FOLDERID_Desktop, KNOWN_FOLDER_FLAG, SHGetKnownFolderPath};
-    unsafe {
-        if let Ok(p) = SHGetKnownFolderPath(&FOLDERID_Desktop, KNOWN_FOLDER_FLAG(0), None) {
-            let s = p.to_string().unwrap_or_default();
-            CoTaskMemFree(Some(p.as_ptr() as _));
-            if !s.is_empty() {
-                return std::path::PathBuf::from(s);
-            }
-        }
-    }
-    // 兜底：%USERPROFILE%\Desktop。
-    std::env::var_os("USERPROFILE").map(|u| std::path::Path::new(&u).join("Desktop")).unwrap_or_default()
-}
-
+// 解析桌面路径（FOLDERID_Desktop）已迁至 theme::known_desktop_path
+// （Helper 层，与 update_shell_icon_sources 共用）。
 
 /// --smoke 诊断模式标记（T4.4）：main.rs 解析参数后置位，
 /// lib.rs setup 建窗成功（window build Ok）后检查 → 写 quit.marker + exit(0)。
@@ -543,8 +528,9 @@ pub fn run() {
                 std::process::exit(1);
             }
 
-            // 2. 托盘。
+            // 2. 托盘（图标随用户桌面图标选择 / 主题翻转，S6）。
             let _tray = tray::setup_tray(app)?;
+            tray::set_tray_icon(app.handle(), &state::read_shell_config_str("desktopIcon", "default"));
 
             // 3. 启动 Node sidecar（T4.1）。
             let node_state = std::sync::Arc::new(node::NodeState::new());

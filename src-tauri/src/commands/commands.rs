@@ -115,6 +115,8 @@ pub fn apply_page_theme(app: tauri::AppHandle, dark: bool) -> Result<(), String>
         } else {
             crate::theme::apply_desktop_icon(&win, &desktop_icon);
         }
+        // 托盘同步（'default' 翻转白/黑鲸；鲸鱼娘固定）。
+        crate::tray::set_tray_icon(&app, &desktop_icon);
         log::info!("apply_page_theme: theme applied (dark={})", dark);
         Ok(())
     } else {
@@ -130,6 +132,8 @@ pub fn apply_page_theme(app: tauri::AppHandle, dark: bool) -> Result<(), String>
 pub fn set_desktop_icon(app: tauri::AppHandle, icon_id: String) -> Result<(), String> {
     let win = app.get_webview_window("main").ok_or("main window not found")?;
     crate::theme::apply_desktop_icon(&win, &icon_id);
+    // 托盘图标同步（与任务栏/窗口/快捷方式一致）。
+    crate::tray::set_tray_icon(&app, &icon_id);
     log::info!("set_desktop_icon: applied '{}'", icon_id);
     Ok(())
 }

@@ -34,7 +34,8 @@
   - 退出（写 `quit.marker` 后干净退出，避免误判崩溃重启）
 - **窗口状态记忆与尺寸管理**：最大化状态、分辨率、主题等持久化到 `$DSH_HOME/dsh-hub/config.json`；套用保存尺寸前若处于最大化先退最大化、退出时恢复保存尺寸；无保存尺寸时默认**光标所在屏 3/4**（multi-monitor aware，无上限，下限 480×360）。
 - **主题跟随（system）**：MutationObserver 事件驱动，`apply_page_theme` 命令让标题栏深浅色、webview 背景与**窗口图标（icon-dark / icon-light 翻转）**实时跟随 dsh 页面主题（Tauri 壳 Rust Dwm 实现）。
-- **设置卡片**：dsh 设置 → 插件页提供桌面壳配置（窗口尺寸 / 主题 / 托盘行为 / 会话完成通知 / 提示音 / 多实例开关 / 界面皮肤 / 背景图）。
+- **桌面图标（S6，PR #25）**：设置卡可选 5 张鲸鱼娘图标（sad/happy/duo/maid/blue）或默认主题翻转鲸鱼；切换即时生效于**任务栏按钮（WM_SETICON ICON_BIG）+ 标题栏/Alt-Tab（ICON_SMALL）+ 托盘 + 开始菜单/桌面快捷方式（.lnk IconLocation）+ AUMID IconUri**，持久化于 `config.json` 的 `desktopIcon`；`.ico` 多尺寸资产由 `scripts/generate-desktop-icons.py` 生成并随 resources 打包到 `$INSTDIR\icons\`。
+- **设置卡片**：dsh 设置 → 插件页提供桌面壳配置（窗口尺寸 / 主题 / 托盘行为 / 会话完成通知 / 提示音 / 多实例开关 / 界面皮肤 / 背景图 / 桌面图标）。
 - **多实例保护**：启动时检测已有 dsh 实例（任意端口），默认拒绝共存以防会话数据损坏；确需共存可在设置中显式开启（附危险警告）。
 - **右侧栏**：概览（Token 统计）、文件树、Git 变更三页；收起后保留窄栏快捷按钮。
 - **置顶会话**：会话行 hover 置顶（同名会话安全跳过、不误标）；置顶区常驻列表顶部（可独立滚动）；持久化于 `$DSH_HOME/dsh-hub/pins.json`（localStorage 兜底）。注：多标签/多实例下 pins 为整体替换语义（最后写者胜）；同标签内 PUT 依赖 fetch 顺序保序。
@@ -178,7 +179,8 @@ dsh-hub/
 │   ├── ipc-smoke.mjs         # M1 窗口 IPC 冒烟
 │   ├── verify-release.mjs    # 发布门禁（P1-P5）
 │   ├── verify-m4-multi-instance.mjs # M4 多实例门禁断言
-│   └── generate-titlebar-icons.mjs  # 标题栏/窗口主题图标生成（icon-dark/light）
+│   ├── generate-titlebar-icons.mjs  # 标题栏/窗口主题图标生成（icon-dark/light）
+│   └── generate-desktop-icons.py    # 桌面图标 .ico 多尺寸生成（whale-girl*/whale）
 ├── assets/                 # dsh favicon（SVG）+ backgrounds/（背景图）+ sounds/（提示音）
 ├── src-tauri/              # Tauri 2.x 壳（Rust，lib.rs 入口 + NSIS 打包）
 ├── src/
