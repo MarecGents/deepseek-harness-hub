@@ -356,6 +356,52 @@ function assertHostImportCoverage() {
 // 主流程
 // ---------------------------------------------------------------------------
 
+/** 完整性预检（防漏内容）：打包前核对关键源/资源/资产存在——任一缺失直接
+ * fail（比打包后才发现安装目录缺文件高效得多）。覆盖易漏项：
+ *   1) 构建链源码（index.ts / shell-init.js / tauri.conf.json …）
+ *   2) 安装期 resources（dsh-deps-install.ps1 / assemble-profile.mjs）
+ *   3) 图标 resources 通配（src-tauri/icons/*.ico——踩坑：空通配 = 静默漏打包）
+ *   4) client 资产目录（assets/backgrounds、assets/icons）
+ */
+function assertSourceCompleteness() {
+  log.section('完整性预检（源/资源/资产）')
+  const mustExist = [
+    'package.json', 'tsconfig.json', 'tsdown.config.ts', 'cordis.patch.yml',
+    'src/index.ts', 'src/client/index.ts', 'dev/index.html',
+    'scripts/dsh-deps-install.ps1', 'scripts/assemble-profile.mjs',
+    'src-tauri/tauri.conf.json', 'src-tauri/src/lib.rs', 'src-tauri/src/shell-init.js',
+  ]
+  const missing = mustExist.filter((p) => !existsSync(join(PACKAGE_ROOT, p)))
+  const mustDir = ['assets/backgrounds', 'assets/icons', 'src-tauri/icons']
+  const missingDir = mustDir.filter((p) => !existsSync(join(PACKAGE_ROOT, p)))
+  if (missing.length || missingDir.length) {
+    fail('完整性预检', `缺失关键文件/目录：${[...missing, ...missingDir].join(', ')}（源码/资源不完整，禁止打包）`)
+  }
+  // tauri.conf.json resources 中的通配（如 icons/*.ico）目录须非空——空通配
+  // 会在安装目录静默少文件（图标 .ico 缺失 → 快捷方式图标回退 exe 鲸鱼）。
+  const conf = JSON.parse(readFileSync(join(PACKAGE_ROOT, 'src-tauri', 'tauri.conf.json'), 'utf8'))
+  const globbed = (conf.bundle.resources || []).filter((r) => r.includes('*'))
+  const emptyGlob = globbed.filter((g) => {
+    const dir = join(PACKAGE_ROOT, 'src-tauri', g.slice(0, g.indexOf('*')).replace(/\/+$/, ''))
+    return !existsSync(dir) || readdirSync(dir).length === 0
+  })
+  if (emptyGlob.length) {
+    fail('完整性预检', `resources 通配目录为空：${emptyGlob.join(', ')}（会静默漏打包，见 BUILD.md §5.3）`)
+  }
+  log.ok(`关键源/资源/资产齐全（${mustExist.length} 文件 + ${mustDir.length} 目录 + ${globbed.length} 通配非空）`)
+}
+
+/** lib 零漂移（AGENTS §5.2 发布铁律 3）：构建后 lib/ 应无未提交变更
+ * （prepack 会重建 lib，发布前必须已提交）。dev 场景仅 warn。 */
+function assertLibClean() {
+  const r = run('git', ['-C', PACKAGE_ROOT, 'diff', '--quiet', '--', 'lib/'], { stdio: 'ignore' })
+  if (r.status !== 0) {
+    log.warn('lib/ 有未提交改动（git diff lib/ 非空）——打包后 lib 与源码不一致（AGENTS §5.2 铁律 3）；发布前请先提交 lib/')
+  } else {
+    log.ok('lib/ 零漂移（无未提交变更）')
+  }
+}
+
 function main() {
   console.log(`${C.bold}${C.cyan}dsh-hub 一键打包（NSIS 安装器）${C.reset}`)
   console.log(`  仓库根: ${PACKAGE_ROOT}`)
@@ -408,6 +454,9 @@ function main() {
     console.log('  node_modules 已存在，跳过 npm install')
   }
 
+  // 1.5) 完整性预检（防漏内容：源/资源/资产/通配目录）
+  assertSourceCompleteness()
+
   // 2) 前置构建：host tsc + client bundle（都必须成功）
   let r = npm(['run', 'build'])
   if (r.status !== 0) fail('npm run build', 'host 编译（tsc → lib/）失败')
@@ -417,6 +466,9 @@ function main() {
   // 2.5) host 依赖打包守卫（踩坑 #64）：lib host 产物的外部 import 必须已被
   //      resources 打包进 _up_/node_modules，否则目标机 ERR_MODULE_NOT_FOUND。
   assertHostImportCoverage()
+
+  // 2.6) lib 零漂移（AGENTS §5.2 铁律 3）：构建后 lib/ 应已提交（发布前置）。
+  assertLibClean()
 
   // 3) Tauri 打包（release + NSIS）
   log.section('Tauri 打包（release + NSIS）')

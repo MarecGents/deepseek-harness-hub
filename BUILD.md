@@ -146,6 +146,33 @@ npm run build:installer -- --dry-run  :: 只检测工具链并打印执行计划
 4. **日志**：`$DSH_HOME/dsh-hub/logs/dsh.log`（t4.x / m4 / notify: / tray / pipe 前缀），首启异常先看这里（踩坑 #53 排查工具）
 5. **托盘**：托盘图标 + 菜单正常（踩坑 #53 已修复：图标编译期内嵌 `include_bytes!`）
 
+### 5.3 打包内容完整性清单（防漏内容，一键脚本已自动检查）
+
+构建链每步**产出物**与**易漏项**如下——手工打包时逐项核对；`npm run build:installer` 会自动执行
+（完整性预检 `assertSourceCompleteness` + host 依赖守卫 + lib 零漂移）：
+
+| 构建步 | 产出物 | 易漏项（漏 = 安装后缺文件/功能） |
+|---|---|---|
+| `npm install` | `node_modules/` | **npm install 会清掉 SDK junction** → 装完必须重跑 `build:client`（踩坑 #19；脚本自动） |
+| `npm run build` | `lib/`（host tsc） | **lib/ 必须提交入库**（发布铁律 3：prepack 重建，未提交 = 发布与仓库不一致；脚本 `assertLibClean` 检查） |
+| `npm run build:client` | `lib/client.js` + `lib/client/*`（client bundle） | junction 缺失时构建失败（需全局 `@deepseek-ai/dsh` SDK 树）；dsh-hub client 代码若不进 bundle = 设置卡/置顶/rail/右键菜单全缺 |
+| `npm run tauri:build`（MSVC） | `src-tauri/target/release/bundle/nsis/*-setup.exe` | resources 通配目录为空会**静默少文件**（如 `icons/*.ico` 缺失 → 快捷方式图标回退 exe 鲸鱼）；`src-tauri/icons/`、`assets/` 必须在 |
+| 产物复制 | `build/<version>/*-setup.exe` | **SHA256 必须一致**（踩坑 #56：目标被占用会静默失败；脚本自动校验） |
+
+**一键脚本自动检查**（防漏）：
+- `assertSourceCompleteness`：关键源/资源/资产存在（`src/index.ts`、`shell-init.js`、`scripts/*.ps1|*.mjs`、`assets/backgrounds|icons`、`src-tauri/icons`）**+ resources 通配目录非空**——任一缺失直接 fail
+- `assertHostImportCoverage`（踩坑 #64）：lib host 产物的外部 import 必须已被 resources 打包进 `_up_/node_modules` 闭包，否则目标机 `ERR_MODULE_NOT_FOUND`
+- `assertLibClean`：构建后 `lib/` 无未提交变更（发布铁律 3）
+- 版本一致性：`package.json` == `src-tauri/tauri.conf.json`（产物名/目录均用 version）
+- 产物 SHA256：源与复制目标一致（不一致删目标重试一次）
+
+**关键资产位置**（打包进安装器的完整内容）：
+- 壳代码：`src-tauri/src/*`（含 `managers/icon.rs`、`shell-init.js` 内嵌）
+- 安装期脚本（resources → `_up_\scripts\`）：`scripts/dsh-deps-install.ps1`、`scripts/assemble-profile.mjs`
+- 图标：`src-tauri/icons/`（PNG include_bytes 内嵌 + `*.ico` resources）
+- client 资产：`assets/backgrounds/`（背景图）、`assets/icons/`（图标预览）
+- 前端占位页：`dev/index.html`（frontendDist）
+
 ---
 
 ## 6. 常见问题（打包相关，均已在当前代码修复；打包时了解现象便于真机排查）

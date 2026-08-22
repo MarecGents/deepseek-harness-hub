@@ -81,10 +81,14 @@ npm run tauri:dev          # = cargo tauri dev：Rust 壳 + dsh web sidecar 本�
 从源码构建 **NSIS 安装器**——产物与发布安装器一致。**推荐一键打包**（自动检测工具链位置，位置无关，见 [BUILD.md](BUILD.md)）：
 
 ```sh
-npm run build:installer    # 一键打包：检测 Node/npm/cargo/rustup → MSVC(vswhere→vcvars64.bat) 或 GNU(gcc) → build → build:client → tauri:build → 复制到 build/<version>/ + SHA256 校验
+npm run build:installer    # 一键打包：检测 Node/npm/cargo/rustup → MSVC(vswhere→vcvars64.bat) 或 GNU(gcc) → 完整性预检（源/资源/资产/通配目录）→ build → build:client → host 依赖守卫 → lib 零漂移 → tauri:build → 复制到 build/<version>/ + SHA256 校验
 npm run tauri:build        # 仅打包（需 vcvars/MSVC 环境或 GNU 配置，见 BUILD.md）
 # 运行安装器 → 安装「DeepSeek Harness Hub」→ 启动
 ```
+
+> **一键脚本自动防漏**（详见 [BUILD.md](BUILD.md) §5.3）：版本一致性（package.json == tauri.conf.json）、
+> 完整性预检（关键源/资源/资产存在 + resources 通配目录非空——`icons/*.ico` 空通配会静默少文件）、
+> host 依赖打包守卫（lib 外部 import 必须已在 resources 闭包）、lib 零漂移、产物 SHA256 校验。
 
 > **前置依赖**（详见 [BUILD.md](BUILD.md)）：Node ≥24、rustup（`rust-toolchain.toml` 自动管 MSVC）、**VS Build Tools** 或 MinGW-w64 gcc；NSIS 与 WebView2 由 tauri CLI / embedBootstrapper 自动处理。
 > 旧的 `npm run install:local`（`scripts/install-local.mjs`：npm pack → 全局包 + 快捷方式）已随 WebView2 壳删除。
