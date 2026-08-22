@@ -235,10 +235,21 @@ fn desktop_icon_ico_path(icon_id: &str) -> Option<std::path::PathBuf> {
 /// （桌面短暂刷新），icon_id 未变时跳过。每进程首次（含启动恢复）必执行
 /// ——create_toast_shortcuts 每次启动会重写 .lnk 重置 IconLocation。
 /// 失败仅 warn（不得破坏图标设置链路）。
+/// update_shell_icon_sources 的同 id 去重状态（见该函数注释）。
+#[cfg(target_os = "windows")]
+static LAST_SHELL_ICON: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+
+/// 强制同步壳图标源（清除去重后重跑 update_shell_icon_sources）。
+/// 供 lib.rs 的 AUMID 后台注册线程收尾：注册线程建好 .lnk 后补上竞态窗口内
+/// 漏掉的 IconLocation 更新（启动期 apply_desktop_icon 可能早于 .lnk 创建）。
+#[cfg(target_os = "windows")]
+pub fn sync_shell_icon_sources(icon_id: &str) {
+    *LAST_SHELL_ICON.lock().unwrap() = None;
+    update_shell_icon_sources(icon_id);
+}
+
 #[cfg(target_os = "windows")]
 fn update_shell_icon_sources(icon_id: &str) {
-    static LAST_SHELL_ICON: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
-
     if LAST_SHELL_ICON.lock().unwrap().as_deref() == Some(icon_id) {
         return; // 同 id 已应用（主题翻转重入），壳图标源无需再动。
     }

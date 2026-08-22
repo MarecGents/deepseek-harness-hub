@@ -8,40 +8,119 @@
 ;                             INSTFILES detail page is still active)
 ;   NSIS_HOOK_PREUNINSTALL / NSIS_HOOK_POSTUNINSTALL -> uninstaller sections
 ;
-; Only NSIS_HOOK_POSTINSTALL is defined here. It bootstraps the private Node
-; runtime + dsh dependencies into $INSTDIR\dsh-hub-win by running the bundled
-; scripts\dsh-deps-install.ps1 resource.
+; ── Install (bootstrap with live progress) ────────────────────────────────
+; The private Node runtime bootstrap (dsh-deps-install.ps1) downloads node +
+; npm packages and takes 1-3 min on first install. A plain ExecWait freezes
+; the installer UI with zero feedback ("大厂" uninstallers keep the details
+; view alive). We therefore:
+;   1. run the bootstrap ASYNC via Exec (hidden window, no console popup),
+;   2. poll $INSTDIR\dsh-hub-bootstrap.log (the script appends "DEP: ..." via
+;      its -LogPath param) and mirror every NEW line into the details view,
+;   3. stop on the "DEP: done" / "DEP: FAILED" sentinels, or after 6 minutes.
+; Failure stays tolerated (same semantics as before): the app falls back to
+; PATH-based node/dsh resolution at first launch, so a flaky network must
+; never block installation.
 ;
-; Window policy: we deliberately do NOT use nsExec::ExecToLog here — it creates a
-; visible console window to capture stdout (users saw two popup consoles).
-; Instead we use ExecWait + powershell -WindowStyle Hidden (no console window at
-; all) and the script appends its "DEP: xx%" progress to $INSTDIR\dsh-hub-bootstrap.log.
-;
-; A non-zero bootstrap exit is tolerated (details are logged, installation is
-; NOT aborted): at first launch the shell falls back to PATH-based node/dsh
-; resolution when the private runtime is missing, so a flaky network must never
-; block installation.
-;
-; NSIS_HOOK_POSTUNINSTALL（踩坑 #65）：Tauri 模板卸载段不删 glob resources 与
-; 运行期生成内容——卸载后曾残留 400MB（_up_/icons = resources；dsh-hub-win/ =
-; 安装期下载的私有 Node 运行时；另有引导日志）。只递归删 $INSTDIR 的已知子
-; 目录，绝不动 $INSTDIR 本身（末尾非递归 RMDir 仅在目录已空时移除）。
-; 并 best-effort 清理 profile（默认/DSH_HOME 环境变量）：移除 bundles 条目 +
-; 删除悬空 junction——不清理的话卸载后用户 `dsh web` 会因加载不存在的
-; @marecgents/dsh-hub 条目直接崩。清理失败不影响卸载（仅 DetailPrint 记录）。
+; ── Uninstall (fast path) ─────────────────────────────────────────────────
+; Tauri's uninstall template walks every bundled resource with a per-file
+; `Delete` + details-view line — with the plugin lib/assets/node_modules
+; closure plus the runtime-downloaded dsh-hub-win tree that is THOUSANDS of
+; single-file operations, measurably slower than deleting by hand. NSIS
+; uninstallers run from a %TEMP% copy of themselves, so the whole $INSTDIR
+; content is deletable while uninstalling. NSIS_HOOK_PREUNINSTALL therefore
+; nukes the known big directories up front (RMDir /r = one native recursive
+; delete each); the template's per-file Delete pass then no-ops on missing
+; files. Only KNOWN subdirectories are touched recursively — never $INSTDIR
+; itself (the trailing non-recursive RMDir only removes it when empty), so a
+; custom install location shared with other content stays safe.
+; NSIS_HOOK_POSTUNINSTALL keeps the sweep (instant no-ops after the pre-pass)
+; plus the best-effort profile cleanup: without it a leftover dangling
+; junction / bundles entry breaks the user's plain `dsh web` after uninstall.
 
 !macro NSIS_HOOK_POSTINSTALL
   DetailPrint "dsh-hub: bootstrapping private Node runtime + dsh dependencies (install-time, 1-3 min)..."
   DetailPrint "dsh-hub: progress log: $INSTDIR\dsh-hub-bootstrap.log"
-  ExecWait '"powershell.exe" -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "$INSTDIR\_up_\scripts\dsh-deps-install.ps1" -InstallDir "$INSTDIR"' $0
-  ${If} $0 != 0
-    DetailPrint "dsh-hub: bootstrap exited with code $0 - see $INSTDIR\dsh-hub-bootstrap.log; app will fall back to PATH/node at first launch"
-  ${Else}
+  Delete "$INSTDIR\dsh-hub-bootstrap.log"
+  Exec '"powershell.exe" -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "$INSTDIR\_up_\scripts\dsh-deps-install.ps1" -InstallDir "$INSTDIR" -LogPath "$INSTDIR\dsh-hub-bootstrap.log"'
+  ; Live-progress poll. $R0 = lines already mirrored, $R1 = elapsed seconds,
+  ; $R3 = done flag (1 = done sentinel seen, 2 = failed sentinel, 3 = timeout).
+  StrCpy $R0 0
+  StrCpy $R1 0
+  StrCpy $R3 0
+  ${DoWhile} $R3 = 0
+    Sleep 700
+    IntOp $R1 $R1 + 1
+    ${If} $R1 >= 514
+      StrCpy $R3 3
+      ${ExitDo}
+    ${EndIf}
+    StrCpy $R2 0
+    ClearErrors
+    FileOpen $0 "$INSTDIR\dsh-hub-bootstrap.log" r
+    ${IfNot} ${Errors}
+      ${Do}
+        ClearErrors
+        FileRead $0 $3
+        ${IfThen} ${Errors} ${|} ${ExitDo} ${|}
+        IntOp $R2 $R2 + 1
+        ${If} $R2 > $R0
+          StrCpy $R0 $R2
+          Push $3
+          Call TrimNewlines
+          Pop $3
+          DetailPrint "bootstrap: $3"
+          StrCpy $4 $3 9
+          ${If} $4 == "DEP: done"
+            StrCpy $R3 1
+          ${EndIf}
+          StrCpy $4 $3 11
+          ${If} $4 == "DEP: FAILED"
+            StrCpy $R3 2
+          ${EndIf}
+        ${EndIf}
+      ${Loop}
+      FileClose $0
+    ${EndIf}
+  ${Loop}
+  ${If} $R3 = 1
     DetailPrint "dsh-hub: private Node runtime bootstrap complete"
+  ${ElseIf} $R3 = 2
+    DetailPrint "dsh-hub: bootstrap FAILED (see $INSTDIR\dsh-hub-bootstrap.log; app falls back to PATH/node at first launch)"
+  ${Else}
+    DetailPrint "dsh-hub: bootstrap progress timeout (~6min) — continuing (app falls back to PATH/node at first launch)"
   ${EndIf}
 !macroend
 
+; TrimNewlines helper for the poll loop above (NSIS has no builtin trim).
+; Usage: Push <string>; Call TrimNewlines; Pop <result>.
+!macro TRIM_NEWLINES_FUNC
+Function TrimNewlines
+  Exch $0
+  Push $2
+  loop_trim:
+    StrCpy $2 $0 1 -1
+    StrCmp $2 "$\r" +2 0
+    StrCmp $2 "$\n" 0 done_trim
+  StrCpy $0 $0 -1
+  Goto loop_trim
+  done_trim:
+  Pop $2
+  Exch $0
+FunctionEnd
+!macroend
+!insertmacro TRIM_NEWLINES_FUNC
+
+!macro NSIS_HOOK_PREUNINSTALL
+  ; Fast path first (see header): one native recursive delete per known
+  ; directory beats thousands of template per-file Delete instructions.
+  RMDir /r "$INSTDIR\_up_"
+  RMDir /r "$INSTDIR\icons"
+  RMDir /r "$INSTDIR\dsh-hub-win"
+  Delete "$INSTDIR\dsh-hub-bootstrap.log"
+!macroend
+
 !macro NSIS_HOOK_POSTUNINSTALL
+  ; Sweep (instant no-ops after the pre-pass) + final non-recursive removal.
   RMDir /r "$INSTDIR\_up_"
   RMDir /r "$INSTDIR\icons"
   RMDir /r "$INSTDIR\dsh-hub-win"
@@ -51,7 +130,7 @@
   ; NSIS 中 $$ 转义为字面 $；PowerShell 单行：从 bundles 移除 @marecgents/dsh-hub
   ; + 删除 junction（Test-Path 会跟随悬空链接返回 false，改查 ReparsePoint 属性；
   ;   只删链接本身，不递归目标）。
-  ExecWait 'powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -Command "$$h=$$env:DSH_HOME; if(-not $$h){$$h=\"$$env:USERPROFILE\.dsh\"}; $$j=Join-Path $$h \"profiles\web\package.json\"; if(Test-Path $$j){ try{ $$o=Get-Content $$j -Raw|ConvertFrom-Json; $$o.dsh.profile.bundles=@($$o.dsh.profile.bundles|Where-Object{$$_ -ne \"@marecgents/dsh-hub\"}); $$o|ConvertTo-Json -Depth 10|Set-Content $$j -Encoding UTF8 }catch{ } }; $$l=Join-Path $$h \"profiles\web\node_modules\@marecgents\dsh-hub\"; try{ $$i=Get-Item $$l -Force -ErrorAction Stop; if($$i.Attributes -band [IO.FileAttributes]::ReparsePoint){ $$i.Delete() } }catch{ }"' $0
+  ExecWait 'powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -Command "$$h=$$env:DSH_HOME; if(-not $$h){$$h=\"$$env:USERPROFILE\.dsh\"}; $$j=Join-Path $$h \"profiles\web\package.json\"; if(Test-Path $$j){ try{ $$o=Get-Content $$j -Raw|ConvertFrom-Json; $$o.dsh.profile.bundles=@($$o.dsh.profile.bundles|Where-Object{$$_ -ne \"@marecgents/dsh-hub\"}); $$o|ConvertTo-Json -Depth 10|Set-Content $$j -Encoding UTF8 }catch{ } }; $$l=Join-Path $$h \"profiles\web\node_modules\@marecgents\dsh-hub\"; try{ $$i=Get-Item $$l -Force -ErrorAction Stop; if($$i.Attributes -band [IO.FileAttributes]::ReparsePoint){ $$i.Delete() } }catch{ }"' $0
   ${If} $0 != 0
     DetailPrint "dsh-hub: profile cleanup exited with code $0 (non-fatal)"
   ${EndIf}

@@ -1,4 +1,4 @@
-#requires -Version 5.1
+﻿#requires -Version 5.1
 <#
 .SYNOPSIS
   dsh-hub M5 bootstrap: installs a private Node runtime + dsh dependencies
@@ -35,6 +35,11 @@
   Print the plan and source lists only; no network or filesystem changes; exit 0.
   Used to validate syntax / parameter binding without side effects.
 
+.PARAMETER LogPath
+  Optional file to append "DEP: <progress>" lines to (in addition to stdout).
+  The NSIS installer passes $INSTDIR\dsh-hub-bootstrap.log and polls it so the
+  install details view shows live bootstrap progress instead of a frozen UI.
+
 .EXAMPLE
   powershell -NoProfile -ExecutionPolicy Bypass -File dsh-deps-install.ps1 -InstallDir "C:\Program Files\DeepSeek Harness Hub"
 #>
@@ -42,6 +47,8 @@
 param(
   [Parameter(Mandatory = $false, Position = 0)]
   [string]$InstallDir = '',
+
+  [string]$LogPath = '',
 
   [switch]$DryRun
 )
@@ -94,14 +101,19 @@ $WorkDir  = Join-Path $Root '.bootstrap'
 
 # ── Helpers ─────────────────────────────────────────────────────────────
 
+# Progress sink: stdout (nsExec capture) + optional log file (NSIS live poll).
+$script:DepLog = if ($LogPath) { $LogPath } else { $null }
+
 function Write-Dep {
   param([string]$Msg)
   Write-Output "DEP: $Msg"
+  if ($script:DepLog) { Add-Content -LiteralPath $script:DepLog -Value "DEP: $Msg" -Encoding UTF8 }
 }
 
 function Exit-Fail {
   param([string]$Msg, [int]$Code = 1)
   [Console]::Error.WriteLine("ERROR: $Msg")
+  if ($script:DepLog) { Add-Content -LiteralPath $script:DepLog -Value "DEP: FAILED: $Msg" -Encoding UTF8 }
   exit $Code
 }
 
