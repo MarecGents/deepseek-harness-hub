@@ -306,7 +306,7 @@ function injectTitleBar() {
 
   const title = document.createElement('div');
   title.className = 'tb-title';
-  title.innerHTML = iconSvgFor('default');
+  title.innerHTML = iconSvgFor('default') + '<span class="tb-title-text">DeepSeek Harness Hub</span>';
   bar.appendChild(title);
 
   const controls = document.createElement('div');
