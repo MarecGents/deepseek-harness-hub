@@ -17,5 +17,7 @@
  *
  * @module dsh-hub/client/conversation-rail
  */
+/** Ask the mounted conversation rail to re-derive its adaptive palette. */
+export declare function refreshConversationRailPalette(): void;
 /** Install the conversation rail; returns the disposer. */
 export declare function installConversationRail(ctx: unknown): () => void;
