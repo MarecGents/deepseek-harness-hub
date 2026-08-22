@@ -5,6 +5,12 @@
 >
 > 产物：NSIS 安装器 `build/<version>/DeepSeek Harness Hub_<version>_x64-setup.exe`
 > （完整链路：`npm install` → `npm run build` → `npm run build:client` → `npm run tauri:build`（=`cargo tauri build`）→ 产物复制 + SHA256 校验）。
+>
+> **自包含（踩坑 #63 后）**：安装器经 `tauri.conf.json` `bundle.resources` 携带**全部运行时内容**——
+> Rust 壳 exe + 完整插件包（`../package.json`、`../cordis.patch.yml`、`../lib/**/*`、`../assets/**/*`、
+> `../bin/**/*` → 安装到 `$INSTDIR\_up_\`）+ 桌面图标 .ico（`icons/*.ico` → `$INSTDIR\icons\`）+ 装配脚本。
+> 首启 junction 直指 `_up_`（node.rs 三级优先：`_up_` → dsh-hub-win npm 副本 → dev 仓库根），
+> **插件功能与壳永远同版本**，不再依赖 npm registry 上的插件版本。
 
 ---
 

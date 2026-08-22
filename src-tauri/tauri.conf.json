@@ -24,6 +24,11 @@
     "resources": [
       "../scripts/dsh-deps-install.ps1",
       "../scripts/assemble-profile.mjs",
+      "../package.json",
+      "../cordis.patch.yml",
+      "../lib/**/*",
+      "../assets/**/*",
+      "../bin/**/*",
       "icons/*.ico"
     ],
     "icon": [
