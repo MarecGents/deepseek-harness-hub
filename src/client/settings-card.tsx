@@ -16,6 +16,7 @@ import { IconChevronDownOutline14, Menu } from '@deepseek-ai/dsh-client-ui-primi
 import { CARD_CSS_CLASSES as c } from './style.ts'
 import { SKINS, DEFAULT_SKIN_ID, applySkin, markSkinUserPicked } from './skins.ts'
 import { BACKGROUNDS, DEFAULT_BACKGROUND_ID, applyBackground, markBackgroundUserPicked } from './backgrounds.ts'
+import { refreshConversationRailPalette } from './conversation-rail.ts'
 import { DESKTOP_ICONS, DEFAULT_DESKTOP_ICON_ID } from './desktop-icons.ts'
 
 /** Owner share of a plugin card (the section supplies nothing). */
@@ -256,6 +257,7 @@ export function DesktopSettingsCard(_props: DesktopSettingsCardProps): ReactNode
     setSkinFailed(false)
     setSkinId(id)
     applySkin(id)
+    refreshConversationRailPalette() // surface tokens changed — re-derive rail colors
     const seq = ++saveSeq.current
     void saveConfig({ skin: id }).then((value) => {
       // Superseded by a newer pick/save — never roll back a newer pick (B7).
@@ -267,6 +269,7 @@ export function DesktopSettingsCard(_props: DesktopSettingsCardProps): ReactNode
       } else {
         // Roll back the live style to the last-good value.
         applySkin(previous)
+        refreshConversationRailPalette()
         setSkinId(previous)
         setSkinFailed(true)
         setSaving(false)
@@ -284,6 +287,7 @@ export function DesktopSettingsCard(_props: DesktopSettingsCardProps): ReactNode
     setBackgroundFailed(false)
     setBackgroundId(id)
     applyBackground(id)
+    refreshConversationRailPalette() // backdrop image changed — re-derive rail colors
     const seq = ++saveSeq.current
     setSaving(true) // mirror onSave: only the latest write clears the flag
     void saveConfig({ background: id }).then((value) => {
@@ -296,6 +300,7 @@ export function DesktopSettingsCard(_props: DesktopSettingsCardProps): ReactNode
       } else {
         // Roll back the live style to the last-good value.
         applyBackground(previous)
+        refreshConversationRailPalette()
         setBackgroundId(previous)
         setBackgroundFailed(true)
         setSaving(false)
