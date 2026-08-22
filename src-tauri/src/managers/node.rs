@@ -508,6 +508,7 @@ pub fn start_dsh(state: Arc<NodeState>, app: tauri::AppHandle) -> Result<(), Str
 /// - Windows：优先解析 .cmd shim → node.exe + entry 直接 spawn（CreateProcess
 ///   不能执行 .cmd）；解析失败退 cmd /c 兜底。非 Windows：直接 spawn dsh。
 /// - 成功后在 state.child 放入新 child（supervisor 每轮 take 出来 try_wait）。
+///
 /// KILL_ON_JOB_CLOSE 作业对象（单例，句柄故意泄漏到进程结束）：sidecar 及其
 /// 整个子进程树绑进作业——壳进程无论正常退出、崩溃还是被外部强杀（卸载器
 /// KillProcess / 任务管理器），内核随最后一个作业句柄关闭终止作业内全部

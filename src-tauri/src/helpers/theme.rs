@@ -104,29 +104,6 @@ pub fn desktop_icon_png(dark: bool, icon_id: &str) -> (&'static [u8], &'static s
     }
 }
 
-/// 窗口图标随页面主题翻转（项 3，合并进 apply_page_theme 调用链）。
-/// dark → icon-dark.png（白鲸，深色任务栏/标题栏图标）；light → icon-light.png
-/// （黑鲸）。PNG 由 scripts/generate-titlebar-icons.mjs 生成（128×128 透明背景），
-/// include_bytes! 内嵌（tauri `image-png` feature 解码）。set_icon 失败仅 warn。
-pub fn apply_window_icon(win: &WebviewWindow, dark: bool) {
-    let (bytes, name) = desktop_icon_png(dark, "default");
-    apply_window_icons(win, bytes, name);
-}
-
-/// 用户选择的桌面图标（S6，PR #25）：SMALL + BIG 双槽位应用到窗口，
-/// 再同步壳图标源（.lnk/AUMID，桌面快捷方式与 toast 图标用）。
-/// 图标切换失败仅 warn（不得破坏设置保存链路）。
-pub fn apply_desktop_icon(win: &WebviewWindow, icon_id: &str) {
-    let dark = win.theme().unwrap_or(Theme::Dark) == Theme::Dark;
-    let (bytes, name) = desktop_icon_png(dark, icon_id);
-    apply_window_icons(win, bytes, name);
-
-    // 桌面/开始菜单快捷方式图标来自 .lnk IconLocation（默认 exe 内嵌），
-    // toast 图标来自 AUMID IconUri——窗口 WM_SETICON 改不到这两处，需同步更新。
-    #[cfg(target_os = "windows")]
-    update_shell_icon_sources(icon_id);
-}
-
 /// 双槽位应用窗口图标：
 ///   - SMALL（Tauri set_icon → WM_SETICON ICON_SMALL）：标题栏 / Alt-Tab；
 ///   - BIG（Win32 CreateIconIndirect → WM_SETICON ICON_BIG）：任务栏按钮。
@@ -134,11 +111,19 @@ pub fn apply_desktop_icon(win: &WebviewWindow, icon_id: &str) {
 /// tao 源码语义（platform_impl/windows/window.rs）：任务栏按钮图标走
 /// set_taskbar_icon（ICON_BIG），而 Tauri 2 的 set_icon 只设 SMALL——BIG
 /// 缺失时任务栏回退窗口类图标（exe 内嵌），表现为「任务栏图标不变」。
-fn apply_window_icons(win: &WebviewWindow, bytes: &[u8], name: &str) {
+/// 应用窗口图标位图（SMALL via Tauri set_icon + BIG via Win32 ICON_BIG）。
+/// 无状态纯函数：BIG HICON 生命周期由调用方（managers/icon.rs）持有，
+/// `prev_big` 传入当前 HICON（替换时 Destroy 旧值，防泄漏）。失败仅 warn。
+pub fn apply_window_icons(
+    win: &WebviewWindow,
+    bytes: &[u8],
+    name: &str,
+    prev_big: &mut Option<isize>,
+) {
     match tauri::image::Image::from_bytes(bytes) {
         Ok(img) => {
             #[cfg(target_os = "windows")]
-            set_icon_big_win32(win, &img, name);
+            set_icon_big_win32(win, &img, name, prev_big);
             match win.set_icon(img) {
                 Ok(_) => log::info!("theme: window icon set ({})", name),
                 Err(e) => log::warn!("theme: set_icon({}) failed: {}", name, e),
@@ -155,17 +140,21 @@ fn apply_window_icons(win: &WebviewWindow, bytes: &[u8], name: &str) {
 ///   - 全零掩码曾被当作"全不透明"与 alpha 混合路径冲突，实测渲染错乱
 ///     （覆盖残缺/颜色异常），必须用 tao 同款反相 alpha。
 ///
-/// 上一枚 BIG HICON 记录在 LAST_BIG_ICON，替换时 DestroyIcon（WM_SETICON 不
-/// 转移所有权，防泄漏）。失败仅 warn；跨线程 SendMessageW 与 tao set_icon
-/// 同模式（主线程泵消息，同步返回）。
+/// 纯函数：创建并发送 WM_SETICON ICON_BIG，旧 HICON 由调用方传入的
+/// `prev_big` 管理（WM_SETICON 不转移所有权，替换时 DestroyIcon 防泄漏）。
+/// 失败仅 warn；跨线程 SendMessageW 与 tao set_icon 同模式（主线程泵消息，
+/// 同步返回）。
 #[cfg(target_os = "windows")]
-fn set_icon_big_win32(win: &WebviewWindow, img: &tauri::image::Image<'_>, name: &str) {
+fn set_icon_big_win32(
+    win: &WebviewWindow,
+    img: &tauri::image::Image<'_>,
+    name: &str,
+    prev_big: &mut Option<isize>,
+) {
     use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
     use windows::Win32::UI::WindowsAndMessaging::{
         CreateIcon, DestroyIcon, HICON, ICON_BIG, SendMessageW, WM_SETICON,
     };
-
-    static LAST_BIG_ICON: std::sync::Mutex<Option<isize>> = std::sync::Mutex::new(None);
 
     let Ok(hwnd_raw) = win.hwnd() else {
         log::warn!("theme: hwnd() failed, ICON_BIG ({}) not set", name);
@@ -189,9 +178,9 @@ fn set_icon_big_win32(win: &WebviewWindow, img: &tauri::image::Image<'_>, name: 
     unsafe {
         match CreateIcon(None, w, h, 1, 32, and_mask.as_ptr(), bgra.as_ptr()) {
             Ok(hicon) => {
-                let old = LAST_BIG_ICON.lock().unwrap().replace(hicon.0 as isize);
-                SendMessageW(hwnd, WM_SETICON, Some(WPARAM(ICON_BIG as usize)), Some(LPARAM(hicon.0 as isize)));
-                if let Some(prev) = old {
+                let new_handle = hicon.0 as isize;
+                SendMessageW(hwnd, WM_SETICON, Some(WPARAM(ICON_BIG as usize)), Some(LPARAM(new_handle)));
+                if let Some(prev) = prev_big.replace(new_handle) {
                     let _ = DestroyIcon(HICON(prev as _));
                 }
                 log::info!("theme: window ICON_BIG set ({})", name);
@@ -201,138 +190,6 @@ fn set_icon_big_win32(win: &WebviewWindow, img: &tauri::image::Image<'_>, name: 
     }
 }
 
-/// 找到所选图标的 .ico 文件路径（.lnk IconLocation 需要 .ico，不支持 .png）。
-/// 打包态：`$INSTDIR\icons\`（tauri.conf.json resources 打包）；dev 态：仓库 `src-tauri/icons\`。
-/// 注意 icon_id 已含完整前缀（'whale-girl-sad'）——文件名直接 `{icon_id}.ico`
-/// （曾误写 `whale-girl-{icon_id}.ico` 拼出双重前缀，鲸鱼娘 .lnk 更新从未生效）。
-fn desktop_icon_ico_path(icon_id: &str) -> Option<std::path::PathBuf> {
-    let name = if icon_id == "default" {
-        "whale.ico".to_string()
-    } else {
-        format!("{}.ico", icon_id)
-    };
-    // 打包态：exe 相邻目录。
-    if let Ok(exe) = std::env::current_exe() {
-        if let Some(dir) = exe.parent() {
-            let cand = dir.join("icons").join(&name);
-            if cand.exists() {
-                return Some(cand);
-            }
-        }
-    }
-    // dev 态：仓库 icons。
-    let dev = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("icons").join(&name);
-    if dev.exists() {
-        return Some(dev);
-    }
-    None
-}
-
-/// 更新 Windows 壳图标源：开始菜单 + 桌面 .lnk 的 IconLocation、
-/// AUMID 注册 IconUri，并广播 SHCNE_ASSOCCHANGED 让 Explorer 重读。
-/// 同一 icon_id 去重（LAST_SHELL_ICON）：apply_page_theme 主题翻转对鲸鱼娘
-/// 选择会重复进入此处，而 SHCNE_ASSOCCHANGED 会让 Explorer 重建图标缓存
-/// （桌面短暂刷新），icon_id 未变时跳过。每进程首次（含启动恢复）必执行
-/// ——create_toast_shortcuts 每次启动会重写 .lnk 重置 IconLocation。
-/// 失败仅 warn（不得破坏图标设置链路）。
-/// update_shell_icon_sources 的同 id 去重状态（见该函数注释）。
-#[cfg(target_os = "windows")]
-static LAST_SHELL_ICON: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
-
-/// 强制同步壳图标源（清除去重后重跑 update_shell_icon_sources）。
-/// 供 lib.rs 的 AUMID 后台注册线程收尾：注册线程建好 .lnk 后补上竞态窗口内
-/// 漏掉的 IconLocation 更新（启动期 apply_desktop_icon 可能早于 .lnk 创建）。
-#[cfg(target_os = "windows")]
-pub fn sync_shell_icon_sources(icon_id: &str) {
-    *LAST_SHELL_ICON.lock().unwrap() = None;
-    update_shell_icon_sources(icon_id);
-}
-
-#[cfg(target_os = "windows")]
-fn update_shell_icon_sources(icon_id: &str) {
-    if LAST_SHELL_ICON.lock().unwrap().as_deref() == Some(icon_id) {
-        return; // 同 id 已应用（主题翻转重入），壳图标源无需再动。
-    }
-    use windows::core::{Interface, PCWSTR};
-    use windows::Win32::System::Com::{
-        CoCreateInstance, CoInitializeEx, CoUninitialize, IPersistFile, CLSCTX_INPROC_SERVER,
-        COINIT_APARTMENTTHREADED, STGM_READWRITE,
-    };
-    use windows::Win32::UI::Shell::{IShellLinkW, ShellLink, SHChangeNotify, SHCNE_ASSOCCHANGED, SHCNF_IDLIST};
-
-    let Some(ico) = desktop_icon_ico_path(icon_id) else {
-        log::warn!("theme: no .ico for '{}' (taskbar icon source not updated)", icon_id);
-        return; // 未标记 LAST_SHELL_ICON——下次同 id 进入可重试（如 .ico 尚未就位）。
-    };
-    *LAST_SHELL_ICON.lock().unwrap() = Some(icon_id.to_string());
-
-    // 定位两个 .lnk（与 register_toast_aumid 相同路径）。
-    let mut lnk_paths: Vec<std::path::PathBuf> = Vec::new();
-    if let Some(appdata) = std::env::var_os("APPDATA") {
-        let start_menu = std::path::Path::new(&appdata)
-            .join("Microsoft").join("Windows").join("Start Menu").join("Programs")
-            .join("DeepSeek Harness Hub.lnk");
-        lnk_paths.push(start_menu);
-    }
-    // 桌面：FOLDERID_Desktop（OneDrive 重定向安全；曾用 USERPROFILE\Desktop
-    // 近似，重定向机器上会漏改桌面 .lnk）。
-    let desktop = known_desktop_path().join("DeepSeek Harness Hub.lnk");
-    if desktop.exists() {
-        lnk_paths.push(desktop);
-    }
-
-    let wide_ico: Vec<u16> = ico.to_string_lossy().encode_utf16().chain(std::iter::once(0)).collect();
-    unsafe {
-        if CoInitializeEx(None, COINIT_APARTMENTTHREADED).is_err() {
-            log::warn!("theme: CoInitializeEx failed");
-            return;
-        }
-        for lnk in &lnk_paths {
-            if !lnk.exists() {
-                continue;
-            }
-            let wide_lnk: Vec<u16> = lnk.to_string_lossy().encode_utf16().chain(std::iter::once(0)).collect();
-            let link: Result<IShellLinkW, _> = CoCreateInstance(&ShellLink, None, CLSCTX_INPROC_SERVER);
-            match link {
-                Ok(link) => {
-                    let pf: Result<IPersistFile, _> = link.cast();
-                    match pf {
-                        Ok(pf) => {
-                            if pf.Load(PCWSTR(wide_lnk.as_ptr()), STGM_READWRITE).is_ok() {
-                                link.SetIconLocation(PCWSTR(wide_ico.as_ptr()), 0).ok();
-                                let _ = pf.Save(PCWSTR(wide_lnk.as_ptr()), true);
-                                log::info!("theme: updated shortcut icon → {}", lnk.display());
-                            }
-                        }
-                        Err(e) => log::warn!("theme: cast IPersistFile failed: {}", e),
-                    }
-                }
-                Err(e) => log::warn!("theme: CoCreateInstance ShellLink failed: {}", e),
-            }
-        }
-        CoUninitialize();
-    }
-
-    // AUMID 注册 IconUri → 所选 .ico（任务栏按 AppUserModelId 关联取图标）。
-    {
-        use std::os::windows::process::CommandExt;
-        let key = "HKCU\\Software\\Classes\\AppUserModelId\\com.marecgents.dsh-hub";
-        let ico_str = ico.to_string_lossy().to_string();
-        let mut c = std::process::Command::new("reg");
-        c.args(["add", key, "/v", "IconUri", "/t", "REG_SZ", "/d", &ico_str, "/f"]);
-        c.creation_flags(0x08000000);
-        match c.output() {
-            Ok(out) if out.status.success() => log::info!("theme: AUMID IconUri → {}", ico_str),
-            Ok(out) => log::warn!("theme: AUMID IconUri reg failed: {}", String::from_utf8_lossy(&out.stderr)),
-            Err(e) => log::warn!("theme: AUMID IconUri reg error: {}", e),
-        }
-    }
-
-    // 广播变更让 Explorer 重读（任务栏/快捷方式图标刷新）。
-    unsafe {
-        SHChangeNotify(SHCNE_ASSOCCHANGED, SHCNF_IDLIST, None, None);
-    }
-}
 
 /// 解析桌面路径（FOLDERID_Desktop，处理 OneDrive 重定向）。
 /// 从 lib.rs 迁入（Controller→Helper）：update_shell_icon_sources 与

@@ -22,6 +22,7 @@
 //   commands/ = Tauri 命令薄胶水（Callback 层）
 // #[path] 保留模块名（crate::tray 等），避免引用链改动。
 #[path = "managers/window.rs"] mod window;
+#[path = "managers/icon.rs"] mod icon;
 #[path = "helpers/state.rs"] mod state;
 #[path = "helpers/theme.rs"] mod theme;
 #[path = "managers/tray.rs"] mod tray;
@@ -421,6 +422,9 @@ pub fn run() {
             notify::notify_task_complete,
         ])
         .setup(|app| {
+            // IconManager 尽早托管（任何 set_desktop_icon / apply_page_theme /
+            // 启动应用路径都可能访问它——迟托管会在 sidecar 启动失败等路径 panic）。
+            app.manage(icon::IconManager::default());
             // ── M4 流程（T4.4 SOP §5.4 步骤 4，先建窗 → 后台准备 → READY 后 navigate）──
             // 0. 先建窗（占位页立即显示，不再等 READY）：WebviewUrl::default() =
             //    frontendDist ../dev/index.html（M3 临时页）；build_main_window 注入
@@ -435,21 +439,23 @@ pub fn run() {
             // S6: 启动即应用已保存的桌面图标（设置卡选择；'default' = 主题翻转
             // 鲸鱼，未知 id 回退白鲸）。页面加载后 apply_page_theme 会按实际
             // 明暗重新应用（'default' 翻转 / 鲸鱼娘固定），此处保证占位页
-            // 期间图标即正确。
+            // 期间图标即正确。统一走 icon::IconManager（面级幂等编排）。
             let desktop_icon = state::read_shell_config_str("desktopIcon", "default");
-            theme::apply_desktop_icon(&win, &desktop_icon);
+            let dark = win.theme().unwrap_or(tauri::Theme::Dark) == tauri::Theme::Dark;
+            app.state::<icon::IconManager>().apply(app.handle(), &desktop_icon, dark);
 
             // Q4：toast 显示所需 AUMID 注册（Windows 未打包应用，幂等）。
             // 移后台线程：多次 reg.exe spawn + COM 快捷方式保存曾排在建窗前的
             // 关键路径上（拖慢首绘 ~0.5s）。注册建好 .lnk 后强制补一次壳图标源
-            // 同步——apply_desktop_icon 与本线程有竞态窗口（当时 .lnk 可能还没
-            // 建好，IconLocation 更新被跳过），sync_shell_icon_sources 绕过去重。
+            // 同步——apply 与本线程有竞态窗口（当时 .lnk 可能还没建好，
+            // IconLocation 更新被跳过），sync_after_shortcuts 强制重跑壳源面。
             #[cfg(target_os = "windows")]
             {
+                let app_handle = app.handle().clone();
                 let icon_id = desktop_icon.clone();
                 std::thread::spawn(move || {
                     register_toast_aumid();
-                    theme::sync_shell_icon_sources(&icon_id);
+                    app_handle.state::<icon::IconManager>().sync_after_shortcuts(&app_handle, &icon_id);
                 });
             }
 
@@ -540,7 +546,14 @@ pub fn run() {
 
             // 2. 托盘（图标随用户桌面图标选择 / 主题翻转，S6）。
             let _tray = tray::setup_tray(app)?;
-            tray::set_tray_icon(app.handle(), &state::read_shell_config_str("desktopIcon", "default"));
+            // 托盘图标面走 IconManager（dark 按当前窗口主题；面级幂等，窗口面
+            // 已应用则跳过）。
+            let icon_id = state::read_shell_config_str("desktopIcon", "default");
+            let dark = app
+                .get_webview_window("main")
+                .map(|w| w.theme().unwrap_or(tauri::Theme::Dark) == tauri::Theme::Dark)
+                .unwrap_or(true);
+            app.state::<icon::IconManager>().apply(app.handle(), &icon_id, dark);
 
             // 3. 启动 Node sidecar（T4.1）。
             let node_state = std::sync::Arc::new(node::NodeState::new());
