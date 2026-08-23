@@ -1,0 +1,4 @@
+# dsh-project-memory — profile-level mount patch (pure host plugin, no client bundle).
+plugins:
+  - id: '@dsh-external/dsh-project-memory'
+    name: dsh-project-memory

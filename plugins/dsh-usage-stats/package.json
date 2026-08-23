@@ -1,0 +1,36 @@
+{
+  "name": "@dsh-external/dsh-usage-stats",
+  "version": "0.0.1",
+  "description": "全会话 token 用量统计：聚合所有会话的输入/输出/缓存 token 用量与模型分布，设置页展示（PR #34，并入 dsh-hub monorepo 修订版）",
+  "private": true,
+  "_comment": "随 dsh-hub 仓库维护（private）；如独立发布到 npm，请将 private 改为 false 并删除本字段",
+  "type": "module",
+  "main": "./lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib"
+  ],
+  "scripts": {
+    "build": "bash scripts/build.sh",
+    "check": "node --check lib/index.js && node --check lib/client.js"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.0.1",
+    "@deepseek-ai/dsh-session-persistence": "^0.1.0-rc.6",
+    "@deepseek-ai/dsh-host-webserver": "^0.1.0-rc.6"
+  },
+  "license": "BSD-3-Clause",
+  "dsh": {
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-runtime",
+        "@deepseek-ai/dsh-client-ui-slots"
+      ],
+      "platform": "web"
+    }
+  }
+}

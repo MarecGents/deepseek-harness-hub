@@ -40,7 +40,8 @@
       "../node_modules/@standard-schema/spec/**/*",
       "../node_modules/argparse/**/*",
       "../node_modules/js-yaml/**/*",
-      "icons/*.ico"
+      "../plugins/**/*",
+    "icons/*.ico"
     ],
     "icon": [
       "icons/32x32.png",

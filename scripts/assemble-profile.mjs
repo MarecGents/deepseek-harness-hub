@@ -11,7 +11,7 @@
  * 退出码：0 = 装配成功（或已就绪），1 = 装配失败
  */
 
-import { lstatSync, mkdirSync, readFileSync, readlinkSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, readlinkSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { homedir } from 'node:os'
 
@@ -109,6 +109,42 @@ function assemble() {
   //    bundles 是唯一装载机制（rc.14+ 实测），此处保持一致。
   //    若用户 profile 需要自定义 patch（如 MCP 配置），自行维护
   //    profiles/web/cordis.patch.yml，本脚本不覆盖。
+
+  // 6. Assemble plugins/ (dual-track: bundled with hub, registered as bundles).
+  //    Junction each plugin into profile node_modules/@dsh-external/<name> and
+  //    register the scoped name as a bundle entry (same mechanism as dsh-hub
+  //    itself). Failures are non-fatal — hub assembly stays intact.
+  try {
+    const pluginsDir = existsSync(join(packageRoot, 'plugins'))
+      ? join(packageRoot, 'plugins')
+      : join(packageRoot, '..', '_up_', 'plugins')
+    if (existsSync(pluginsDir)) {
+      const extsDir = join(nmDir, '@dsh-external')
+      mkdirSync(extsDir, { recursive: true })
+      for (const entry of readdirSync(pluginsDir, { withFileTypes: true })) {
+        if (!entry.isDirectory()) continue
+        const pluginPath = join(pluginsDir, entry.name)
+        const pkgPath = join(pluginPath, 'package.json')
+        if (!existsSync(pkgPath)) continue
+        let pkgName
+        try { pkgName = JSON.parse(readFileSync(pkgPath, 'utf8')).name } catch { continue }
+        if (typeof pkgName !== 'string' || !pkgName.startsWith('@')) continue
+        const link = join(extsDir, entry.name)
+        if (!existsSync(link)) {
+          try { symlinkSync(pluginPath, link, 'junction'); log(`plugin junction ${pkgName}`) }
+          catch (e) { log(`plugin junction ${entry.name} skipped: ${e.message}`) }
+        }
+        if (!bundles.includes(pkgName)) {
+          const all = [...(manifest.dsh?.profile?.bundles ?? []), pkgName]
+          manifest.dsh = { ...manifest.dsh, profile: { ...manifest.dsh?.profile, bundles: all } }
+          writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + '\n', 'utf8')
+          log(`registered plugin bundle ${pkgName}`)
+        }
+      }
+    }
+  } catch (e) {
+    log(`plugin assembly skipped: ${e.message}`)
+  }
 
   log('assembly complete')
   return true

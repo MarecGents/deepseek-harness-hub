@@ -1,0 +1,5 @@
+# dsh-usage-stats — profile-level plugin mount.
+# The `id` must equal package.json `name` (plugin-identity consistency rule).
+plugins:
+  - id: '@dsh-external/dsh-usage-stats'
+    name: dsh-usage-stats
