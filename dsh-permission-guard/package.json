@@ -1,0 +1,16 @@
+{
+  "name": "@dsh-external/dsh-permission-guard",
+  "version": "0.0.1",
+  "description": "逐命令 allowlist + 四级能力拦截（auto / give-command / confirm / never），对标 Zcode reasonix.toml 权限白名单",
+  "private": true,
+  "type": "module",
+  "main": "./lib/index.js",
+  "files": [
+    "lib"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  }
+}
