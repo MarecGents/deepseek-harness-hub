@@ -12,7 +12,10 @@
 | `pins-api.ts` | **Server + Services** | 置顶会话 `/api/dsh-hub/pins`（GET/PUT）、pins.json 原子写（renameSync） | 保留 |
 | `backgrounds-api.ts` | **Server + Services** | 背景图静态路由 `/api/dsh-hub/backgrounds/*`（正则白名单防穿越，服务 assets/backgrounds） | 保留 |
 | `sounds-api.ts` | **Server + Services** | 提示音静态路由 `/api/dsh-hub/sounds/*` | 保留 |
-| `bridge-server.ts` | **Server** | 桥路由（WebView2 IPC ↔ HTTP） | **废弃**（Tauri invoke 替代） |
+| `icons-api.ts` | **Server + Services** | 图标静态路由 `/api/dsh-hub/icons/*`（正则白名单防穿越，default.png 别名） | 保留 |
+| `session-paths-api.ts` | **Server + Services** | 会话路径 `/api/dsh-hub/session-paths/paths`（segment 白名单防穿越） | 保留 |
+| `host-guard.ts` | **Helper** | `isHostAllowed` / `rejectIfBadHost`（DNS-rebinding 防护，路由工厂共享） | 保留 |
+| `bridge-server.ts` | **Server** | 桥路由（WebView2 IPC ↔ HTTP） | **已删除**（Tauri invoke 替代） |
 
 ## Server 层规范
 
@@ -23,3 +26,4 @@
 5. **单向依赖**：Server 只调 `../helpers/*` 与纯库；**禁止** import `../index.ts`、`../managers/*`。
 6. **错误处理**：空 catch 必须注释吞掉什么、为何无碍；错误返回 `{ ok: false, error }` 而非抛到进程。
 7. **Build 前推演**：改完先推演（路由唯一、配置三处一致、catch 覆盖、白名单防穿越），再 `npm run build`。
+8. **host 防护共享**：路由工厂共享 `host-guard.ts`（`rejectIfBadHost`，DNS-rebinding 防护），**新增路由必须接**（漏接 = 任意 Host 可访问路由）。

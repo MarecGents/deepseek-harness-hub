@@ -43,6 +43,9 @@ dsh-hub 是**双 half** 结构，且**套壳代码与插件代码必须严格模
 │ client half（浏览器内，React）                                 │
 │   src/client/*          插件 UI：设置卡片 + 右侧栏（body portal）│
 ├─────────────────────────────────────────────────────────────┤
+│ 独立 dsh 插件（双轨分发，见 §1.1 铁律 8）
+│   plugins/<name>/      独立插件（独立 npm + 随 hub resources 分发）
+├─────────────────────────────────────────────────────────────┤
 │ Tauri 原生壳（Rust，src-tauri/src/）——见 src-tauri/src/AGENTS.md│
 │   lib.rs / main.rs      Controller：壳入口                    │
 │   commands/ managers/ services/ helpers/（SPT 分层）          │
@@ -64,7 +67,7 @@ dsh-hub 是**双 half** 结构，且**套壳代码与插件代码必须严格模
 | 类别 | 职责 | 命名示例 |
 |---|---|---|
 | **Controller** | 入口编排、装配、生命周期挂钩 | `index.ts`、`lib.rs` |
-| **Manager** | 管理复杂对象的生命周期/状态机 | `managers/tauri-shell.ts`（壳）、`managers/tray.rs` |
+| **Manager** | 管理复杂对象的生命周期/状态机 | `managers/tauri-shell.ts`（壳）、`managers/tray.rs`、`managers/icon.rs`（图标 6 面编排：面级幂等 + 全局串行锁 + 单 worker/pending 合并防快速切换卡死；`theme.rs` 回归无状态纯函数） |
 | **Services** | 业务服务，对外提供能力 | `services/config-store.ts`、`services/notify.rs` |
 | **Server** | HTTP 路由 / 对外端口 | `server/config-api.ts`、`server/workspace-api.ts` |
 | **Helper** | 纯工具函数，无状态、无副作用 | `helpers/state-store.ts` |
@@ -141,7 +144,7 @@ dsh-hub 是**双 half** 结构，且**套壳代码与插件代码必须严格模
    - 推演通过后再构建；**禁止**"先 build 报错再回改"的返工式开发。
 4. **错误处理**：空 `catch` 必须注释吞掉什么、为何无碍；`try` 保持单一语句；进程退出用 `quit.marker` + `process.exit(0)`（webviewjs teardown 崩溃规避），不用 `app.exit()`。
 5. **类型**：`strict: true`；`any` 必须解释为何无法收窄；ESM（`"type": "module"`）；相对导入用 `.ts` 后缀（host）或构建约定。
-6. **文档同步**：行为/配置/接口变更必须同步更新 `README.md`、`docs/关键踩坑记录.md`（新坑补录）或本项目任务日志。
+6. **文档同步**：行为/配置/接口变更必须同步更新 `README.md`、`FUNCTIONS.md`（功能状态事实源）、`docs/关键踩坑记录.md`（新坑补录）或本项目任务日志。
 
 ## 5. 构建 / 发布 / 分支 / 发包前强制检查
 
@@ -168,7 +171,7 @@ npm run build:client   # client（tsdown + SDK junction）
 4. **dist-tags 直查 registry**：发布后 `Invoke-RestMethod 'https://registry.npmjs.org/-/package/@marecgents/dsh-hub/dist-tags'` 必须 `latest == rc == 当前版本`。**`npm view` 有镜像缓存，不可信**。
 5. **registry 显式官方**：publish / dist-tag 一律 `--registry=https://registry.npmjs.org/`（本机默认是华为镜像）。
 6. **版本不可覆盖**：`npm version <bump>` 每次升版本，同版本 publish 会被拒绝。
-7. **main 发布 + dev-v2 回灌 + tag**：push main 与 `v0.0.1-rc.<N>` tag；dev-v2 ff 到 main；**dev-v1 冻结不动**（§5.1）。
+7. **main 发布 + dev-v2 回灌 + tag**：push main 与 `v0.0.2-rc.<N>` tag；dev-v2 ff 到 main；**dev-v1 冻结不动**（§5.1）。
 8. **发布后真机验证**：测试电脑安装 `cargo tauri build` 的 **NSIS 安装器**（M5）后首启冒烟；插件层 npm 发布仍走 `node scripts/verify-release.mjs` 门禁（保留）。
 
 ### 5.3 发布命令（rc 流程，逐步执行）
@@ -183,24 +186,24 @@ gh pr merge <N> --merge --admin
 
 # 2. main 上 bump + 重建
 git checkout main && git pull origin main
-npm version 0.0.1-rc.<N+1>
+npm version 0.0.2-rc.<N+1>
 npm run build && npm run build:client
 
 # 3. 发布 + latest dist-tag（显式官方 registry）
 npm publish --access public --tag rc --registry=https://registry.npmjs.org/
-npm dist-tag add @marecgents/dsh-hub@0.0.1-rc.<N+1> latest --registry=https://registry.npmjs.org/
+npm dist-tag add @marecgents/dsh-hub@0.0.2-rc.<N+1> latest --registry=https://registry.npmjs.org/
 
 # 4. 校验（registry 直查，勿用 npm view）
 (Invoke-RestMethod 'https://registry.npmjs.org/-/package/@marecgents/dsh-hub/dist-tags').latest   # 必须 = 0.0.1-rc.<N+1>
 
 # 5. 推送 main + tag + 回灌 dev-v2（dev-v1 冻结不动）
-git push origin main && git push origin v0.0.1-rc.<N+1>
+git push origin main && git push origin v0.0.2-rc.<N+1>
 git checkout dev-v2 && git merge main --ff-only && git push origin dev-v2
 
 # 6. 发布记录 docs/发布记录-rc<N>-YYYY-MM-DD-HHmm.md → commit（main）→ 回灌 dev-v2
 ```
 
-- **发布版本号策略**：当前 rc 预览期（`0.0.1-rc.x`）；正式版需在 **Tauri 2.x 迁移完成并达到良好体验后**再发布（见 [外部档案 docs/dsh桌面端技术路线-2026-08-16.md](../docs/dsh桌面端技术路线-2026-08-16.md)）。
+- **发布版本号策略**：当前 rc 预览期（`0.0.2-rc.x`，以 package.json 当前值为准）；正式版需在 **Tauri 2.x 迁移完成并达到良好体验后**再发布（见 [外部档案 docs/dsh桌面端技术路线-2026-08-16.md](../docs/dsh桌面端技术路线-2026-08-16.md)）。
 
 ### 5.4 全新环境首启崩溃事故（rc.10–rc.13，勿重蹈）
 
@@ -218,6 +221,7 @@ git checkout dev-v2 && git merge main --ff-only && git push origin dev-v2
 - **运行 / 发布**：`npm run tauri:build`（=`cargo tauri build`）产出 **NSIS 安装器（M5）**；测试电脑安装后首启冒烟，运行真实 `$DSH_HOME`。
 - **多实例门禁**：已由 **Rust 壳 `src-tauri/src/lib.rs`** 承担（single-instance + netstat/CIM 检测，默认拒绝共存），不再依赖 npm launcher 的 PID 锁（`lock.mjs` 已删）。
 - **状态核查**（2026-08）：launcher 家族 / 桌面快捷方式等 WebView2 时代产物已从仓库删除；运行 profile 装配由 Rust 壳（node.rs → `scripts/assemble-profile.mjs`）承担，dev 时以 `DSH_HUB_PACKAGE_ROOT=仓库根` 建 scoped junction（幂等自愈，见 [docs/关键踩坑记录.md#33](docs/关键踩坑记录.md) / #34）。
+- **sidecar 进程受 Job Object KILL_ON_JOB_CLOSE 约束**（node.rs ssign_sidecar_to_kill_job，`SyncHandle` 包装 HANDLE 解决 Send/Sync）：sidecar 及整棵子进程树绑进作业——壳退出/崩溃/被卸载强杀时，内核随最后一个作业句柄关闭连带清理，根治 node.exe 孤儿锁文件（卸载不净根因，见 [docs/关键踩坑记录.md#68](docs/关键踩坑记录.md)）；Cargo.toml windows features 需显式含 Win32_System_JobObjects + Win32_Security（CreateJobObjectW 依赖 Security 类型，勿靠传递依赖）。
 
 ### 5.6 自编译安装（install-local 已删除，dev-v2 Tauri-only）
 
@@ -227,8 +231,8 @@ git checkout dev-v2 && git merge main --ff-only && git push origin dev-v2
 ## 6. 未来技术路线（约束方向，不立即实施）
 
 - **目标**：Tauri 2.x 壳（自定义壳 UI、Windows/macOS/Linux 三端、~10MB、官方插件生态）。详细决策见外部档案 `../docs/dsh桌面端技术路线-2026-08-16.md`。
-- **迁移时**：壳层（`src/managers/*` + Windows 专属 `src/helpers/*` + `src-tauri/src/` 全部）重写/落地；插件层（client + `src/server/*` API）保留；dsh 生态通过 HTTP/WS 对接，client half 零改动。
-- **现在**：保持当前架构可运行，代码按本 harness 的隔离边界组织，为迁移留好切口（壳/插件接口清晰、不混层）。
+- **现状（2026-08-23）**：Tauri 2.x 迁移**已完成**（M5 打包闭环真机验证，当前 `0.0.2-rc.x`）；壳层落在 `src-tauri/`（Rust），插件层（client + server API）保留。
+- **未来**：自定义壳 UI（decorations:false）/ Windows·macOS·Linux 三端 / 自动更新 / 包体 ~10MB / 官方插件生态。
 
 ---
 

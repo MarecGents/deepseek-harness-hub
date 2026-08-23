@@ -7,13 +7,19 @@
 | 文件 | 职责 |
 |---|---|
 | `index.ts` | client 入口：`inject` 声明（slots/workspaces/sessions）、slot 声明合并（`settings.plugin.item`）、设置卡片 + 右侧栏装配、托盘桥 `__mgShellReady` |
-| `settings-card.tsx` | 设置卡片（DSH HUB 设置）：窗口尺寸/主题/托盘行为/通知/提示音/多实例开关/皮肤选择（Setting-Cell 行式），走 `/api/dsh-hub/config` |
+| `settings-card.tsx` | 设置卡片（DSH HUB 设置）：窗口尺寸/主题/托盘行为/通知/提示音/多实例开关/皮肤选择/桌面图标选择（S6，保存 → `set_desktop_icon` invoke）（Setting-Cell 行式），走 `/api/dsh-hub/config` |
 | `skins.ts` | 皮肤注册表：`DshSkin` 定义 + 5 套皮肤（午夜蓝/旧纸张/终端绿/ZCode/极光紫）+ `findSkin`/`applySkin` |
 | `backgrounds.ts` | 背景图注册表：`DshBackground` 定义 + 内置图片（远航）+ `applyBackground`（frame 层双层背景注入）/ `fetchStoredBackground` |
 | `right-sidebar.tsx` | 右侧栏：概览（Token 统计）/ 文件树 / Git 三页，body portal 挂载 |
 | `right-sidebar-style.ts` | 右侧栏样式（CSS 字符串注入，`mg-rs-*` 前缀） |
 | `pin-conversations.ts` | 置顶会话：内容匹配行定位（零 CSS-hash）+ 置顶区/行按钮注入 + pins 状态机（dirtyDelta / ready 门控剪枝 / disposer 移除 DOM） |
 | `pin-conversations-style.ts` | 置顶区/行按钮样式（CSS 字符串注入，`mg-pin-*` 前缀） |
+| `model-select.tsx` | composer 模型嵌套菜单：slot `conversation.input.model` priority -1 阴影官方，自声明 `modelDirectories` 类型 |
+| `session-menu.ts` | 任务右键菜单：置顶/重命名/分叉/归档/资源管理器/复制路径 |
+| `session-menu-style.ts` | 任务右键菜单样式（CSS 字符串注入，`mg-ctxmenu-*` 前缀） |
+| `conversation-rail.ts` | 对话定位条：`turnTimings` 数据源，body portal 挂载 |
+| `conversation-rail-style.ts` | 对话定位条样式（CSS 字符串注入，`--mg-rail-*` 变量） |
+| `desktop-icons.ts` | 桌面图标注册表（S6）：preview 走 `/api/dsh-hub/icons` |
 | `style.ts` | 设置卡片样式（CSS 字符串注入，`mg-card-*` 前缀） |
 
 ## UI 风格铁律（严格遵循 dsh web）

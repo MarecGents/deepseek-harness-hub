@@ -10,7 +10,7 @@ src-tauri/src/
   main.rs               引导（#![windows_subsystem = "windows"]）
   shell-init.js         注入初始化脚本（自绘标题栏 42px / 皮肤 token / 右侧栏偏移 / __mgPlaySound）
   commands/             Callback 层：#[tauri::command] 薄胶水（commands.rs）
-  managers/             壳 Manager：tray.rs / node.rs / window.rs / single_instance.rs
+  managers/             壳 Manager：tray.rs / node.rs / window.rs / single_instance.rs / icon.rs
   services/             Services：notify.rs（系统 toast）
   helpers/              Helper：theme.rs / state.rs / quit.rs / os_theme.rs / e2e.rs
 ```
@@ -23,14 +23,15 @@ src-tauri/src/
 |---|---|---|
 | `lib.rs` | **Controller** | 日志三目标、托盘、单实例、通知、窗口管理、Node sidecar 启动（M4）、close/minimize-to-tray、AUMID 注册（toast 快捷方式） |
 | `main.rs` | **Controller** | `windows_subsystem` 引导 |
-| `shell-init.js` | **Helper** | 标题栏 42px + `data-mg-shell-theme` 黑/白覆盖 + 右侧栏偏移 + `__mgPlaySound`；**DOMContentLoaded 后再碰 DOM**（parse-time 访问会杀掉脚本，踩坑 #35） |
-| `commands/commands.rs` | **Callback** | invoke 命令：ping / diag_report / set_window_theme / set_window_size / get_workspace_path / window_minimize / window_toggle_maximize / window_close / tray_quit / window_toggle_visible / play_sound / open_workspace_path / notify_task_complete |
-| `managers/tray.rs` | **Manager** | 原生托盘菜单（4 项）+ 单击/双击恢复 + toggle 标签同步（managed `TrayMenuHandles`，Tauri 无 `menu()` getter） |
+| `shell-init.js` | **Helper** | 标题栏 42px + `data-mg-shell-theme` 黑/白覆盖 + 右侧栏偏移 + `__mgPlaySound` + 标题栏图标 `<img src="/api/dsh-hub/icons/*.png">`（与任务栏/托盘同源）+ `__mgSetDesktopIcon` / `__mgPendingDesktopIcon` 容错；**DOMContentLoaded 后再碰 DOM**（parse-time 访问会杀掉脚本，踩坑 #35） |
+| `commands/commands.rs` | **Callback** | invoke 命令：ping / diag_report / set_window_theme / set_window_size / get_workspace_path / window_minimize / window_toggle_maximize / window_close / tray_quit / window_toggle_visible / play_sound / open_workspace_path / notify_task_complete / apply_page_theme / set_desktop_icon |
+| `managers/tray.rs` | **Manager** | 原生托盘菜单（4 项）+ 单击/双击恢复 + toggle 标签同步（managed `TrayMenuHandles`，Tauri 无 `menu()` getter）+ `set_tray_icon(app, icon_id, dark)`（显式 dark，由 icon.rs 调用） |
 | `managers/node.rs` | **Manager** | Node sidecar 生命周期（spawn/port/ready/stdin）+ `dispatch_dsh_cmd` 分发表（DSH_CMD 上行分发） |
 | `managers/window.rs` | **Manager** | 主窗口构建（1440×810 / 无边框 / autoplay 放行） |
 | `managers/single_instance.rs` | **Manager** | 多实例防护插件（allowMultipleInstances=false 语义） |
+| `managers/icon.rs` | **Manager** | IconManager：图标 6 面编排（窗口 SMALL+BIG / 托盘 / 壳源 .lnk×2+AUMID+SHChangeNotify / 自绘标题栏）、面级幂等（去重键含 dark）、全局 apply_lock 串行、单 worker+pending 合并（Condvar）、BIG HICON 生命周期持有；apply / apply_theme_aware / sync_after_shortcuts（迁移自 helpers/theme.rs） |
 | `services/notify.rs` | **Services** | 系统 toast（NotificationExt + AUMID） |
-| `helpers/theme.rs` | **Helper** | DWM 标题栏主题（apply_theme） |
+| `helpers/theme.rs` | **Helper** | 无状态纯函数：DWM 主题（apply_theme）+ desktop_icon_png + apply_window_icons（SMALL+BIG，BIG HICON 生命周期交调用方）+ known_desktop_path；图标编排迁至 managers/icon.rs |
 | `helpers/state.rs` | **Helper** | `$DSH_HOME` 定位（dsh_home()）+ 窗口状态读写 |
 | `helpers/quit.rs` | **Helper** | quit.marker 语义（write_quit_marker） |
 | `helpers/os_theme.rs` | **Helper** | 系统深浅色探测 |
@@ -49,6 +50,9 @@ src-tauri/src/
 9. **E2E**：`helpers/e2e.rs` 仅 debug_assertions + `DSH_HUB_E2E=1` 启用，**必须**用隔离 DSH_HOME（临时目录），**禁止**碰真实 ~/.dsh。
 10. **clippy 零告警**：`cargo clippy --all-targets` 必须干净（`let _ =` 无意义丢弃、借用表达式 `&format!(...)`、`true.into()` 等按 clippy 修正）。
 11. **窗口事件**：Tauri 无 Minimized 事件 → Resized + `is_minimized()` 检测最小化到托盘；`prevent_close` 必须 `on_window_event(CloseRequested{api})`（仅 JS listener 不满足）。
+12. **sidecar 防残留**：spawn 成功路径必须 `assign_sidecar_to_kill_job`（KILL_ON_JOB_CLOSE 单例；HANDLE 非 Send/Sync → `SyncHandle` 包装）。
+13. **跨线程窗口消息**：一律 `PostMessageW`（异步投递），`SendMessageW` 仅必须同步取返回值时使用。
+14. **windows features 显式声明**：Cargo.toml 必须显式列 `Win32_System_JobObjects` / `Win32_Security`（features 不随依赖传递）。
 
 ## 分层依赖红线
 

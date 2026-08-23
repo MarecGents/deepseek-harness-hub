@@ -10,13 +10,13 @@ src/
   core/             Core：全局服务注册表 + 生命周期顺序（SPT [Injectable] 思想）
   controllers/      Controller：业务编排（session-runtime / tray-pipe，见 controllers/AGENTS.md）
   managers/         壳 Manager：tauri-shell.ts（Tauri 壳桥，唯一壳 Manager；desktop/tray 已删除）
-  server/           Server：HTTP/WS 路由工厂（config/backgrounds/sounds/workspace/pins/bridge）
+  server/           Server：HTTP/WS 路由工厂（config/backgrounds/sounds/workspace/pins/icons/session-paths）
   services/         Services：纯领域逻辑（config-store / pins-store）
   helpers/          Helper：无状态/平台工具（state-store，$DSH_HOME 语义）
   models/           Model：共享类型/常量（pipe 协议帧、ShellConfig，见 models/AGENTS.md）
   utils/            Utils：纯函数（管道帧解析，见 utils/AGENTS.md）
   client/           插件 UI（见 client/AGENTS.md）
-  bridge/           桥客户端（Tauri invoke 封装）
+  plugins/          独立插件（@dsh-external/*，双轨分发见根 AGENTS §1.1 铁律 8；必须接装配链 cordis.patch.yml+profile，禁死目录；当前插件 private:true 仅随 hub，发布后改 false）
 ```
 
 ## 职责（现行文件）
@@ -37,7 +37,8 @@ src/
 | `managers/tauri-shell.ts` | **Manager（壳）** | Tauri 壳 facade：invoke 桥（DSH_CMD 上行）、声音/通知/主题/窗口命令、getTrayBehavior 实时读 |
 | `managers/desktop.ts` | **Manager（壳）** | WebView2 桌面壳生命周期（**已删除**：WebView2 壳，dev-v2 Tauri-only） |
 | `managers/tray.ts` | **Manager（壳）** | WebView2 托盘（**已删除**：WebView2 壳，dev-v2 Tauri-only） |
-| `server/*-api.ts` | **Server** | 路由工厂：config/backgrounds/sounds/workspace/pins/bridge（`/api/dsh-hub/*`） |
+| `server/*-api.ts` | **Server** | 路由工厂：config/backgrounds/sounds/workspace/pins/icons/session-paths（`/api/dsh-hub/*`） |
+| `server/host-guard.ts` | **Helper** | 共享守卫：`isHostAllowed` / `rejectIfBadHost`（DNS-rebinding 防护），server 内路由工厂共用 |
 | `services/theme-sync.ts` | **Services** | 页面主题 → IPC 桥转发（**已删除**：WebView2 壳，dev-v2 Tauri-only） |
 | `helpers/*` | **Helper** | 无状态工具：state-store（$DSH_HOME/窗口状态）；dwm-theme / os-theme / explorer / screen / icons / png-decode / sound / app-id 已删除（WebView2 壳，dev-v2 Tauri-only） |
 | `client/*` | 插件 UI | 见 [client/AGENTS.md](client/AGENTS.md) |

@@ -1,6 +1,6 @@
 # AGENTS.md — src/services/（Services 层）开发约束
 
-> 本目录是 dsh-hub host half 的 **Services（纯领域业务）层**。2026-08-18 重构后本目录包含 `theme-sync.ts`（主题桥）与持久化服务 `config-store.ts` / `pins-store.ts`；HTTP 路由 → `../server/`，纯工具 → `../helpers/`，壳生命周期 → `../managers/`。
+> 本目录是 dsh-hub host half 的 **Services（纯领域业务）层**。本目录仅 `config-store.ts` / `pins-store.ts` 两个持久化服务（theme-sync 已随 WebView2 壳删除）；HTTP 路由 → `../server/`，纯工具 → `../helpers/`，壳生命周期 → `../managers/`。
 > 改动本目录任何文件前，**必须**先读根 [../../AGENTS.md](../../AGENTS.md) 与 [../AGENTS.md](../AGENTS.md) 与本文件。
 
 ## 文件归类

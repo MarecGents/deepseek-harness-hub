@@ -142,7 +142,7 @@ pub fn apply_window_icons(
 ///
 /// 纯函数：创建并发送 WM_SETICON ICON_BIG，旧 HICON 由调用方传入的
 /// `prev_big` 管理（WM_SETICON 不转移所有权，替换时 DestroyIcon 防泄漏）。
-/// 失败仅 warn；跨线程 SendMessageW 与 tao set_icon 同模式（主线程泵消息，
+/// 失败仅 warn；跨线程 PostMessageW 异步投递（窗口线程排队处理，不阻塞调用线程）（主线程泵消息，
 /// 同步返回）。
 #[cfg(target_os = "windows")]
 fn set_icon_big_win32(

@@ -1,7 +1,7 @@
 # dsh-hub 功能清单（FUNCTIONS）
 
 > 基线：`main` 分支 `v0.0.1-rc.14`（WebView2 时代最终版）。
-> 更新：2026-08-19 · 当前开发分支 `dev-v2`（Tauri 2.x 壳 + dsh web 插件层）。
+> 更新：2026-08-23 · 当前开发分支 `dev-v2`（Tauri 2.x 壳 + dsh web 插件层）。本轮（08-22/23）新增：图标系统模块化重构（icon.rs 6 面编排）、图标快速切换防卡死（worker 合并）、卸载提速（Get-Process + Defender 排除）、Job Object 防 sidecar 残留、模型嵌套菜单（PR #33）、findings-ledger 插件（PR #38）、build:installer 完整性预检。
 > 状态标记：✅ 已覆盖（Tauri 壳或插件层等价实现）· ⚠️ 部分/待补（M4/M5 收口项）· ➖ 不适用（被 Tauri 原生能力替代）。
 > 依据：`git show main:<path>` 源码 + `docs/` 发布记录（rc10–rc14）。
 
@@ -24,7 +24,7 @@
 |---|---|---|---|
 | 7 | 标题栏主题跟随 | 'system' 监听页面 `data-ds-dark-theme`；DWM immersive dark；同步 webview 背景防帧错位 | ✅ apply_page_theme：DWM + webview 背景 + 窗口图标随 `data-ds-dark-theme`（MutationObserver） |
 | 8 | 标题栏浅/深强制模式 | 主题选项「浅色/深色」强制 chrome 色；跟随 dsh 走 token | ✅ 增强：按当前皮肤浅/深色板解析（`#mg-dsh-skin` 样式表），皮肤切换自动重读；回退黑白 |
-| 9 | 双轨图标 | 标题栏图标随页面主题（深白鲸/浅黑鲸）；任务栏图标随 OS 主题；托盘图标按 OS 主题 | ✅ 窗口图标随页面主题翻转（icon-dark/light 鲸鱼 PNG）；托盘 32x32.png；任务栏用 exe 内嵌图标 |
+| 9 | 桌面图标（6 面同步） | 设置卡可选 5 鲸鱼娘/默认主题翻转；切换同步窗口 SMALL+BIG/托盘/.lnk×2/AUMID/自绘标题栏 | ✅ `managers/icon.rs` IconManager 6 面统一编排：面级幂等（去重键含 dark）+ 全局串行锁 + 单 worker/pending 合并（快速切换不卡死）；BIG 用 PostMessageW 异步；标题栏与任务栏/托盘同源真实 PNG（`/api/dsh-hub/icons/*.png`） |
 
 ## 3. 托盘
 
@@ -99,6 +99,9 @@
 | 31 | 进程身份 | 复制 node.exe + rcedit 打补丁为 dsh-hub.exe/dsh-hub-guard.exe（任务管理器显示产品名） | ➖ 不适用：Tauri exe 原生身份（dsh-hub.exe 已由 cargo 构建，含图标/版本信息） |
 | 32 | 安装脚本 | postinstall 建桌面快捷方式（VBS 隐藏控制台）；postuninstall 清理；install-local 本地打包 | ⚠️ postinstall 已简化（仅 dsh/pnpm 依赖检查，不再建 WebView2 快捷方式）；NSIS 安装器（M5）+ 快捷方式由壳 AUMID 注册生成 |
 | 33 | AppUserModelID | `SetCurrentProcessExplicitAppUserModelID` 保证任务栏归属/Toast 显示 | ✅ `register_toast_aumid`（注册表 + 开始菜单/桌面快捷方式 AUMID 属性） |
+| 34 | 模型嵌套菜单（PR #33） | composer 模型 seat 替换为 provider→model 两级菜单 + 独立 effort 触发器 | ✅ `src/client/model-select.tsx`：官方 slot `conversation.input.model` priority -1 阴影内置；复用官方 modelDirectories 服务；服务缺失降级内置 seat 不阻塞 |
+| 35 | findings-ledger 插件（PR #38） | baseline 快照 + 变更对账 + 覆盖度报告 | ✅ `plugins/dsh-findings-ledger/`：独立插件（双轨分发见 BUILD.md §7）；turn/end 自动出报告 |
+| 36 | 卸载快速通道 | 卸载器启动提速 + sidecar 强杀防残留 | ✅ installer-hooks.nsi PREUNINSTALL Get-Process（非 CIM）+ 去 Sleep；Job Object 随壳退出连带清理 sidecar |
 
 ---
 
@@ -108,19 +111,24 @@
 `title='DeepSeek Harness Hub'` · `width/height=1280/720` · `minimizeToTray=true` · `closeToTray=false` · `theme='system'|'light'|'dark'` · `notifyOnTaskComplete=true` · `soundEnabled=true`
 
 ### ShellConfig（持久化 `$DSH_HOME/dsh-hub/config.json`）
-`windowOpen='auto'` · `width/height`（钳制 [480,屏宽]/[360,屏高]） · `theme='system'` · `minimizeToTray=true` · `closeToTray=false` · `notifyOnTaskComplete=true` · `soundEnabled=true` · `allowMultipleInstances=false` · `skin='default'` · `background='none'`
+`windowOpen='auto'` · `width/height`（钳制 [480,屏宽]/[360,屏高]） · `theme='system'` · `minimizeToTray=true` · `closeToTray=false` · `notifyOnTaskComplete=true` · `soundEnabled=true` · `allowMultipleInstances=false` · `skin='default'` · `background='none'` · `desktopIcon='default'`（5 鲸鱼娘 sad/happy/duo/maid/blue）
 
-## 覆盖缺口（⚠️ 待 M4/M5 收口）
+## 覆盖缺口（⚠️ 待收口）
 
-### 已修复（2026-08-19 三轮审查后）
+### 已修复（2026-08-23 更新）
 - sidecar 崩溃自动重启循环（supervisor 线程 ≤3 次 + READY 后 re-navigate）
-- cmd-shim 兜底孤儿 node（resolve 硬化 + taskkill /T /F）
+- cmd-shim 兜底孤儿 node（resolve 硬化 + taskkill /T /F）+ **Job Object KILL_ON_JOB_CLOSE 根治 sidecar 残留**（`assign_sidecar_to_kill_job` + SyncHandle）
 - 插件 fiber 拆除硬杀进程（dispose 不再调 exitProcess）
-- peerDependencies 区间（^0.0.1-rc.1 → ^0.1.0-rc.6）
+- peerDependencies 区间（^0.0.1-rc.1 → ^0.1.0-rc.6，当前 dsh 0.1.1-rc.2）
 - config 写入非原子（renameSync）、settings 永久 dirty、皮肤/背景失败回滚、workspace 双 decode
 - 提示音双响、closeToTray 首启默认不一致
 - bridge 死代码移除 + config/pins/workspace 路由 Host 白名单
 - 多实例门禁 dev 豁免（隔离 DSH_HOME）
+- **图标系统模块化重构**（managers/icon.rs 6 面编排 + theme.rs 无状态化）
+- **图标快速切换卡死**（worker + pending 合并，快速切换只保留最新）
+- **卸载提速**（PREUNINSTALL Get-Process + Defender 排除 Add-MpPreference）
+- **build:installer 完整性预检**（assertSourceCompleteness/assertLibClean）
+- **NSIS 安装器闭环**（rc.3 起真机验证，当前 rc.7；卸载快速通道 rc.5-rc.7）
 
 ### 已实现（2026-08-19 第十轮）
 - Splash 启动画面（shell-init.js 覆盖层，覆盖 SPA 白屏）

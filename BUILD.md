@@ -95,7 +95,7 @@ cmd /c "call "<vcvars64.bat>" >nul 2>&1 && npm run tauri:build"
 npm run tauri:build
 
 :: ⑤ 产物复制 + SHA256 校验（踩坑 #56：复制可能静默失败，必须校验 hash）
-set VERSION=0.0.2-rc.3
+set VERSION=0.0.2-rc.7
 mkdir build\%VERSION% 2>nul
 copy "src-tauri\target\release\bundle\nsis\DeepSeek Harness Hub_%VERSION%_x64-setup.exe" "build\%VERSION%\" && ^
 certutil -hashfile "src-tauri\target\release\bundle\nsis\DeepSeek Harness Hub_%VERSION%_x64-setup.exe" SHA256 && ^
@@ -103,7 +103,7 @@ certutil -hashfile "build\%VERSION%\DeepSeek Harness Hub_%VERSION%_x64-setup.exe
 :: 两个 hash 必须一致；不一致 → 删掉 build 里的目标再复制一次
 ```
 
-> 版本号约定：`package.json` version（当前 `0.0.2-rc.3`）与 `src-tauri/tauri.conf.json` version **必须一致**——NSIS 产物名和 `build/<version>/` 目录都以它命名；`src-tauri/Cargo.toml` 恒为 `0.0.0`（Tauri 模板约定，勿改）。
+> 版本号约定：`package.json` version（当前 `0.0.2-rc.7`）与 `src-tauri/tauri.conf.json` version **必须一致**——NSIS 产物名和 `build/<version>/` 目录都以它命名；`src-tauri/Cargo.toml` 恒为 `0.0.0`（Tauri 模板约定，勿改）。
 
 ---
 
@@ -169,6 +169,7 @@ npm run build:installer -- --dry-run  :: 只检测工具链并打印执行计划
 **关键资产位置**（打包进安装器的完整内容）：
 - 壳代码：`src-tauri/src/*`（含 `managers/icon.rs`、`shell-init.js` 内嵌）
 - 安装期脚本（resources → `_up_\scripts\`）：`scripts/dsh-deps-install.ps1`、`scripts/assemble-profile.mjs`
+- 独立插件（resources → _up_\plugins\，随 hub 分发轨）：plugins/<name>/**/*（如 dsh-findings-ledger，见 §7 双轨）
 - 图标：`src-tauri/icons/`（PNG include_bytes 内嵌 + `*.ico` resources）
 - client 资产：`assets/backgrounds/`（背景图）、`assets/icons/`（图标预览）
 - 前端占位页：`dev/index.html`（frontendDist）
@@ -186,6 +187,7 @@ npm run build:installer -- --dry-run  :: 只检测工具链并打印执行计划
 | `build/<version>/` 里的包 hash 与 target 产物不一致 | 目标 exe 被占用（查看器/杀毒）时复制失败但命令不报错 | 复制后**校验 SHA256**，不一致先删目标再复制；`build:installer` 已内置 | [docs/关键踩坑记录.md#56](docs/关键踩坑记录.md) |
 | GNU 链接 cdylib 报 `export ordinal too large` | mingw ld 自动导出全部符号超 PE/COFF 上限 | 已入库：`src-tauri/.cargo/config.toml` 带 `--exclude-all-symbols` | [docs/关键踩坑记录.md#40](docs/关键踩坑记录.md) |
 | `npm install` 后 `build:client` 失败 | npm install 清掉 `@deepseek-ai/dsh-*` SDK junction | 装完依赖必须重跑 `npm run build:client`（`build:installer` 每次都会跑） | [docs/关键踩坑记录.md#19](docs/关键踩坑记录.md) |
+| 全新电脑卸载器启动慢（3-5 分钟） | Defender 首扫 $INSTDIR（dsh-hub-win ~3.5 万文件私有运行时，见踩坑 #70） | dsh-deps-install.ps1 Add-MpPreference -ExclusionPath（try/catch）+ PREUNINSTALL 改 Get-Process 提速；需管理员才生效 | [docs/关键踩坑记录.md#70](docs/关键踩坑记录.md) |
 
 ---
 

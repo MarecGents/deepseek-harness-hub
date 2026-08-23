@@ -10,6 +10,7 @@
 | `pipe.ts` | **Model** | 管道协议类型/常量：`TrayCommand`/`MgTrayFrame`/`DshCmdPayload`/`DshCmdName`/`MG_TRAY_PREFIX`/`DSH_CMD_PREFIX` |
 | `shell-config.ts` | **Model** | `ShellConfig` 接口 + `DEFAULT_SHELL_CONFIG`（配置三处一致的单一来源） |
 | `plugin-config.ts` | **Model** | `PluginConfig` 接口（Cordis 插件 Config 的纯类型单一来源） |
+| `sound.ts` | **Model** | 提示音类型：`TaskSoundKind` = start/success/attention/error（session-runtime ↔ Tauri play_sound 共享） |
 
 ## Model 层红线
 
