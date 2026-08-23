@@ -34,6 +34,7 @@ import { applySkin, fetchStoredSkin, hasUserPickedSkin } from './skins.ts'
 import { applyBackground, fetchStoredBackground, hasUserPickedBackground } from './backgrounds.ts'
 import { installPinnedConversations } from './pin-conversations.ts'
 import { installConversationRail, refreshConversationRailPalette } from './conversation-rail.ts'
+import { installModelSelect } from './model-select.tsx'
 
 /**
  * Tray-bridge ready flag, set at module scope — the very first thing that
@@ -60,8 +61,8 @@ export interface SettingsPluginItemOwnerProps {
   children?: never
 }
 
-/** Required services: slots (card), workspaces + sessions (tray + sidebar data). */
-export const inject = ['slots', 'workspaces', 'sessions']
+/** Required services: slots (card), workspaces + sessions (tray + sidebar data), modelDirectories (PR #33 model seat). */
+export const inject = ['slots', 'workspaces', 'sessions', 'modelDirectories']
 
 /** Resolve the current session's workspace from the client runtime. */
 function currentWorkspace(ctx: ClientContext): { path?: string; id?: string } | null {
@@ -235,6 +236,15 @@ export function apply(ctx: ClientContext): void {
 
   const slots = ctx.get('slots')
   if (slots === undefined) return
+
+  // Model-seat override (PR #33): nested provider -> model menu shadows the
+  // built-in composer seat at priority -1. Independent of the settings card;
+  // a failure must not break the rest of the shell UI.
+  try {
+    installModelSelect(ctx)
+  } catch (error) {
+    console.warn('[dsh-hub] model-select install failed:', error)
+  }
 
   // Inject the card + right-sidebar stylesheets (idempotent).
   injectCardStyle()

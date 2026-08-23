@@ -1,0 +1,21 @@
+{
+  "name": "@dsh-external/dsh-findings-ledger",
+  "version": "0.0.1",
+  "description": "baseline 快照 + 改动对账 + 覆盖度报告（PR #38，并入 dsh-hub monorepo 修订版）",
+  "private": true,
+  "type": "module",
+  "main": "./lib/index.js",
+  "exports": {
+    ".": "./lib/index.js"
+  },
+  "files": [
+    "lib"
+  ],
+  "scripts": {
+    "check": "node --check lib/index.js"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.0.1"
+  },
+  "license": "BSD-3-Clause"
+}
