@@ -61,8 +61,13 @@ export interface SettingsPluginItemOwnerProps {
   children?: never
 }
 
-/** Required services: slots (card), workspaces + sessions (tray + sidebar data), modelDirectories (PR #33 model seat). */
-export const inject = ['slots', 'workspaces', 'sessions', 'modelDirectories']
+/**
+ * Required services: slots (card), workspaces + sessions (tray + sidebar data).
+ * NOTE: modelDirectories is deliberately NOT injected — the model-seat override
+ * (model-select.tsx) resolves it via ctx.get() with a guard, so a missing
+ * service degrades to "built-in seat" instead of PENDING the whole plugin.
+ */
+export const inject = ['slots', 'workspaces', 'sessions']
 
 /** Resolve the current session's workspace from the client runtime. */
 function currentWorkspace(ctx: ClientContext): { path?: string; id?: string } | null {
