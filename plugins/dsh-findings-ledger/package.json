@@ -2,7 +2,7 @@
   "name": "@dsh-external/dsh-findings-ledger",
   "version": "0.0.1",
   "description": "baseline 快照 + 改动对账 + 覆盖度报告（PR #38，并入 dsh-hub monorepo 修订版）",
-  "private": true,
+  "private": false,
   "type": "module",
   "main": "./lib/index.js",
   "exports": {
@@ -17,5 +17,9 @@
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.0.1"
   },
-  "license": "BSD-3-Clause"
+  "license": "BSD-3-Clause",
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  }
 }

@@ -2,7 +2,7 @@
   "name": "@dsh-external/dsh-project-memory",
   "version": "0.0.1",
   "description": "每项目持久记忆（FACT.md + JOURNAL.jsonl，自动注入 systemPrompt.context + memory_read/log/fact 工具，PR #36 修订落地版）",
-  "private": true,
+  "private": false,
   "type": "module",
   "main": "./lib/index.js",
   "exports": {
@@ -22,5 +22,9 @@
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.0.1"
   },
-  "license": "BSD-3-Clause"
+  "license": "BSD-3-Clause",
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  }
 }

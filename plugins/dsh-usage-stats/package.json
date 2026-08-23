@@ -2,7 +2,7 @@
   "name": "@dsh-external/dsh-usage-stats",
   "version": "0.0.1",
   "description": "全会话 token 用量统计：聚合所有会话的输入/输出/缓存 token 用量与模型分布，设置页展示（PR #34，并入 dsh-hub monorepo 修订版）",
-  "private": true,
+  "private": false,
   "_comment": "随 dsh-hub 仓库维护（private）；如独立发布到 npm，请将 private 改为 false 并删除本字段",
   "type": "module",
   "main": "./lib/index.js",
@@ -32,5 +32,9 @@
       ],
       "platform": "web"
     }
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
   }
 }
