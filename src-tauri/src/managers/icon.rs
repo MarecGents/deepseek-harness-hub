@@ -15,7 +15,8 @@
 //     （theme.rs 回归无状态纯函数）；BIG HICON 生命周期也由本管理器持有。
 //   - commands/lib 各调用点收敛为一行；命令名/ACL/管道协议不变。
 
-use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Condvar, Mutex};
 use tauri::{AppHandle, Manager};
 
 /// 各面去重键：
@@ -23,11 +24,14 @@ use tauri::{AppHandle, Manager};
 ///     必须重应用（过去以 id 为键导致强制主题模式 + 同 id 重试 stale）。
 ///   - shell/titlebar：icon_id（静态输出，.ico / SVG 与主题无关）。
 pub struct IconManager {
-    /// 全局 apply 串行锁：双通道（页面 invoke + host DSH_CMD）、apply_page_theme、
-    /// 启动恢复等多源可能并发进入 apply——各面各自加锁 + SendMessageW 同步阻塞
-    /// （连续切换时窗口线程忙）会竞争/排队混乱甚至卡死。串行化后每次 apply
-    /// 完整顺序执行（排队而非竞争），面级幂等照常生效。
+    /// 全局 apply 串行锁：worker 内各面串行执行（防并发竞争/卡死）。
     apply_lock: Mutex<()>,
+    /// 待应用请求（合并：快速切换只保留**最新**，中间态丢弃——避免线程积压与
+    /// shell 面风暴）。worker 消费后清空。
+    pending: Mutex<Option<(String, bool)>>,
+    pending_cv: Condvar,
+    /// worker 是否已启动（只 spawn 一个常驻线程）。
+    worker_started: AtomicBool,
     window: Mutex<Option<(String, bool)>>,
     tray: Mutex<Option<(String, bool)>>,
     shell: Mutex<Option<String>>,
@@ -40,6 +44,9 @@ impl Default for IconManager {
     fn default() -> Self {
         Self {
             apply_lock: Mutex::new(()),
+            pending: Mutex::new(None),
+            pending_cv: Condvar::new(),
+            worker_started: AtomicBool::new(false),
             window: Mutex::new(None),
             tray: Mutex::new(None),
             shell: Mutex::new(None),
@@ -50,15 +57,17 @@ impl Default for IconManager {
 }
 
 impl IconManager {
-    /// 唯一业务入口：应用桌面图标到全部面（串行执行，防并发竞争/卡死）。
-    /// 面级幂等：仅执行与上次「成功」应用不同的面；失败仅 warn 不 panic。
-    /// `dark` 由调用方给出（窗口主题 / apply_page_theme 的 dark 参数）。
+    /// 唯一业务入口：记录待应用请求并唤醒 worker（**立即返回，IPC 不阻塞**）。
+    /// 快速连续切换时 pending 被覆盖（只保留最新请求）——worker 只消费最后一次，
+    /// 中间态全部丢弃（最终图标 = 最后选择；无线程积压、无 shell 面风暴）。
+    /// 面级幂等由 worker 内 apply_all 保证（同 id 跳过已应用面）。
     pub fn apply(&self, app: &AppHandle, icon_id: &str, dark: bool) {
-        let _guard = self.apply_lock.lock().unwrap();
-        self.apply_window_face(app, icon_id, dark);
-        self.apply_tray_face(app, icon_id, dark);
-        self.apply_shell_face(app, icon_id);
-        self.apply_titlebar_face(app, icon_id);
+        {
+            let mut p = self.pending.lock().unwrap();
+            *p = Some((icon_id.to_string(), dark));
+        }
+        self.pending_cv.notify_one();
+        self.ensure_worker(app);
     }
 
     /// apply_page_theme 用：读持久化 desktopIcon 后按主题应用（'default' 翻转自然正确）。
@@ -68,11 +77,45 @@ impl IconManager {
     }
 
     /// AUMID 后台注册线程收尾：.lnk 刚建好时补上启动竞态窗口内漏掉的
-    /// IconLocation 更新（强制清 shell 面去重后重跑）。
+    /// IconLocation 更新（强制清 shell 面去重后重跑）。**立即执行**（AUMID 线程
+    /// 本身是后台；不排队——启动竞态窗口需要尽快补）。
     pub fn sync_after_shortcuts(&self, app: &AppHandle, icon_id: &str) {
         let _guard = self.apply_lock.lock().unwrap();
         *self.shell.lock().unwrap() = None;
         self.apply_shell_face(app, icon_id);
+    }
+
+    /// 启动常驻 worker（只一次）：循环消费 pending → apply_all。
+    /// Condvar 等待（无空转）；进程退出时线程随进程结束。
+    fn ensure_worker(&self, app: &AppHandle) {
+        if self.worker_started.swap(true, Ordering::SeqCst) {
+            return;
+        }
+        let app2 = app.clone();
+        std::thread::spawn(move || {
+            let mgr = app2.state::<IconManager>();
+            loop {
+                let (id, dark) = {
+                    let mut p = mgr.pending.lock().unwrap();
+                    loop {
+                        if let Some(v) = p.take() {
+                            break v;
+                        }
+                        p = mgr.pending_cv.wait(p).unwrap();
+                    }
+                };
+                mgr.apply_all(&app2, &id, dark);
+            }
+        });
+    }
+
+    /// worker 内执行全部面（串行 + 面级幂等）。
+    fn apply_all(&self, app: &AppHandle, icon_id: &str, dark: bool) {
+        let _guard = self.apply_lock.lock().unwrap();
+        self.apply_window_face(app, icon_id, dark);
+        self.apply_tray_face(app, icon_id, dark);
+        self.apply_shell_face(app, icon_id);
+        self.apply_titlebar_face(app, icon_id);
     }
 
     /// 窗口面（SMALL via Tauri set_icon + BIG via Win32 ICON_BIG）。
