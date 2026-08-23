@@ -77,6 +77,21 @@ dsh-hub 是**双 half** 结构，且**套壳代码与插件代码必须严格模
 - **命令分发**：托盘/管道命令一律走 `core/registry.ts` 注册表（新增命令 = `trayCommands.register(...)`），禁止在 index.ts 散落 if/else 分发链。
 - **双向管道协议同步**：壳→host 走 stdin `MG_TRAY`；host→壳走 stdout `DSH_CMD`。帧格式与命令名变更必须同步 `src-tauri/src/managers/node.rs` 分发表 ↔ `src/managers/tauri-shell.ts`（sendDshCmd）↔ `src/index.ts`（MG_TRAY 读取）。
 
+### 1.1 新功能分发策略（2026-08-23 确立，铁律 8）
+
+新功能落地**先判定类型、再定分发**；**禁止"死目录"**（只放代码不接装配链——代码进仓库但无法生效 = 未完成的功能）。
+
+| 功能类型 | 判定 | 分发策略 |
+|---|---|---|
+| **dsh plugin**（独立插件） | 纯 dsh 生态能力（`ctx.tools` / `systemPrompt` / `session/event` / `webServer` / 独立 client section），**可脱离本壳使用** | **双轨必须同时**：① 独立 npm 发布（`plugins/<name>/` 包 `private:false`，走 §5 发布流程 + verify-release 门禁）；② 随 hub 分发（tauri resources 含 `plugins/<name>/**/*` + assemble-profile 装配进 profile + cordis.patch.yml 挂载 → NSIS 自带） |
+| **壳单一功能** | 壳/插件层增强（client UI、托盘、窗口、Rust 壳、设置卡），**只在本壳有意义** | **不发布 npm**：随 hub 仓库走（client 经 `build:client` 编译进 lib/；Rust 经 cargo 编译进 exe）；装配走 `src/client/index.ts` 或 `src-tauri` |
+| **plugin + 壳联动** | 既有通用插件能力、又有壳侧集成（如插件 host 能力 + 壳 UI/托盘接线） | **拆分双轨**：插件部分（通用能力）→ 独立 npm 发布 **且** 随 hub 分发；壳侧集成（UI/装配/托盘接线）→ 随 hub。**两边都必须接装配链**（插件进 profile；壳侧走 hub 装配），禁止只发一半 |
+
+**判定要点**：
+- 依赖 dsh 官方扩展点（tools / systemPrompt / 事件 / webServer）且脱离本壳仍有用 = **plugin** → 双轨（npm + hub）。
+- 依赖壳能力（tauri 命令、托盘、窗口、`DSH_CMD`、壳配置）或本壳专属视觉（皮肤/背景/rail/右侧栏）= **壳功能** → 随 hub，不发 npm。
+- 每个新功能落地时必须回答："**不接装配链它能生效吗？**" 不能 = 必须补装配链（插件：cordis.patch.yml 挂载 + 进 profile；壳功能：index.ts 装配）；能 = 才算完成。
+
 ---
 
 ## 2. 严格遵循 dsh 架构接口与开发者文档

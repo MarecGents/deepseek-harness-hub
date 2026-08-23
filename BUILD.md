@@ -189,7 +189,36 @@ npm run build:installer -- --dry-run  :: 只检测工具链并打印执行计划
 
 ---
 
-## 7. 相关文档
+## 7. 插件双轨发布（dsh plugin 分发，AGENTS.md §1.1 铁律 8）
+
+独立 dsh 插件（`plugins/<name>/`）落地时**同时**走两条分发——**只发一条 = 未完成**：
+
+### 7.1 独立 npm 发布
+```sh
+cd plugins/<name>
+# 前置：package.json private:false + peerDeps @deepseek-ai/cordis + 装配链就绪
+node ../../scripts/verify-release.mjs        # 门禁（插件身份/语法/装配冒烟）
+npm publish --access public --tag rc --registry=https://registry.npmjs.org/
+npm dist-tag add <pkg>@<ver> latest --registry=https://registry.npmjs.org/
+# 校验（registry 直查，勿用 npm view）：
+(Invoke-RestMethod 'https://registry.npmjs.org/-/package/<pkg>/dist-tags').latest
+```
+
+### 7.2 随 hub 分发（NSIS 自带）
+1. `src-tauri/tauri.conf.json` `bundle.resources` 加 `../plugins/<name>/**/*`
+2. `scripts/assemble-profile.mjs` 装配：插件进 profile（复制/junction 到 profile node_modules）
+3. `cordis.patch.yml` 加挂载行：`plugins: [{ id: <name>, name: <name> }]`（与包 name 一致）
+4. `npm run build:installer` → 安装后插件随壳进入 profile 自动装配
+
+### 7.3 双轨验收
+- [ ] 独立安装（`npm i -g <pkg>`）后插件可挂载生效
+- [ ] hub 安装后插件自动装配生效（NSIS 自带，无需手动装）
+- [ ] 两轨插件身份一致（package.json name == cordis.patch.yml insert.name）
+- [ ] 壳单一功能（client UI/托盘/窗口）**不发布 npm**，仅随 hub（build:client 编译进 lib/ 或 Rust 编译进 exe）
+
+---
+
+## 8. 相关文档
 
 - 全部踩坑记录：[docs/关键踩坑记录.md](docs/关键踩坑记录.md)
 - 构建/发布铁律：[AGENTS.md §5](AGENTS.md)
