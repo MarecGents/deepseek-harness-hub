@@ -1,9 +1,13 @@
 /**
- * dsh-hub settings card — one card in the dsh settings → plugins
- * page, styled after the official PluginCard (collapsible header, themed
- * controls, save/discard footer). It edits the shell config (window size,
- * theme, tray behavior) through this plugin's own HTTP routes, and shows the
- * usage-stats ledger.
+ * Appearance center — the single settings entry for the Tauri shell. It is
+ * registered as a first-level settings.section ("外观中心") and combines the
+ * desktop shell configuration (window size, theme, tray behavior, desktop
+ * icon) through this plugin's own HTTP routes with the embedded dsh-web-ui
+ * appearance panel (skins / backgrounds / wallpapers) via
+ * `window.__dshAppearanceCenter__`, which persists to its own `appearance`
+ * settings namespace and migrates this card's legacy skin/background config
+ * once. The standalone "皮肤中心" section and the old "DSH HUB 设置" plugin
+ * card are no longer registered — one entry, one surface.
  *
  * The card renders only while the host serves the config API, which happens
  * only when the process was launched by this project (desktop shortcut /
@@ -12,12 +16,8 @@
 
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import clsx from 'clsx'
-import { IconChevronDownOutline14, Menu } from '@deepseek-ai/dsh-client-ui-primitives'
+import { IconChevronDownOutline14 } from '@deepseek-ai/dsh-client-ui-primitives'
 import { CARD_CSS_CLASSES as c } from './style.ts'
-import { SKINS, DEFAULT_SKIN_ID, applySkin, markSkinUserPicked } from './skins.ts'
-import { BACKGROUNDS, DEFAULT_BACKGROUND_ID, applyBackground, markBackgroundUserPicked } from './backgrounds.ts'
-import { refreshConversationRailPalette } from './conversation-rail.ts'
-import { DESKTOP_ICONS, DEFAULT_DESKTOP_ICON_ID } from './desktop-icons.ts'
 
 /** Owner share of a plugin card (the section supplies nothing). */
 export interface DesktopSettingsCardProps {
@@ -36,15 +36,12 @@ interface ShellConfig {
   notifyOnTaskComplete: boolean
   soundEnabled: boolean
   allowMultipleInstances: boolean
-  skin: string
-  background: string
-  desktopIcon: string
 }
 
 /** Localized copy kept inline (the card is small; no locale plugin needed). */
 const COPY = {
-  title: 'DSH HUB 设置',
-  description: '桌面壳配置：窗口尺寸、主题与托盘行为',
+  title: '外观中心',
+  description: '桌面壳配置 + 皮肤 / 背景 / 壁纸统一管理',
   unsaved: '未保存',
   readOnly: '当前文档只读，无法保存',
   windowSection: '窗口设置',
@@ -67,21 +64,9 @@ const COPY = {
     '若同时在同一个会话中操作，会导致会话日志损坏（seq 冲突），' +
     '可能丢失对话内容且需要手工修复。强烈不建议开启。',
   multiInstanceHint: '不勾选时，若检测到已有 dsh 在运行，桌面壳将拒绝启动以保护数据',
-  skinSection: '界面皮肤',
-  skinLabel: '界面皮肤',
-  skinHint: '点击即应用并保存；「默认」恢复原生外观。深色模式下的皮肤跟随 dsh 主题设置',
-  skinDefaultName: '默认',
-  skinDefaultDesc: '官方原生外观',
-  skinApplyFailed: '皮肤切换失败，请重试',
-  backgroundSection: '背景图',
-  backgroundLabel: '背景图',
-  backgroundHint: '点击即应用并保存；「无」关闭背景图，恢复原生/皮肤背景',
-  backgroundDefaultName: '无',
-  backgroundDefaultDesc: '不显示背景图',
-  backgroundApplyFailed: '背景切换失败，请重试',
-  desktopIconSection: '桌面图标',
-  desktopIconHint: '点击即保存并应用到窗口标题栏与任务栏图标；「深鲸原版」为官方鲸鱼（跟随明暗主题）',
-  desktopIconApplyFailed: '图标切换失败，请重试',
+  appearanceSection: '外观中心',
+  appearanceHint: '皮肤、背景图与壁纸已统一到 dsh-web-ui 的外观中心（原皮肤中心），以下直接嵌入其面板：',
+  appearanceFallback: '未检测到外观中心（dsh-web-ui 皮肤中心未安装）。请安装 @linxin666/dsh-skins 后刷新页面，或在「设置 → 皮肤中心」操作。',
   discard: '放弃',
   save: '保存',
   saving: '保存中…',
@@ -116,25 +101,6 @@ async function saveConfig(patch: Partial<ShellConfig>): Promise<ShellConfig | nu
   }
 }
 
-/**
- * Fire the Tauri `set_desktop_icon` invoke down-link from the page
- * (D-2 channel: page → Rust via `__TAURI_INTERNALS__`, gated by the
- * `allow-set-desktop-icon` ACL entry; the host config onChange re-applies
- * through the DSH_CMD up-link as a fallback). Best-effort: when the bridge is
- * absent (plain browser / dev-server detached from the shell) the icon still
- * applies on next startup from the persisted config.
- */
-function invokeDesktopIcon(iconId: string): void {
-  try {
-    const internals = (window as unknown as {
-      __TAURI_INTERNALS__?: { invoke?: (c: string, a?: Record<string, unknown>) => Promise<unknown> }
-    }).__TAURI_INTERNALS__
-    internals?.invoke?.('set_desktop_icon', { iconId }).catch?.(() => {})
-  } catch {
-    // Best-effort; a failed page invoke must never break the settings save.
-  }
-}
-
 /** Render the desktop-shell settings card. */
 export function DesktopSettingsCard(_props: DesktopSettingsCardProps): ReactNode {
   const [open, setOpen] = useState(false)
@@ -144,14 +110,6 @@ export function DesktopSettingsCard(_props: DesktopSettingsCardProps): ReactNode
   const [saving, setSaving] = useState(false)
   const [failed, setFailed] = useState(false)
   const [saved, setSaved] = useState(false)
-  const [skinId, setSkinId] = useState<string>(DEFAULT_SKIN_ID)
-  const [skinFailed, setSkinFailed] = useState(false)
-  const [skinMenuOpen, setSkinMenuOpen] = useState(false)
-  const [backgroundId, setBackgroundId] = useState<string>(DEFAULT_BACKGROUND_ID)
-  const [backgroundFailed, setBackgroundFailed] = useState(false)
-  const [backgroundMenuOpen, setBackgroundMenuOpen] = useState(false)
-  const [desktopIconId, setDesktopIconId] = useState<string>(DEFAULT_DESKTOP_ICON_ID)
-  const [desktopIconFailed, setDesktopIconFailed] = useState(false)
   // B7: monotonic request sequence — only the LATEST config write's response
   // may commit state; a slow older response must not clobber a newer one
   // (overlapping onSave + skin pick, or two quick skin picks).
@@ -171,13 +129,39 @@ export function DesktopSettingsCard(_props: DesktopSettingsCardProps): ReactNode
         : { ...value, width: window.innerWidth, height: window.innerHeight }
       setConfig(initial)
       setDraft(initial)
-      setSkinId(initial === null ? DEFAULT_SKIN_ID : initial.skin)
-      setBackgroundId(initial === null ? DEFAULT_BACKGROUND_ID : initial.background)
-      setDesktopIconId(initial === null || typeof initial.desktopIcon !== 'string' ? DEFAULT_DESKTOP_ICON_ID : initial.desktopIcon)
       setLoading(false)
     })
     return () => { alive = false }
   }, [])
+
+  // Appearance center embed: mount the dsh-web-ui skin-center panel into
+  // this card once the card opens (the panel persists to the appearance
+  // settings namespace on its own), and migrate the hub's own persisted
+  // skin/background (still in /api/dsh-hub/config) into the appearance
+  // namespace once so existing hub users keep their look.
+  const appearanceHostRef = useRef<HTMLDivElement | null>(null)
+  const [appearanceAvailable, setAppearanceAvailable] = useState<boolean>(
+    (window as unknown as { __dshAppearanceCenter__?: { available?: boolean } }).__dshAppearanceCenter__?.available === true,
+  )
+  useEffect(() => {
+    if (!open || !appearanceAvailable) return
+    const bridge = (window as unknown as {
+      __dshAppearanceCenter__?: {
+        mount?: (host: HTMLElement) => () => void
+        api?: { migrateFromHub?: (skin?: string, background?: string) => void }
+      }
+    }).__dshAppearanceCenter__
+    if (bridge === undefined || bridge.mount === undefined) {
+      setAppearanceAvailable(false)
+      return
+    }
+    const host = appearanceHostRef.current
+    if (host === null) return
+    const unmount = bridge.mount(host)
+    const legacy = config as unknown as { skin?: string; background?: string } | null
+    bridge.api?.migrateFromHub?.(legacy?.skin, legacy?.background)
+    return () => { unmount() }
+  }, [open, appearanceAvailable, config])
 
   const dirty = draft !== null && config !== null
     && (draft.width !== config.width
@@ -243,99 +227,6 @@ export function DesktopSettingsCard(_props: DesktopSettingsCardProps): ReactNode
     setDraft(config)
     setFailed(false)
     setSaved(false)
-  }
-
-  /** Apply a skin immediately: persist, then restyle the page live. */
-  const onPickSkin = (id: string): void => {
-    if (id === skinId) return
-    // Capture the last-good value so a failed persist rolls back to it (not to
-    // 'default', which would leave the UI showing default while config still
-    // holds the previous skin).
-    const previous = skinId
-    // A user pick must never be clobbered by the boot skin restore (B8).
-    markSkinUserPicked()
-    setSkinFailed(false)
-    setSkinId(id)
-    applySkin(id)
-    refreshConversationRailPalette() // surface tokens changed — re-derive rail colors
-    const seq = ++saveSeq.current
-    void saveConfig({ skin: id }).then((value) => {
-      // Superseded by a newer pick/save — never roll back a newer pick (B7).
-      if (seq !== saveSeq.current) return
-      if (value !== null) {
-        setConfig((prev) => prev === null ? prev : { ...prev, skin: id })
-        setDraft((prev) => prev === null ? prev : { ...prev, skin: id })
-        setSaving(false)
-      } else {
-        // Roll back the live style to the last-good value.
-        applySkin(previous)
-        refreshConversationRailPalette()
-        setSkinId(previous)
-        setSkinFailed(true)
-        setSaving(false)
-      }
-    })
-  }
-
-  /** Apply a background immediately: persist, then restyle the page live. */
-  const onPickBackground = (id: string): void => {
-    if (id === backgroundId) return
-    // Last-good value for a failed-persist rollback (not 'none').
-    const previous = backgroundId
-    // A user pick must never be clobbered by the boot background restore.
-    markBackgroundUserPicked()
-    setBackgroundFailed(false)
-    setBackgroundId(id)
-    applyBackground(id)
-    refreshConversationRailPalette() // backdrop image changed — re-derive rail colors
-    const seq = ++saveSeq.current
-    setSaving(true) // mirror onSave: only the latest write clears the flag
-    void saveConfig({ background: id }).then((value) => {
-      // Superseded by a newer pick/save — never roll back a newer pick (B7).
-      if (seq !== saveSeq.current) return
-      if (value !== null) {
-        setConfig((prev) => prev === null ? prev : { ...prev, background: id })
-        setDraft((prev) => prev === null ? prev : { ...prev, background: id })
-        setSaving(false)
-      } else {
-        // Roll back the live style to the last-good value.
-        applyBackground(previous)
-        refreshConversationRailPalette()
-        setBackgroundId(previous)
-        setBackgroundFailed(true)
-        setSaving(false)
-      }
-    })
-  }
-
-  /** Apply a desktop icon immediately: invoke the shell + persist the id.
-   * The window/taskbar glyph is re-applied live; unknown ids fall back to the
-   * white whale on the Rust side. */
-  const onPickDesktopIcon = (id: string): void => {
-    if (id === desktopIconId) return
-    // Last-good value for a failed-persist rollback (not 'default').
-    const previous = desktopIconId
-    setDesktopIconFailed(false)
-    setDesktopIconId(id)
-    // Live apply through the page → Rust invoke down-link (D-2); the host
-    // config onChange (DSH_CMD) and next startup re-apply the same id.
-    invokeDesktopIcon(id)
-    const seq = ++saveSeq.current
-    setSaving(true)
-    void saveConfig({ desktopIcon: id }).then((value) => {
-      // Superseded by a newer pick/save — never roll back a newer pick (B7).
-      if (seq !== saveSeq.current) return
-      if (value !== null) {
-        setConfig((prev) => prev === null ? prev : { ...prev, desktopIcon: id })
-        setDraft((prev) => prev === null ? prev : { ...prev, desktopIcon: id })
-        setSaving(false)
-      } else {
-        // Persist failed — keep the UI honest: restore the previous selection.
-        setDesktopIconId(previous)
-        setDesktopIconFailed(true)
-        setSaving(false)
-      }
-    })
   }
 
   return (
@@ -461,130 +352,16 @@ export function DesktopSettingsCard(_props: DesktopSettingsCardProps): ReactNode
                         : <div className={c.hint}>{COPY.multiInstanceHint}</div>}
                     </div>
                   )}
-                  {/* Skin picker — official Setting-Cell row: label left, menu pill right, live description below. */}
-                  {draft !== null && (
-                    <div className={c.section}>
-                      <div className={c.sectionTitle}>{COPY.skinSection}</div>
-                      <div className={c.fieldRow}>
-                        <span className={c.fieldLabel}>{COPY.skinLabel}</span>
-                        <Menu
-                          open={skinMenuOpen}
-                          onClose={() => { setSkinMenuOpen(false) }}
-                          items={[
-                            { id: DEFAULT_SKIN_ID, label: COPY.skinDefaultName },
-                            ...SKINS.map((skin) => ({ id: skin.id, label: skin.name })),
-                          ]}
-                          selectedId={skinId}
-                          onSelect={(id) => {
-                            onPickSkin(id)
-                            setSkinMenuOpen(false)
-                          }}
-                          align="end"
-                          portal
-                          anchor={(
-                            <button
-                              type="button"
-                              className={c.selectPill}
-                              aria-haspopup="menu"
-                              aria-expanded={skinMenuOpen}
-                              onClick={() => { setSkinMenuOpen(v => !v) }}
-                            >
-                              {skinId === DEFAULT_SKIN_ID
-                                ? COPY.skinDefaultName
-                                : (SKINS.find((skin) => skin.id === skinId)?.name ?? skinId)}
-                              <IconChevronDownOutline14 />
-                            </button>
-                          )}
-                        />
-                      </div>
-                      <div className={c.hint}>
-                        {skinId === DEFAULT_SKIN_ID
-                          ? COPY.skinDefaultDesc
-                          : (SKINS.find((skin) => skin.id === skinId)?.description ?? '')}
-                        {' — '}{COPY.skinHint}
-                      </div>
-                      {skinFailed ? <p className={c.failed} role="status">{COPY.skinApplyFailed}</p> : null}
-                    </div>
-                  )}
-                  {/* Background picker — official Setting-Cell row like the skin picker. */}
-                  {draft !== null && (
-                    <div className={c.section}>
-                      <div className={c.sectionTitle}>{COPY.backgroundSection}</div>
-                      <div className={c.fieldRow}>
-                        <span className={c.fieldLabel}>{COPY.backgroundLabel}</span>
-                        <Menu
-                          open={backgroundMenuOpen}
-                          onClose={() => { setBackgroundMenuOpen(false) }}
-                          items={[
-                            { id: DEFAULT_BACKGROUND_ID, label: COPY.backgroundDefaultName },
-                            ...BACKGROUNDS.map((background) => ({ id: background.id, label: background.name })),
-                          ]}
-                          selectedId={backgroundId}
-                          onSelect={(id) => {
-                            onPickBackground(id)
-                            setBackgroundMenuOpen(false)
-                          }}
-                          align="end"
-                          portal
-                          anchor={(
-                            <button
-                              type="button"
-                              className={c.selectPill}
-                              aria-haspopup="menu"
-                              aria-expanded={backgroundMenuOpen}
-                              onClick={() => { setBackgroundMenuOpen(v => !v) }}
-                            >
-                              {backgroundId === DEFAULT_BACKGROUND_ID
-                                ? COPY.backgroundDefaultName
-                                : (BACKGROUNDS.find((background) => background.id === backgroundId)?.name ?? backgroundId)}
-                              <IconChevronDownOutline14 />
-                            </button>
-                          )}
-                        />
-                      </div>
-                      <div className={c.hint}>
-                        {backgroundId === DEFAULT_BACKGROUND_ID
-                          ? COPY.backgroundDefaultDesc
-                          : (BACKGROUNDS.find((background) => background.id === backgroundId)?.description ?? '')}
-                        {' — '}{COPY.backgroundHint}
-                      </div>
-                      {backgroundFailed ? <p className={c.failed} role="status">{COPY.backgroundApplyFailed}</p> : null}
-                    </div>
-                  )}
-                  {/* Desktop icon picker — visual grid of preview thumbnails
-                      (S6). One click applies + persists; the native window and
-                      taskbar glyph switch immediately via the Tauri invoke
-                      down-link, unknown ids fall back to the white whale. */}
-                  {draft !== null && (
-                    <div className={c.section}>
-                      <div className={c.sectionTitle}>{COPY.desktopIconSection}</div>
-                      <div className={c.hint}>{COPY.desktopIconHint}</div>
-                      <div className={c.iconGrid} role="radiogroup" aria-label={COPY.desktopIconSection}>
-                        {DESKTOP_ICONS.map((icon) => (
-                          <button
-                            key={icon.id}
-                            type="button"
-                            role="radio"
-                            aria-checked={desktopIconId === icon.id}
-                            className={clsx(c.iconCell, desktopIconId === icon.id && c.iconSelected)}
-                            onClick={() => { onPickDesktopIcon(icon.id) }}
-                            title={`${icon.name} — ${icon.description}`}
-                          >
-                            <img
-                              className={c.iconPreview}
-                              src={icon.url}
-                              alt={icon.name}
-                              width={56}
-                              height={56}
-                              draggable={false}
-                            />
-                            <span className={c.iconName}>{icon.name}</span>
-                          </button>
-                        ))}
-                      </div>
-                      {desktopIconFailed ? <p className={c.failed} role="status">{COPY.desktopIconApplyFailed}</p> : null}
-                    </div>
-                  )}
+                  {/* Appearance center — embedded from the dsh-web-ui skin-center
+                      plugin (unified skins / backgrounds / wallpapers). The panel
+                      persists to the appearance settings namespace on its own. */}
+                  <div className={c.section}>
+                    <div className={c.sectionTitle}>{COPY.appearanceSection}</div>
+                    <div className={c.hint}>{COPY.appearanceHint}</div>
+                    {appearanceAvailable
+                      ? <div ref={appearanceHostRef} className={c.appearanceHost} />
+                      : <div className={c.hint}>{COPY.appearanceFallback}</div>}
+                  </div>
                 </>
               )}
             <div className={c.footer}>
@@ -601,5 +378,18 @@ export function DesktopSettingsCard(_props: DesktopSettingsCardProps): ReactNode
         )
         : null}
     </li>
+  )
+}
+
+/**
+ * The settings.section wrapper for the appearance center: one list that
+ * stacks the card rows, matching the section chrome of first-level settings
+ * pages (the standalone "皮肤中心" section used the same shape).
+ */
+export function AppearanceCenterSection(props: DesktopSettingsCardProps): ReactNode {
+  return (
+    <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+      <DesktopSettingsCard {...props} />
+    </ul>
   )
 }
