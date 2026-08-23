@@ -56,6 +56,10 @@ interface SessionsListLike {
 }
 interface ConversationNodeLike {
   kind?: string
+  /** 'user' messages carry ContentBlock[] (type:'text'). */
+  content?: unknown
+  /** 'assistant' messages carry AssistantBlock[] (kind:'text'). */
+  blocks?: unknown
 }
 interface ConversationSnapshotLike {
   nodes?: readonly ConversationNodeLike[]
