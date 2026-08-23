@@ -1,0 +1,11 @@
+{
+  "name": "@dsh-external/dsh-findings-ledger",
+  "version": "0.0.1",
+  "description": "baseline 快照 + 改动对账 + 覆盖度报告（对标 Zcode mimosa task-review / finding-ledger）",
+  "private": true,
+  "type": "module",
+  "main": "./lib/index.js",
+  "files": [
+    "lib"
+  ]
+}
