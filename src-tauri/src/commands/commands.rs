@@ -81,10 +81,14 @@ pub fn set_window_theme(app: tauri::AppHandle, theme: String) -> Result<(), Stri
         );
         let _ = win.eval(&js);
         // 强制主题模式下 shell-init.js 跳过 apply_page_theme → 窗口/托盘图标
-        // 停在旧状态（'default' 翻转不随新主题）。此处按新主题重设全部图标面
-        // （icon::IconManager 面级幂等：'default' 且 dark 未变时自动跳过）。
+        // 停在旧状态（'default' 翻转不随新主题）。此处按新主题重设全部图标面。
+        // **异步化（防卡死）**：图标面含窗口消息（SendMessageW/tray.set_icon），
+        // 窗口线程繁忙时同步等待会卡住 IPC 线程（连续切换实测卡死）——后台线程执行。
         let dark = matches!(tauri_theme, tauri::Theme::Dark);
-        app.state::<crate::icon::IconManager>().apply_theme_aware(&app, dark);
+        let app2 = app.clone();
+        std::thread::spawn(move || {
+            app2.state::<crate::icon::IconManager>().apply_theme_aware(&app2, dark);
+        });
         Ok(())
     } else {
         Err("main window not found".to_string())
@@ -114,7 +118,12 @@ pub fn apply_page_theme(app: tauri::AppHandle, dark: bool) -> Result<(), String>
         if let Err(e) = win.set_background_color(Some(color)) {
             log::warn!("apply_page_theme: set_background_color failed: {}", e);
         }
-        app.state::<crate::icon::IconManager>().apply_theme_aware(&app, dark);
+        // 图标异步化（防卡死）：图标面含窗口消息（SendMessageW/tray.set_icon），
+        // 连续主题变化 + 图标切换时窗口线程忙会阻塞 IPC——后台线程执行。
+        let app2 = app.clone();
+        std::thread::spawn(move || {
+            app2.state::<crate::icon::IconManager>().apply_theme_aware(&app2, dark);
+        });
         log::info!("apply_page_theme: theme applied (dark={})", dark);
         Ok(())
     } else {
@@ -128,12 +137,21 @@ pub fn apply_page_theme(app: tauri::AppHandle, dark: bool) -> Result<(), String>
 /// 统一走 icon::IconManager（全部图标面 + 面级幂等，双通道同 id 自动去重）。
 #[tauri::command]
 pub fn set_desktop_icon(app: tauri::AppHandle, icon_id: String) -> Result<(), String> {
+    // **异步化（防卡死，方案 C）**：图标多面应用含窗口消息（BIG SendMessageW +
+    // tray.set_icon），窗口线程繁忙时同步等待会阻塞 IPC 线程——连续快速切换
+    // 实测卡死。改后台线程执行：IPC 立即返回（UI 保持响应）；apply_lock 串行
+    // 排队保证最终态 = 最后请求；面级幂等照常（中间态跳过）。
     let dark = app
         .get_webview_window("main")
         .map(|w| w.theme().unwrap_or(tauri::Theme::Dark) == tauri::Theme::Dark)
         .unwrap_or(true);
-    app.state::<crate::icon::IconManager>().apply(&app, &icon_id, dark);
-    log::info!("set_desktop_icon: applied '{}'", icon_id);
+    let app2 = app.clone();
+    let id2 = icon_id.clone();
+    std::thread::spawn(move || {
+        app2.state::<crate::icon::IconManager>().apply(&app2, &id2, dark);
+        log::info!("set_desktop_icon: applied '{}' (async)", id2);
+    });
+    log::info!("set_desktop_icon: queued '{}'", icon_id);
     Ok(())
 }
 

@@ -153,7 +153,7 @@ fn set_icon_big_win32(
 ) {
     use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
     use windows::Win32::UI::WindowsAndMessaging::{
-        CreateIcon, DestroyIcon, HICON, ICON_BIG, SendMessageW, WM_SETICON,
+        CreateIcon, DestroyIcon, HICON, ICON_BIG, PostMessageW, WM_SETICON,
     };
 
     let Ok(hwnd_raw) = win.hwnd() else {
@@ -179,7 +179,11 @@ fn set_icon_big_win32(
         match CreateIcon(None, w, h, 1, 32, and_mask.as_ptr(), bgra.as_ptr()) {
             Ok(hicon) => {
                 let new_handle = hicon.0 as isize;
-                SendMessageW(hwnd, WM_SETICON, Some(WPARAM(ICON_BIG as usize)), Some(LPARAM(new_handle)));
+                // PostMessageW（异步，不等待窗口线程处理）：连续快速切换图标时
+                // 窗口线程积压 WM_SETICON 消息会忙——SendMessageW 同步等待会阻塞
+                // 调用线程（卡死根因之一）。PostMessage 投递后立即返回，窗口按
+                // 消息队列顺序处理，最终图标一致。
+                PostMessageW(Some(hwnd), WM_SETICON, WPARAM(ICON_BIG as usize), LPARAM(new_handle)).ok();
                 if let Some(prev) = prev_big.replace(new_handle) {
                     let _ = DestroyIcon(HICON(prev as _));
                 }
