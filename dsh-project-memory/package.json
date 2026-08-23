@@ -1,0 +1,29 @@
+{
+  "name": "@dsh-external/dsh-project-memory",
+  "version": "0.0.1",
+  "description": "每项目自动加载 FACT.md+JOURNAL.jsonl 持久记忆，工具写回，结束自动沉淀（对标 Zcode 项目记忆）",
+  "private": true,
+  "type": "module",
+  "main": "./lib/index.js",
+  "files": [
+    "lib"
+  ],
+  "license": "BSD-3-Clause",
+  "peerDependencies": {
+    "cordis": ">=4.0.0-rc <5",
+    "@deepseek-ai/dsh-tools": ">=0.0.1-rc <2"
+  },
+  "scripts": {
+    "build": "bash scripts/build.sh"
+  },
+  "exports": {
+    ".": {
+      "default": "./lib/index.js"
+    }
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  }
+}
