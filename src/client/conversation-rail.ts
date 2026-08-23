@@ -56,6 +56,7 @@ interface SessionsListLike {
 }
 interface ConversationNodeLike {
   kind?: string
+  text?: string
 }
 interface ConversationSnapshotLike {
   nodes?: readonly ConversationNodeLike[]
@@ -90,6 +91,8 @@ export function installConversationRail(ctx: unknown): () => void {
   let slot: HTMLElement | null = null
   let unsubSessions: () => void = () => {}
   let unsubCurrentSession: () => void = () => {}
+  let previews: string[] = []
+  let tooltip: HTMLElement | null = null
 
   // ── Adaptive palette ─────────────────────────────────────────────────────
   // Ticks sit on the conversation surface which is skin-tinted AND 75%
@@ -297,6 +300,37 @@ export function installConversationRail(ctx: unknown): () => void {
   }
 
   // ── Rendering ────────────────────────────────────────────────────────────
+  /** Per-turn opening text, extracted client-side from the conversation snapshot. */
+  function turnPreviews(snapshot: ConversationSnapshotLike | undefined): string[] {
+    const out: string[] = []
+    let cur = -1
+    for (const node of snapshot?.nodes ?? []) {
+      if (node.kind === 'turn') { cur += 1; out[cur] = '' }
+      else if (node.kind === 'text' && cur >= 0 && !out[cur]) {
+        const t = (node.text || '').trim()
+        if (t) out[cur] = t.slice(0, 60)
+      }
+    }
+    return out
+  }
+  function ensureTooltip(): HTMLElement {
+    if (tooltip !== null && tooltip.isConnected) return tooltip
+    tooltip = document.createElement('div')
+    tooltip.id = 'dsh-hub-conversation-rail-tip'
+    tooltip.style.cssText = 'position:fixed;z-index:2147483000;display:none;pointer-events:none;background:#1f1f23;color:#e8e8ea;font:14px/20px system-ui,sans-serif;padding:6px 10px;border:1px solid var(--dsw-alias-border-l2,#333);border-radius:8px;box-shadow:0 4px 14px rgba(0,0,0,.4);max-width:320px;white-space:normal;'
+    document.body.appendChild(tooltip)
+    return tooltip
+  }
+  function showTooltip(i: number, anchor: HTMLElement): void {
+    const tip = ensureTooltip()
+    tip.textContent = previews[i] ? ('第 ' + (i + 1) + ' 段 · ' + previews[i]) : ('第 ' + (i + 1) + ' 段对话')
+    const a = anchor.getBoundingClientRect()
+    tip.style.display = 'block'
+    tip.style.left = Math.max(4, a.right + 8) + 'px'
+    tip.style.top = Math.max(4, a.top - 6) + 'px'
+  }
+  function hideTooltip(): void { if (tooltip !== null) tooltip.style.display = 'none' }
+
   function deriveSegmentCount(snapshot: ConversationSnapshotLike | undefined): number {
     const turns = snapshot?.turnTimings?.size ?? 0
     if (turns > 0) return turns
@@ -335,8 +369,9 @@ export function installConversationRail(ctx: unknown): () => void {
       tick.className = c.tick
       tick.dataset.mgCrIndex = String(i)
       tick.setAttribute('aria-label', `跳转到第 ${i + 1} 段对话`)
-      tick.title = `第 ${i + 1} 段对话`
       tick.addEventListener('click', () => scrollToSegment(i))
+      tick.addEventListener('mouseenter', () => showTooltip(i, tick))
+      tick.addEventListener('mouseleave', hideTooltip)
       root.appendChild(tick)
     }
     root.hidden = false
@@ -389,6 +424,7 @@ export function installConversationRail(ctx: unknown): () => void {
     unsubCurrentSession = () => {}
     if (currentSessionId === undefined) {
       segmentCount = 0
+      previews = []
       renderTicks()
       return
     }
@@ -397,10 +433,12 @@ export function installConversationRail(ctx: unknown): () => void {
     unsubCurrentSession = session.subscribe?.(() => {
       const snap = session.getSnapshot?.()
       segmentCount = deriveSegmentCount(snap)
+      previews = turnPreviews(snap)
       syncGeometry()
     }) ?? (() => {})
     const snap = session.getSnapshot?.()
     segmentCount = deriveSegmentCount(snap)
+    previews = turnPreviews(snap)
     syncGeometry()
   }
 
@@ -452,5 +490,6 @@ export function installConversationRail(ctx: unknown): () => void {
     document.removeEventListener('scroll', onScroll, true)
     rail?.remove()
     rail = null
+    tooltip?.remove(); tooltip = null
   }
 }
