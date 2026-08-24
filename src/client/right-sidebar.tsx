@@ -10,17 +10,19 @@
  *  - Git: whether the workspace is a git repo, branch, and working-tree changes.
  */
 
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from 'react'
 import clsx from 'clsx'
 import {
   IconBranchOutline16,
   IconCheckOutline16,
   IconCodeOutline16,
+  IconCopyOutline16,
   IconDataOutline16,
   IconDownloadOutline16,
   IconEditOutline16,
   IconFolderClose16,
   IconFolderOpen16,
+  IconLinkOutline16,
   IconPanelLeftOutline16,
   IconPlayOutline16,
   IconRightUpOutline16,
@@ -28,6 +30,7 @@ import {
   IconThinkOutline16,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import { RIGHT_SIDEBAR_CSS_CLASSES as c } from './right-sidebar-style.ts'
+import { ptyOpen, ptyRetarget } from './pty-store.ts'
 
 /** The body portal passes the client context directly; keep props loose for future additions. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- body-portal props are intentionally minimal.
@@ -163,8 +166,105 @@ async function fetchGit(path: string): Promise<GitInfo | null> {
   }
 }
 
+/** Posix-style relative path of `path` against workspace root `root`. */
+function relativePath(path: string, root: string): string {
+  const p = path.replace(/\\/g, '/')
+  const r = root.replace(/\\/g, '/').replace(/\/+$/, '')
+  if (r === '' || r === '.') return p
+  if (p === r) return '.'
+  if (p.startsWith(r + '/')) return p.slice(r.length + 1)
+  return p
+}
+
+/** Parent directory of an absolute path. */
+function parentDir(path: string): string {
+  const norm = path.replace(/\\/g, '/').replace(/\/+$/, '')
+  const idx = norm.lastIndexOf('/')
+  return idx > 0 ? norm.slice(0, idx) : norm
+}
+
+/** Copy text to the clipboard (best-effort). */
+function copyText(text: string): void {
+  void navigator.clipboard.writeText(text).catch(() => {})
+}
+
+/** Open a path with the OS default handler via the host route. */
+async function openInOs(path: string): Promise<void> {
+  try {
+    await fetch('/api/dsh-hub/workspace/open', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ path }),
+    })
+  } catch { /* best-effort */ }
+}
+
+/**
+ * 打开文件夹：优先弹 Tauri 原生目录选择器，选中的目录作为工作区打开/切换
+ * （对应 ZCode openDirectory → open workspace）；无 Tauri 时回退在资源管理器
+ * 打开当前工作区。
+ */
+async function openFolderAsWorkspace(ctx: unknown): Promise<void> {
+  try {
+    const internals = (window as unknown as {
+      __TAURI_INTERNALS__?: { invoke?: (c: string, a?: Record<string, unknown>) => Promise<unknown> }
+    }).__TAURI_INTERNALS__
+    if (internals?.invoke) {
+      const picked = await internals.invoke('plugin:dialog|open', { options: { directory: true, multiple: false } })
+      if (typeof picked === 'string' && picked !== '') {
+        const workspaces = (ctx as { workspaces?: { create?: (i: { path: string }) => Promise<unknown> } }).workspaces
+        if (workspaces?.create) { await workspaces.create({ path: picked }); return }
+      }
+    }
+  } catch { /* fall through to Explorer fallback */ }
+  const p = (window as unknown as { __mgGetCurrentWorkspace?: () => string | null }).__mgGetCurrentWorkspace?.() || ''
+  void openInOs(p)
+}
+
+/** Insert a reference into the current session's composer draft. */
+/** Insert a file/folder reference into the composer's draft. */
+function insertReferenceIntoComposer(ctx: unknown, sessionId: string | undefined, text: string): void {
+  // 1) Prefer the input service (append to the draft via setDraft).
+  try {
+    const input = (ctx as { conversation?: { input?: unknown } }).conversation?.input as
+      | { shell?: (id: string) => { setDraft?: (t: string) => void; state?: { getSnapshot?: () => { draft?: string } } } | undefined }
+      | undefined
+    const shell = sessionId === undefined ? undefined : input?.shell?.(sessionId)
+    if (shell?.setDraft !== undefined) {
+      const cur = shell?.state?.getSnapshot?.()?.draft ?? ''
+      shell.setDraft(cur.trim() === '' ? text : cur + ' ' + text)
+      return
+    }
+  } catch { /* fall through to DOM fallback */ }
+
+  // 2) DOM fallback: insert into the composer textarea and dispatch input.
+  if (insertReferenceIntoComposerDom(text)) return
+
+  // 3) Last resort: copy to clipboard.
+  copyText(text)
+}
+
+function insertReferenceIntoComposerDom(text: string): boolean {
+  try {
+    const seat = document.querySelector('[data-composer-seat]')
+    const ta = seat?.querySelector('textarea') || document.querySelector('textarea')
+    if (ta === null) return false
+    ta.focus()
+    const cur = ta.value
+    ta.value = cur.trim() === '' ? text : cur + ' ' + text
+    ta.dispatchEvent(new Event('input', { bubbles: true }))
+    return true
+  } catch {
+    return false
+  }
+}
+
 /** One expandable directory/file row. */
-function TreeNode({ entry, depth }: { entry: DirectoryRow; depth: number }): ReactNode {
+function TreeNode({ entry, depth, onContext }: {
+  entry: DirectoryRow
+  depth: number
+  onContext: (entry: DirectoryRow, event: { preventDefault(): void; stopPropagation(): void; clientX: number; clientY: number }) => void
+}): ReactNode {
   const [open, setOpen] = useState(false)
   const [children, setChildren] = useState<DirectoryRow[] | null>(null)
 
@@ -182,6 +282,9 @@ function TreeNode({ entry, depth }: { entry: DirectoryRow; depth: number }): Rea
         className={c.treeRow}
         style={{ paddingLeft: `${depth * 12 + 4}px` }}
         onClick={() => { if (expandable) setOpen(!open) }}
+        onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); onContext(entry, event) }}
+        data-row-path={entry.path}
+        data-row-dir={expandable ? '1' : '0'}
       >
         <span className={c.treeIcon}>
           {expandable
@@ -192,10 +295,97 @@ function TreeNode({ entry, depth }: { entry: DirectoryRow; depth: number }): Rea
       </div>
       {open && children !== null && (
         <ul className={c.treeChildren}>
-          {children.map((child) => <TreeNode key={child.path} entry={child} depth={depth + 1} />)}
+          {children.map((child) => <TreeNode key={child.path} entry={child} depth={depth + 1} onContext={onContext} />)}
         </ul>
       )}
     </li>
+  )
+}
+
+/** Shared style for the top-row action buttons. */
+const TOP_BTN: CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: 4,
+  border: '1px solid var(--dsw-accent, #3b82f6)',
+  background: 'transparent',
+  color: 'var(--dsw-accent, #3b82f6)',
+  borderRadius: 6,
+  padding: '2px 10px',
+  cursor: 'pointer',
+  fontSize: 12,
+  whiteSpace: 'nowrap',
+}
+
+/** Context menu for a tree node (右键菜单). */
+function ContextMenu({ x, y, entry, ctx, sessionId, root, onClose }: {
+  x: number
+  y: number
+  entry: DirectoryRow
+  ctx: unknown
+  sessionId: string | undefined
+  root: string
+  onClose: () => void
+}): ReactNode {
+  const items: Array<{ label: string; icon: ReactNode; run: () => void }> = []
+  const rel = relativePath(entry.path, root)
+  const reference = '[' + entry.name + '](' + rel + ')'
+  const toggleDir = (): void => {
+    try {
+      const el = document.querySelector('[data-row-path="' + CSS.escape(entry.path) + '"]')
+      el?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    } catch { /* best-effort */ }
+  }
+  if (entry.isDirectory) {
+    items.push({ label: '打开（展开/折叠）', icon: <IconFolderOpen16 size={14} />, run: toggleDir })
+    items.push({ label: '路径引用', icon: <IconLinkOutline16 size={14} />, run: () => { insertReferenceIntoComposer(ctx, sessionId, reference) } })
+    items.push({ label: '复制目录', icon: <IconCopyOutline16 size={14} />, run: () => { copyText(entry.path) } })
+    items.push({ label: '在此打开终端', icon: <IconCodeOutline16 size={14} />, run: () => { void ptyOpen(entry.path) } })
+  } else {
+    items.push({ label: '打开', icon: <IconPlayOutline16 size={14} />, run: () => { void openInOs(entry.path) } })
+    items.push({ label: '路径引用', icon: <IconLinkOutline16 size={14} />, run: () => { insertReferenceIntoComposer(ctx, sessionId, reference) } })
+    items.push({ label: '复制文件夹目录', icon: <IconCopyOutline16 size={14} />, run: () => { copyText(parentDir(entry.path)) } })
+    items.push({ label: '复制文件路径', icon: <IconCopyOutline16 size={14} />, run: () => { copyText(entry.path) } })
+    items.push({ label: '在此打开终端', icon: <IconCodeOutline16 size={14} />, run: () => { void ptyOpen(parentDir(entry.path)) } })
+  }
+  const MENU_STYLE: CSSProperties = {
+    position: 'fixed',
+    left: x,
+    top: y,
+    zIndex: 1000,
+    minWidth: 180,
+    padding: '4px',
+    background: 'var(--dsw-alias-bg-layer-2, #ffffff)',
+    border: '1px solid var(--dsw-alias-border-l2, rgb(0 0 0 / 10%))',
+    borderRadius: 8,
+    boxShadow: '0 6px 24px rgb(0 0 0 / 20%)',
+    fontFamily: 'var(--dsw-font-family, system-ui)',
+    fontSize: 13,
+    color: 'var(--dsw-alias-label-primary, #0f1115)',
+  }
+  const ITEM_STYLE: CSSProperties = {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    width: '100%',
+    padding: '6px 10px',
+    background: 'transparent',
+    border: 'none',
+    borderRadius: 6,
+    cursor: 'pointer',
+    textAlign: 'left',
+    color: 'inherit',
+    fontSize: 13,
+  }
+  return (
+    <div data-rs-menu style={MENU_STYLE}>
+      {items.map((item) => (
+        <button key={item.label} type="button" style={ITEM_STYLE} onClick={() => { item.run(); onClose() }}>
+          {item.icon}
+          <span>{item.label}</span>
+        </button>
+      ))}
+    </div>
   )
 }
 
@@ -246,6 +436,27 @@ export function RightSidebar({ ctx }: RightSidebarProps): ReactNode {
   const [git, setGit] = useState<GitInfo | null>(null)
   const [workspaceLoading, setWorkspaceLoading] = useState(false)
 
+  // Context menu (右键菜单) on tree nodes.
+  const [menu, setMenu] = useState<{ x: number; y: number; entry: DirectoryRow } | null>(null)
+  const closeMenu = (): void => setMenu(null)
+  const onRowContext = (entry: DirectoryRow, event: { preventDefault(): void; stopPropagation(): void; clientX: number; clientY: number }): void => {
+    event.preventDefault()
+    event.stopPropagation()
+    setMenu({ x: event.clientX, y: event.clientY, entry })
+  }
+  useEffect(() => {
+    if (menu === null) return
+    const onPointerDown = (event: MouseEvent): void => {
+      const target = event.target as HTMLElement | null
+      if (target !== null && target.closest && target.closest('[data-rs-menu]') !== null) return
+      setMenu(null)
+    }
+    const onKey = (event: KeyboardEvent): void => { if (event.key === 'Escape') setMenu(null) }
+    document.addEventListener('mousedown', onPointerDown)
+    document.addEventListener('keydown', onKey)
+    return () => { document.removeEventListener('mousedown', onPointerDown); document.removeEventListener('keydown', onKey) }
+  }, [menu])
+
   useEffect(() => {
     if (effectivePath === '') {
       setRootEntries([])
@@ -261,6 +472,11 @@ export function RightSidebar({ ctx }: RightSidebarProps): ReactNode {
       setWorkspaceLoading(false)
     })
     return () => { alive = false }
+  }, [effectivePath])
+
+  // When the workspace changes, keep an open terminal's cwd in sync.
+  useEffect(() => {
+    if (effectivePath !== '') void ptyRetarget(effectivePath)
   }, [effectivePath])
 
   const refreshWorkspace = (): void => {
@@ -351,6 +567,14 @@ export function RightSidebar({ ctx }: RightSidebarProps): ReactNode {
     <div className={clsx(c.root, !open && c.collapsed)} style={{ width: open ? 360 : 56 }}>
       {open ? (
         <>
+          <div style={{ display: 'flex', gap: 8, padding: '6px 10px', alignItems: 'center', borderBottom: '1px solid var(--dsw-alias-border-l2, rgb(0 0 0 / 10%))' }}>
+            <button type="button" style={TOP_BTN} onClick={() => { void openFolderAsWorkspace(ctx) }}>
+              <IconFolderOpen16 size={14} /> 打开工作区文件夹
+            </button>
+            <button type="button" style={TOP_BTN} onClick={() => { void ptyOpen(effectivePath || undefined) }}>
+              <IconCodeOutline16 size={14} /> 终端
+            </button>
+          </div>
           <div className={c.header}>
             <div className={c.tabs} role="tablist" aria-label="右侧栏视图">
               {(['overview', 'files', 'git'] as Tab[]).map((key) => (
@@ -403,7 +627,7 @@ export function RightSidebar({ ctx }: RightSidebarProps): ReactNode {
                         ? <div className={c.empty}>工作区为空</div>
                         : (
                           <ul className={c.tree}>
-                            {rootEntries.map((entry) => <TreeNode key={entry.path} entry={entry} depth={0} />)}
+                            {rootEntries.map((entry) => <TreeNode key={entry.path} entry={entry} depth={0} onContext={onRowContext} />)}
                           </ul>
                         )}
                 </div>
@@ -431,6 +655,17 @@ export function RightSidebar({ ctx }: RightSidebarProps): ReactNode {
             </button>
           </div>
         </div>
+      )}
+      {menu !== null && (
+        <ContextMenu
+          x={menu.x}
+          y={menu.y}
+          entry={menu.entry}
+          ctx={ctx}
+          sessionId={currentSessionId}
+          root={effectivePath}
+          onClose={closeMenu}
+        />
       )}
     </div>
   )

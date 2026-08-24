@@ -41,6 +41,8 @@ import { openDesktopShellTauri, type TauriShellHandle } from './managers/tauri-s
 import { makeConfigRoutes } from './server/config-api.js'
 import { hasStoredWindowSize, migrateLegacyPaths, readShellConfig, storedNotifyOnTaskComplete, storedSoundEnabled } from './services/config-store.js'
 import { makeWorkspaceRoutes } from './server/workspace-api.js'
+import { makeTerminalRoutes } from './server/terminal-api.js'
+import { makePtyRoutes } from './server/terminal-pty-api.js'
 import { makePinsRoutes } from './server/pins-api.js'
 import { makeSessionPathsRoutes } from './server/session-paths-api.js'
 import { makeBackgroundsRoutes } from './server/backgrounds-api.js'
@@ -167,6 +169,8 @@ export function apply(ctx: Context, config: Config): void {
         shell?.setDesktopIcon(saved.desktopIcon)
       }),
       ...makeWorkspaceRoutes(),
+      ...makeTerminalRoutes(),
+      ...makePtyRoutes(),
       ...makePinsRoutes(),
       ...makeSessionPathsRoutes(),
       ...makeBackgroundsRoutes(),

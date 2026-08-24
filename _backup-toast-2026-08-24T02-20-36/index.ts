@@ -31,8 +31,6 @@ import { AppearanceCenterSection, type DesktopSettingsCardProps } from './settin
 import { injectCardStyle } from './style.ts'
 import { RightSidebar } from './right-sidebar.tsx'
 import { injectRightSidebarStyle } from './right-sidebar-style.ts'
-import { applySkin, fetchStoredSkin, hasUserPickedSkin } from './skins.ts'
-import { applyBackground, fetchStoredBackground, hasUserPickedBackground } from './backgrounds.ts'
 import { installPinnedConversations } from './pin-conversations.ts'
 import { installConversationRail } from './conversation-rail.ts'
 import { TerminalPage } from './terminal-dock.tsx'
@@ -152,24 +150,6 @@ function handleShellCommand(ctx: ClientContext, event: Event): void {
     }
   }
   report('client-shell-command:' + (detail?.command ?? '?'))
-  if (detail?.command === 'focus-session') {
-    // 点击 Windows 通知中心的 toast → 跳到对应会话对话（ZCode 同款体验）。
-    // 通知触发时该会话在后台完成，用户点击 toast 后窗口拉回前台并打开该会话。
-    const sessionId = (detail as { sessionId?: string }).sessionId
-    const sessions = (ctx as unknown as { sessions?: { open?: (id: string) => void } }).sessions
-    if (sessions?.open !== undefined && sessionId !== undefined && sessionId !== '') {
-      console.log('[dsh-hub] focus-session: ' + sessionId)
-      try {
-        sessions.open(sessionId)
-        report('client-focus-session:' + sessionId)
-      } catch (error) {
-        console.warn('[dsh-hub] focus-session open failed:', error)
-      }
-    } else {
-      console.warn('[dsh-hub] focus-session skipped (no sessions service or sessionId)')
-    }
-    return
-  }
   if (detail?.command === 'new-task') {
     // Official New Session flow (sidebar "+" button path). Deliberately pass no
     // explicit workspaceId: startSession resolves the current session's
@@ -290,36 +270,32 @@ export function apply(ctx: ClientContext): void {
   injectCardStyle()
   injectRightSidebarStyle()
 
-  // Restore the persisted skin once the config API is reachable. If the user
-  // already picked a skin in this page lifetime (settings card), the restore
-  // must not clobber it — the flag makes the race harmless.
-  void fetchStoredSkin().then((skinId) => {
-    if (hasUserPickedSkin()) return
-    applySkin(skinId)
-  })
+  // Skin + background restoration moved to the unified appearance center
+  // (dsh-web-ui skin-center): its own controller boot-restores the persisted
+  // token skins / background images from the appearance settings namespace
+  // and applies bundle skins through the boot graph. The hub card embeds
+  // that panel, so no restore happens here anymore.
 
-  // Same for the background image: restore the saved choice unless the user
-  // already picked one in this page lifetime.
-  void fetchStoredBackground().then((backgroundId) => {
-    if (hasUserPickedBackground()) return
-    applyBackground(backgroundId)
-    refreshConversationRailPalette() // backdrop restored after boot — re-derive rail colors
-  })
-
+  // The unified appearance center: a single first-level settings section
+  // ("外观中心") that bundles the desktop shell configuration (window / theme /
+  // tray / notifications) together with the embedded dsh-web-ui appearance
+  // panel (skins / backgrounds / wallpapers). The standalone "皮肤中心" section
+  // and the old "DSH HUB 设置" plugin card are gone — one entry, one surface.
   try {
-    slots.inject('settings.plugin.item', function* () {
+    slots.inject('settings.section', function* () {
+      // The slot package's typed SlotMap lacks settings.section; the runtime
+      // shape (id/order/label) mirrors what the dsh-web-ui skin-center used for
+      // the same first-level section, so the register options are cast.
       yield slots.register({
-        name: 'settings.plugin.item',
-        // rc.7 keyed slot：卡片按 settings namespace key 派发（tab-store 匹配 served）。
-        // key 必须 = SETTINGS_NS（'dsh-hub'），否则卡片永不渲染。
-        key: 'dsh-hub',
-        // rc.7 用 priority（替代旧版 order）。
-        priority: 30,
-      }, (props: DesktopSettingsCardProps) => DesktopSettingsCard(props))
+        name: 'settings.section',
+        id: 'appearance-center',
+        order: 120,
+        label: '外观中心',
+      } as never, (props: DesktopSettingsCardProps) => AppearanceCenterSection(props))
     })
   } catch (error) {
-    // Card mounting must never take down the tray bridge.
-    console.warn('[dsh-hub] settings card injection failed:', error)
+    // Section mounting must never take down the tray bridge.
+    console.warn('[dsh-hub] appearance center section injection failed:', error)
   }
 
   // Right sidebar: mount a body portal like dsh-better-sidebar. This keeps
