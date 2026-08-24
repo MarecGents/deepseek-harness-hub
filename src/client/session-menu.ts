@@ -61,14 +61,14 @@ export interface SessionMenuParams {
   id: string
   /** Display title used in aria labels and the menu header. */
   title: string
-  /** Whether the session is currently pinned (flips the pin item's label). */
-  pinned: boolean
+  /** Whether the session is currently pinned (flips the pin item's label). Optional: the pin item is hidden when omitted. */
+  pinned?: boolean
   /** Plugin client runtime (sessions/workspaces services). */
   ctx: unknown
-  /** Toggle the pin state (pin-conversations owns the pins store). */
-  onTogglePin: () => void
-  /** Enter the inline rename editor (pin-conversations owns it). */
-  onRename: () => void
+  /** Toggle the pin state (pin-conversations owns the pins store). Optional: the pin item is hidden when omitted. */
+  onTogglePin?: () => void
+  /** Enter the inline rename editor. Optional: the rename item is hidden when omitted. */
+  onRename?: () => void
 }
 
 /** One flattened menu entry; `run` fires on click, `danger` tints the label. */
@@ -162,55 +162,54 @@ export function openSessionMenu(params: SessionMenuParams): void {
 
   // `null` entries are skipped below — used for items whose backing data
   // (e.g. the workspace path) is unavailable for this session.
-  const entries: Array<MenuEntry | 'sep' | null> = [
+    const entries: Array<MenuEntry | 'sep' | null> = [
     { label: '打开会话', run: () => runtime.sessions?.open?.(params.id) },
-    { label: params.pinned ? '取消置顶' : '置顶任务', run: () => params.onTogglePin() },
-    { label: '重命名任务', run: () => params.onRename() },
-    'sep',
-    {
-      label: '分叉会话',
-      run: () => {
-        runtime.sessions?.fork?.({ sessionId: params.id, increaseTitle: true })
-          ?.then((childId) => { runtime.sessions?.open?.(childId) })
-          .catch(() => {})
-      },
+  ];
+  if (params.onTogglePin !== undefined) {
+    entries.push({ label: params.pinned ? '取消置顶' : '置顶任务', run: () => params.onTogglePin?.() });
+  }
+  if (params.onRename !== undefined) {
+    entries.push({ label: '重命名任务', run: () => params.onRename?.() });
+  }
+  entries.push('sep');
+  entries.push({
+    label: '分叉会话',
+    run: () => {
+      runtime.sessions?.fork?.({ sessionId: params.id, increaseTitle: true })
+        ?.then((childId) => { runtime.sessions?.open?.(childId) })
+        .catch(() => {})
     },
-    {
-      label: '归档会话',
-      danger: true,
-      run: () => { void runtime.workspaces?.archiveSession?.(params.id)?.catch(() => {}) },
+  });
+  entries.push({
+    label: '归档会话',
+    danger: true,
+    run: () => { void runtime.workspaces?.archiveSession?.(params.id)?.catch(() => {}) },
+  });
+  entries.push('sep');
+  if (workspacePath !== undefined) {
+    entries.push({ label: '在资源管理器中打开', run: () => { openInExplorer(workspacePath) } });
+    entries.push({ label: '复制工作区路径', run: () => { void copyText(workspacePath) } });
+  }
+  entries.push({
+    label: '复制日志路径',
+    run: () => {
+      void fetchJson(`/api/dsh-hub/session-paths/paths?${new URLSearchParams({ id: params.id })}`)
+        .then((d) => { if (d?.found === true && typeof d.logPath === 'string') void copyText(d.logPath) })
     },
-    'sep',
-    workspacePath === undefined ? null : {
-      label: '在资源管理器中打开',
-      run: () => { openInExplorer(workspacePath) },
+  });
+  entries.push({ label: '复制会话 ID', run: () => { void copyText(params.id) } });
+  entries.push('sep');
+  entries.push({
+    label: '前往配置',
+    run: () => {
+      void fetchJson(`/api/dsh-hub/session-paths/paths?${new URLSearchParams({ id: params.id })}`)
+        .then((d) => {
+          const dir = typeof d?.homeDir === 'string' ? d.homeDir : undefined
+          if (dir === undefined) return
+          openInExplorer(dir)
+        })
     },
-    workspacePath === undefined ? null : {
-      label: '复制工作区路径',
-      run: () => { void copyText(workspacePath) },
-    },
-    {
-      label: '复制日志路径',
-      run: () => {
-        void fetchJson(`/api/dsh-hub/session-paths/paths?${new URLSearchParams({ id: params.id })}`)
-          .then((d) => { if (d?.found === true && typeof d.logPath === 'string') void copyText(d.logPath) })
-      },
-    },
-    { label: '复制会话 ID', run: () => { void copyText(params.id) } },
-    'sep',
-    {
-      label: '前往配置',
-      run: () => {
-        void fetchJson(`/api/dsh-hub/session-paths/paths?${new URLSearchParams({ id: params.id })}`)
-          .then((d) => {
-            const dir = typeof d?.homeDir === 'string' ? d.homeDir : undefined
-            if (dir === undefined) return
-            openInExplorer(dir)
-          })
-      },
-    },
-  ]
-
+  });
   const menu = document.createElement('div')
   menu.className = 'mg-ctxmenu'
   menu.setAttribute('role', 'menu')

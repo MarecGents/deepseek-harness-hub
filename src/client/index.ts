@@ -34,6 +34,7 @@ import { applySkin, fetchStoredSkin, hasUserPickedSkin } from './skins.ts'
 import { applyBackground, fetchStoredBackground, hasUserPickedBackground } from './backgrounds.ts'
 import { installPinnedConversations } from './pin-conversations.ts'
 import { installConversationRail, refreshConversationRailPalette } from './conversation-rail.ts'
+import { SessionTabs } from './SessionTabs.tsx'
 
 /**
  * Tray-bridge ready flag, set at module scope — the very first thing that
@@ -291,6 +292,23 @@ export function apply(ctx: ClientContext): void {
     }, 'dsh-hub: right sidebar mount')
   } catch (error) {
     console.warn('[dsh-hub] right sidebar mount failed:', error)
+  }
+
+  // Title-bar session tabs (多页会话切换): a browser-style tab strip at the top.
+  try {
+    ctx.effect(() => {
+      const host = document.createElement('div')
+      host.id = 'dsh-hub-session-tabs'
+      document.body.appendChild(host)
+      const root: Root = createRoot(host)
+      root.render(createElement(SessionTabs, { ctx }))
+      return () => {
+        root.unmount()
+        host.remove()
+      }
+    }, 'dsh-hub: session tabs mount')
+  } catch (error) {
+    console.warn('[dsh-hub] session tabs mount failed:', error)
   }
 
   // Pinned conversations (置顶会话): augment the official session list with

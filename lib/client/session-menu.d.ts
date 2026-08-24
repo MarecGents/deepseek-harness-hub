@@ -30,14 +30,14 @@ export interface SessionMenuParams {
     id: string;
     /** Display title used in aria labels and the menu header. */
     title: string;
-    /** Whether the session is currently pinned (flips the pin item's label). */
-    pinned: boolean;
+    /** Whether the session is currently pinned (flips the pin item's label). Optional: the pin item is hidden when omitted. */
+    pinned?: boolean;
     /** Plugin client runtime (sessions/workspaces services). */
     ctx: unknown;
-    /** Toggle the pin state (pin-conversations owns the pins store). */
-    onTogglePin: () => void;
-    /** Enter the inline rename editor (pin-conversations owns it). */
-    onRename: () => void;
+    /** Toggle the pin state (pin-conversations owns the pins store). Optional: the pin item is hidden when omitted. */
+    onTogglePin?: () => void;
+    /** Enter the inline rename editor. Optional: the rename item is hidden when omitted. */
+    onRename?: () => void;
 }
 /**
  * Open the session context menu at the given position.
