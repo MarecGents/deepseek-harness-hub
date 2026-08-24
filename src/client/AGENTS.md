@@ -15,10 +15,16 @@
 | `pin-conversations.ts` | 置顶会话：内容匹配行定位（零 CSS-hash）+ 置顶区/行按钮注入 + pins 状态机（dirtyDelta / ready 门控剪枝 / disposer 移除 DOM） |
 | `pin-conversations-style.ts` | 置顶区/行按钮样式（CSS 字符串注入，`mg-pin-*` 前缀） |
 | `model-select.tsx` | composer 模型嵌套菜单：slot `conversation.input.model` priority -1 阴影官方，自声明 `modelDirectories` 类型 |
+| `session-tabs.ts` | 会话标签 store：`tabAdd`/`tabRemove`/`tabReplaceOrder` + `useTabs`（useSyncExternalStore），localStorage `dsh-hub.session-tabs` 持久化 |
+| `SessionTabs.tsx` | 会话标签栏：createPortal 渲染进标题栏 `#dsh-hub-titlebar .tb-title`——点击切换 / `+` 新建 / `×` 关闭 / 状态点（等待琥珀·完成绿·运行蓝+脉冲）/ 右键菜单复用 session-menu / 拖拽排序 / 内联重命名（IME 组合不误提交）/ 自动滚动 / 归档删除自动移除（空快照不剪枝门控，F1-F8） |
 | `session-menu.ts` | 任务右键菜单：置顶/重命名/分叉/归档/资源管理器/复制路径 |
 | `session-menu-style.ts` | 任务右键菜单样式（CSS 字符串注入，`mg-ctxmenu-*` 前缀） |
-| `conversation-rail.ts` | 对话定位条：`turnTimings` 数据源，body portal 挂载 |
+| `conversation-rail.ts` | 对话定位条：turnTimings 时间窗对齐真实节点 kind 预览（修 #35：extractNodeText / extractTurnSummaries），body portal 挂载 |
 | `conversation-rail-style.ts` | 对话定位条样式（CSS 字符串注入，`--mg-rail-*` 变量） |
+| `pty-store.ts` | 终端 PTY store：面板状态 + 每 tab SSE 订阅（JSON 信封 / token `?token=` / 重连重置 buffer）+ 写队列 40ms 批处理（per-tab 串行）+ 512KB ring buffer + entry cwd（sessions 快照 → `__mgGetCurrentWorkspace`）+ `ptyRetarget`（Set-Location 跟随工作区切换） |
+| `terminal-dock.tsx` | 底部终端 dock（xterm.js 6.0.0）：多 tab 懒挂载（切换重放 ring buffer）/ 指针捕获拖拽调高 / composer 列压缩（padding-bottom 抬升）/ 设置弹层（字号+主题）/ 最大化；dsw token 采样 xterm 主题（canvas 安全 hex，probe 解析） |
+| `terminal-prefs.ts` | 终端偏好 store：字号（9–24 clamp）+ 深/浅色主题，localStorage `dsh-hub.terminal.prefs` 持久化 |
+| `xterm-css.ts` | xterm.js 6.0.0 官方 CSS 内联（`XTERM_CSS`，随 client bundle 注入） |
 | `desktop-icons.ts` | 桌面图标注册表（S6）：preview 走 `/api/dsh-hub/icons` |
 | `style.ts` | 设置卡片样式（CSS 字符串注入，`mg-card-*` 前缀） |
 

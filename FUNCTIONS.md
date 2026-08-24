@@ -1,7 +1,7 @@
 # dsh-hub 功能清单（FUNCTIONS）
 
 > 基线：`main` 分支 `v0.0.1-rc.14`（WebView2 时代最终版）。
-> 更新：2026-08-23 · 当前开发分支 `dev-v2`（Tauri 2.x 壳 + dsh web 插件层）。本轮（08-22/23）新增：图标系统模块化重构（icon.rs 6 面编排）、图标快速切换防卡死（worker 合并）、卸载提速（Get-Process + Defender 排除）、Job Object 防 sidecar 残留、模型嵌套菜单（PR #33）、findings-ledger 插件（PR #38）、build:installer 完整性预检。
+> 更新：2026-08-24 · 当前开发分支 `dev-v2`（Tauri 2.x 壳 + dsh web 插件层）。本轮（08-22/23）新增：图标系统模块化重构（icon.rs 6 面编排）、图标快速切换防卡死（worker 合并）、卸载提速（Get-Process + Defender 排除）、Job Object 防 sidecar 残留、模型嵌套菜单（PR #33）、findings-ledger 插件（PR #38）、build:installer 完整性预检。（08-24 文档同步 M1-M4：会话标签栏（M2）、交互终端（M4）、notify focus-session（M1）、rail 数据源修复（M1）、S0 Origin 校验（M3）、工作区 dialog:allow-open（M2）+ workspace/open（M4），见 §13）
 > 状态标记：✅ 已覆盖（Tauri 壳或插件层等价实现）· ⚠️ 部分/待补（M4/M5 收口项）· ➖ 不适用（被 Tauri 原生能力替代）。
 > 依据：`git show main:<path>` 源码 + `docs/` 发布记录（rc10–rc14）。
 
@@ -103,6 +103,17 @@
 | 35 | findings-ledger 插件（PR #38） | baseline 快照 + 变更对账 + 覆盖度报告 | ✅ `plugins/dsh-findings-ledger/`：独立插件（双轨分发见 BUILD.md §7）；turn/end 自动出报告 |
 | 36 | 卸载快速通道 | 卸载器启动提速 + sidecar 强杀防残留 | ✅ installer-hooks.nsi PREUNINSTALL Get-Process（非 CIM）+ 去 Sleep；Job Object 随壳退出连带清理 sidecar |
 
+## 13. 会话标签栏 / 交互终端 / 安全（M1-M4，2026-08-24 同步）
+
+| # | 功能 | 说明（rc.14 行为） | 当前状态 |
+|---|---|---|---|
+| 37 | 会话标签栏（M2，C41） | 标题栏多页切换：状态点（等待琥珀 / 后台完成绿 / 运行蓝 + 脉冲）、右键菜单（复用 session-menu）、拖拽排序、内联重命名、自动滚动、归档自动移除 | ✅ `client/SessionTabs.tsx`（createPortal 渲染进 `#dsh-hub-titlebar .tb-title`）+ `client/session-tabs.ts`（localStorage `dsh-hub.session-tabs` 持久化）；F1-F8 修复（空快照不剪枝 / blank「新会话」占位 / 拖拽中断 blur 兜底 / IME 组合输入不误提交重命名） |
+| 38 | 交互终端（M4，D 切片） | Ctrl+J 开关底部 dock；每 tab 一个真实 node-pty PowerShell 会话；多 tab；危险命令拦截（UX 护栏，非安全边界）；SSE JSON 信封 + 进程 token 鉴权 | ✅ host：`services/pty-manager.ts` + `server/terminal-pty-api.ts`（POST create/write/resize/close + GET list/stream，host+origin+token 三重守卫）+ `server/token.ts`（Bearer / `?token=`，常量时间比较）；client：`pty-store.ts` + `terminal-dock.tsx`（xterm.js 6.0.0，懒挂载 / 指针捕获拖拽 / composer 列压缩）+ `terminal-prefs.ts` + `xterm-css.ts` |
+| 39 | 通知点击跳会话（M1） | toast 点击回窗口并跳到对应会话 | ✅ `src-tauri/src/services/notify.rs`：wait_for_action 点击 → unminimize/show/set_focus + `mg:shell-command` focus-session 事件（`__mgShellReady` 300ms×20 重试，与 node.rs dispatch_page_event 一致） |
+| 40 | rail 数据源修复（M1，修 #35） | 时间窗真实 kind 预览：hover 按 turnTimings 时间窗 [startTime, endTime) + node.turn 对齐真实节点 kind（user/steering/context/assistant/command/compaction）提取开场文本，替换 turn-tail 死代码 | ✅ `client/conversation-rail.ts`：extractNodeText + extractTurnSummaries（命令轮次回退助手回复；空槽 tooltip 保留「第 N 段对话」） |
+| 41 | S0 安全（M3） | Origin 白名单校验：POST/PUT 等状态变更请求校验 Origin（loopback / `tauri:`），缺失 Origin 拒绝；GET/HEAD 跳过（DNS-rebinding 已由 Host 校验覆盖） | ✅ `server/host-guard.ts`：`isOriginAllowed` / `rejectIfBadOrigin`，路由工厂共享（pty / workspace/open 等状态变更路由已接） |
+| 42 | 工作区（M2+M4） | 壳 capability 放行 `dialog:allow-open`（M2）+ `POST /api/dsh-hub/workspace/open`（M4：文件/文件夹 OS 默认打开，Windows explorer.exe） | ✅ `src-tauri/capabilities/default.json` + `server/workspace-api.ts`（open 路由带 host+origin+token 三重守卫，路径校验同 list/git） |
+
 ---
 
 ## 配置项
@@ -129,6 +140,14 @@
 - **卸载提速**（PREUNINSTALL Get-Process + Defender 排除 Add-MpPreference）
 - **build:installer 完整性预检**（assertSourceCompleteness/assertLibClean）
 - **NSIS 安装器闭环**（rc.3 起真机验证，当前 rc.7；卸载快速通道 rc.5-rc.7）
+
+### 已实现（2026-08-24 · M1-M4 同步）
+- 会话标签栏（M2，C41 移植 + F1-F8 修复：标题栏多页 / 状态点 / 右键菜单 / 拖拽排序 / 内联重命名 / 自动滚动 / 归档移除）
+- 交互终端（M4，D 切片：node-pty PowerShell + xterm.js dock + SSE JSON 信封 + token 鉴权 + 危险命令 UX 护栏）
+- notify focus-session（M1：toast 点击回窗口并跳对应会话）
+- rail 数据源修复（M1，修 #35 turn-tail 死代码：时间窗真实 kind 预览）
+- S0 Origin 白名单（M3：POST/PUT 状态变更校验）
+- 工作区 dialog:allow-open（M2）+ POST /api/dsh-hub/workspace/open（M4）
 
 ### 已实现（2026-08-19 第十轮）
 - Splash 启动画面（shell-init.js 覆盖层，覆盖 SPA 白屏）

@@ -10,8 +10,8 @@ src/
   core/             Core：全局服务注册表 + 生命周期顺序（SPT [Injectable] 思想）
   controllers/      Controller：业务编排（session-runtime / tray-pipe，见 controllers/AGENTS.md）
   managers/         壳 Manager：tauri-shell.ts（Tauri 壳桥，唯一壳 Manager；desktop/tray 已删除）
-  server/           Server：HTTP/WS 路由工厂（config/backgrounds/sounds/workspace/pins/icons/session-paths）
-  services/         Services：纯领域逻辑（config-store / pins-store）
+  server/           Server：HTTP/WS 路由工厂（config/backgrounds/sounds/workspace/pins/icons/session-paths/pty + token）
+  services/         Services：纯领域逻辑（config-store / pins-store / pty-manager）
   helpers/          Helper：无状态/平台工具（state-store，$DSH_HOME 语义）
   models/           Model：共享类型/常量（pipe 协议帧、ShellConfig，见 models/AGENTS.md）
   utils/            Utils：纯函数（管道帧解析，见 utils/AGENTS.md）
@@ -38,7 +38,9 @@ src/
 | `managers/desktop.ts` | **Manager（壳）** | WebView2 桌面壳生命周期（**已删除**：WebView2 壳，dev-v2 Tauri-only） |
 | `managers/tray.ts` | **Manager（壳）** | WebView2 托盘（**已删除**：WebView2 壳，dev-v2 Tauri-only） |
 | `server/*-api.ts` | **Server** | 路由工厂：config/backgrounds/sounds/workspace/pins/icons/session-paths（`/api/dsh-hub/*`） |
-| `server/host-guard.ts` | **Helper** | 共享守卫：`isHostAllowed` / `rejectIfBadHost`（DNS-rebinding 防护），server 内路由工厂共用 |
+| `server/terminal-pty-api.ts` | **Server** | 终端 PTY 路由 `/api/dsh-hub/pty/{create,write,resize,close,list,stream}`：SSE JSON 信封 + 15s 心跳 + req close 清理；host+origin+token 三重守卫；错误 sanitize 固定码 |
+| `server/token.ts` | **Helper** | 进程级会话 token：`getToken` / `injectTokenToHtml` / `verifyToken`（Bearer / `?token=`，timingSafeEqual 常量时间比较） |
+| `server/host-guard.ts` | **Helper** | 共享守卫：`isHostAllowed` / `rejectIfBadHost`（DNS-rebinding）+ `isOriginAllowed` / `rejectIfBadOrigin`（S0：POST/PUT Origin 白名单，GET/HEAD 跳过），server 内路由工厂共用 |
 | `services/theme-sync.ts` | **Services** | 页面主题 → IPC 桥转发（**已删除**：WebView2 壳，dev-v2 Tauri-only） |
 | `helpers/*` | **Helper** | 无状态工具：state-store（$DSH_HOME/窗口状态）；dwm-theme / os-theme / explorer / screen / icons / png-decode / sound / app-id 已删除（WebView2 壳，dev-v2 Tauri-only） |
 | `client/*` | 插件 UI | 见 [client/AGENTS.md](client/AGENTS.md) |

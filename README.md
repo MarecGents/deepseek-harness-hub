@@ -2,7 +2,7 @@
 
 > **`@marecgents/dsh-hub`** —— DeepSeek Harness（`dsh`）的桌面端框架：以原生 Tauri 2.x 窗口运行 dsh Web UI，提供托盘、主题同步、窗口记忆、右侧栏与系统通知。
 >
-> **版本状态（2026-08-23）**：`dev-v2`（Tauri 2.x 壳）M5 打包闭环已真机验证（rc.3 起），当前 **`0.0.2-rc.7`**——NSIS 安装器**安装即用**（安装期自动下载私有 Node + dsh + 插件到安装目录，无需系统预装 Node），首启自动进 dsh UI；卸载走**快速通道**（PREUNINSTALL Get-Process + Defender 排除提速）。`0.0.1-rc.14` 是 WebView2 壳最终 rc（`dev-v1` 分支已冻结）。正式版将在体验达标后发布（多端支持 / 自定义壳 UI，见 [外部档案 docs/dsh桌面端技术路线-2026-08-16.md](../docs/dsh桌面端技术路线-2026-08-16.md)）。
+> **版本状态（2026-08-24）**：`dev-v2`（Tauri 2.x 壳）M5 打包闭环已真机验证（rc.3 起），当前 **`0.0.2-rc.7`**——NSIS 安装器**安装即用**（安装期自动下载私有 Node + dsh + 插件到安装目录，无需系统预装 Node），首启自动进 dsh UI；卸载走**快速通道**（PREUNINSTALL Get-Process + Defender 排除提速）。M1-M4 功能已落地：**会话标签栏、交互终端、通知跳会话、rail 数据源修复、S0 Origin 校验、工作区 open**（见 [FUNCTIONS.md](FUNCTIONS.md) §13）。`0.0.1-rc.14` 是 WebView2 壳最终 rc（`dev-v1` 分支已冻结）。正式版将在体验达标后发布（多端支持 / 自定义壳 UI，见 [外部档案 docs/dsh桌面端技术路线-2026-08-16.md](../docs/dsh桌面端技术路线-2026-08-16.md)）。
 
 [![npm version](https://img.shields.io/npm/v/@marecgents/dsh-hub)](https://www.npmjs.com/package/@marecgents/dsh-hub)
 [![npm rc](https://img.shields.io/npm/v/@marecgents/dsh-hub/rc)](https://www.npmjs.com/package/@marecgents/dsh-hub)
@@ -36,15 +36,19 @@
 - **主题跟随（system）**：MutationObserver 事件驱动，`apply_page_theme` 命令让标题栏深浅色、webview 背景与**窗口图标（icon-dark / icon-light 翻转）**实时跟随 dsh 页面主题（Tauri 壳 Rust Dwm 实现）。
 - **桌面图标（S6，PR #25 + 08-23 重构）**：设置卡可选 5 张鲸鱼娘图标（sad/happy/duo/maid/blue）或默认主题翻转鲸鱼；切换即时生效于**任务栏按钮（WM_SETICON ICON_BIG，PostMessageW 异步）+ 标题栏/Alt-Tab（ICON_SMALL）+ 托盘 + 开始菜单/桌面快捷方式（.lnk IconLocation）+ AUMID IconUri + 自绘标题栏图标（与任务栏/托盘同源真实 PNG `/api/dsh-hub/icons/*.png`）**——六面统一编排（`managers/icon.rs` IconManager：面级幂等 + 全局串行锁 + 单 worker/pending 合并，快速连续切换不卡死）；持久化于 `config.json` 的 `desktopIcon`；`.ico` 多尺寸资产由 `scripts/generate-desktop-icons.py` 生成并随 resources 打包到 `$INSTDIR\icons\`。
 - **模型选择（composer 嵌套菜单，PR #33）**：composer 模型 seat 替换为「provider → model」两级嵌套菜单 + 独立 thinking-effort 触发器——官方 `conversation.input.model` slot priority −1 遮蔽内置（复用官方 `modelDirectories` 服务，与 /model 命令状态一致；服务缺失自动降级内置 seat，不阻塞）。
+- **会话标签栏（M2）**：标题栏内浏览器式会话多页标签（`SessionTabs.tsx` createPortal 渲染进 `#dsh-hub-titlebar .tb-title`）——点击切换、`+` 新建、`×` 关闭；**状态点**（等待琥珀 / 后台完成绿 / 运行蓝 + 脉冲动画）；右键菜单复用 `session-menu`（分叉/归档/复制路径/资源管理器）+ **内联重命名**（IME 组合输入不误提交）；**拖拽排序**（`session-tabs.ts` localStorage `dsh-hub.session-tabs` 持久化）；激活标签自动滚动入视；归档/删除会话自动移除标签（空快照不剪枝门控 + blank「新会话」占位）。
+- **交互终端（M4）**：底部 dock 真实交互终端（xterm.js 6.0.0 + node-pty **PowerShell**）——`Ctrl+J` 开关；每 tab 一个独立 PowerShell 会话（cwd = 打开时所在工作区）；多 tab + 懒挂载（切换重放 ring buffer）；**危险命令拦截**（`rm` / `Remove-Item` / `format` 等 UX 护栏，非安全边界）；输出走 SSE **JSON 信封**（`data: JSON.stringify(chunk)` + 15s 心跳）+ **进程级 token 鉴权**（`Authorization: Bearer` / EventSource `?token=`）；关闭 `taskkill /T /F` 杀整棵进程树防残留；工作区切换自动 `Set-Location` 重定向（`ptyRetarget`）。（host：`src/services/pty-manager.ts` + `src/server/terminal-pty-api.ts` + `src/server/token.ts`；client：`pty-store.ts` / `terminal-dock.tsx` / `terminal-prefs.ts` / `xterm-css.ts`）
+- **S0 安全（M3）**：**Origin 白名单校验**——POST/PUT 等状态变更请求校验 `Origin`（loopback / `tauri:`），缺失 Origin 拒绝；GET/HEAD 跳过（DNS-rebinding 已由 Host 校验覆盖）（`server/host-guard.ts`，路由工厂共享）。
+- **工作区打开（M4）**：`POST /api/dsh-hub/workspace/open` 用 OS 默认方式打开文件/文件夹（host+origin+token 三重守卫，Windows `explorer.exe`）；壳 capability 放行 `dialog:allow-open`（M2，`src-tauri/capabilities/default.json`）。
 - **findings-ledger 插件（PR #38）**：独立 dsh 插件（`plugins/dsh-findings-ledger/`）——baseline 快照 + 变更对账 + 覆盖度报告（双轨分发见 [BUILD.md §7](BUILD.md)）。
 - **设置卡片**：dsh 设置 → 插件页提供桌面壳配置（窗口尺寸 / 主题 / 托盘行为 / 会话完成通知 / 提示音 / 多实例开关 / 界面皮肤 / 背景图 / 桌面图标）。
 - **多实例保护**：启动时检测已有 dsh 实例（任意端口），默认拒绝共存以防会话数据损坏；确需共存可在设置中显式开启（附危险警告）。
 - **右侧栏**：概览（Token 统计）、文件树、Git 变更三页；收起后保留窄栏快捷按钮。
-- **对话定位条（rail）**：中栏左缘竖排小横条 minimap（每段对话一条，点击跳转；位置按段序近似，数据源官方 ConversationSnapshot turnTimings，只读）。**自适应配色**：采样 rail 下方的实际背景（皮肤表面色 × 背景图 cover 数学混合），按采样色相派生 tick 深/浅色调（WCAG 对比度择优，≥7:1）与激活态强调色——每套皮肤/背景图得到自己的 rail 色板，非固定两色；tick 附 1px 对比描边兜底。
+- **对话定位条（rail）**：中栏左缘竖排小横条 minimap（每段对话一条，点击跳转；位置按段序近似，数据源官方 ConversationSnapshot turnTimings，只读）。**时间窗真实 kind 预览（修 #35）**：hover 预览按 turnTimings 时间窗 [startTime, endTime) + node.turn 对齐真实节点 kind（user/steering/context/assistant/command/compaction）提取开场文本，替换原 turn-tail 死代码（命令轮次回退助手回复）。**自适应配色**：采样 rail 下方的实际背景（皮肤表面色 × 背景图 cover 数学混合），按采样色相派生 tick 深/浅色调（WCAG 对比度择优，≥7:1）与激活态强调色——每套皮肤/背景图得到自己的 rail 色板，非固定两色；tick 附 1px 对比描边兜底。
 - **置顶会话**：会话行 hover 置顶（同名会话安全跳过、不误标）；置顶区常驻列表顶部（可独立滚动）；持久化于 `$DSH_HOME/dsh-hub/pins.json`（localStorage 兜底）。注：多标签/多实例下 pins 为整体替换语义（最后写者胜）；同标签内 PUT 依赖 fetch 顺序保序。
 - **会话完成通知 + 事件提示音**：
   - **提示音**（独立开关）：用户提交问题（开始音）、任务正常完成（完成音）、AI 请求批准（需要你）、任务出错（出错音）——**四段原创合成音效**（`scripts/synthesize-sounds.mjs` 生成，无第三方素材），窗口隐藏到托盘时依然可闻。
-  - **Toast**：任务完成/出错时弹 Windows 原生通知（notify-rust 直弹，`wait_for_action` 点击回窗），30s 冷却。**聚焦会话策略**：正在查看的会话完成时只响提示音不弹 Toast（结果就在眼前）；后台会话完成或窗口隐藏时仍弹 Toast。
+  - **Toast**：任务完成/出错时弹 Windows 原生通知（notify-rust 直弹，`wait_for_action` 点击回窗），30s 冷却。**点击跳会话**：点击 toast 回窗口并跳到对应会话（`mg:shell-command` focus-session 事件 + `__mgShellReady` 300ms×20 重试）。**聚焦会话策略**：正在查看的会话完成时只响提示音不弹 Toast（结果就在眼前）；后台会话完成或窗口隐藏时仍弹 Toast。
 - **独立进程身份**：桌面壳为单一 Tauri 原生应用（`cargo tauri build` NSIS 安装），任务管理器显示 DeepSeek Harness Hub 图标与名称；WebView2 时代 `dsh-hub.exe` / `dsh-hub-guard.exe`（node.exe 复制 + rcedit 打补丁）机制已删除。
 - **启动门控**：仅当通过本项目启动时注入桌面壳与插件页面；普通 `dsh web` 完全不受影响。
 
@@ -153,7 +157,7 @@ dsh web
 
 | 通道 | 用途 |
 | --- | --- |
-| HTTP 路由 | 配置读写：`/api/dsh-hub/config`、`/api/dsh-hub/workspace/*` |
+| HTTP 路由 | 配置 `/api/dsh-hub/config`、工作区 `/api/dsh-hub/workspace/*`（含 open）、终端 PTY `/api/dsh-hub/pty/*`（含 SSE stream） |
 | 双向管道（stdin/stdout JSON） | 壳 ↔ host：stdin `MG_TRAY`（壳→host）、stdout `DSH_CMD`（host→壳）；托盘命令、主题、窗口、退出 |
 | 事件桥 | `session/event` → 会话完成通知 |
 
@@ -198,13 +202,13 @@ dsh-hub/
 │   ├── index.ts            # host 插件入口（Controller 装配）
 │   ├── core/              # 命令注册表 / 生命周期（registry）
 │   ├── controllers/       # 业务编排（session-runtime / tray-pipe / shell-runtime）
-│   ├── services/           # 领域服务（config-store / pins-store）
-│   ├── server/             # HTTP 路由工厂（/api/dsh-hub/*）
+│   ├── services/           # 领域服务（config-store / pins-store / pty-manager 终端会话）
+│   ├── server/             # HTTP 路由工厂（/api/dsh-hub/*：config/workspace/pins/pty/backgrounds/sounds/icons/session-paths）
 │   ├── managers/           # 壳 Manager（tauri-shell）
 │   ├── helpers/            # 无状态工具（state-store）
 │   ├── models/             # 共享类型/常量（pipe / shell-config / plugin-config / sound）
 │   ├── utils/              # 纯函数（管道帧解析）
-│   └── client/             # client half（设置卡片 + 右侧栏 + 模型嵌套菜单）
+│   └── client/             # client half（设置卡片 + 右侧栏 + 模型嵌套菜单 + 会话标签栏 + 交互终端）
 ├── docs/
 │   ├── 关键踩坑记录.md      # 踩坑索引
 │   └── skins/              # 皮肤风格 harness（AGENTS.md + 各皮肤文档）
