@@ -26,6 +26,8 @@ export declare const RIGHT_SIDEBAR_CSS_CLASSES: {
     readonly section: "mg-rs-section";
     readonly sectionTitle: "mg-rs-section-title";
     readonly refresh: "mg-rs-refresh";
+    readonly topRow: "mg-rs-top-row";
+    readonly topBtn: "mg-rs-top-btn";
     readonly chartWrap: "mg-rs-chart-wrap";
     readonly chart: "mg-rs-chart";
     readonly chartCenter: "mg-rs-chart-center";
@@ -44,6 +46,10 @@ export declare const RIGHT_SIDEBAR_CSS_CLASSES: {
     readonly treeIcon: "mg-rs-tree-icon";
     readonly treeName: "mg-rs-tree-name";
     readonly treeChildren: "mg-rs-tree-children";
+    readonly menu: "mg-rs-menu";
+    readonly menuItem: "mg-rs-menu-item";
+    readonly menuIcon: "mg-rs-menu-icon";
+    readonly menuLabel: "mg-rs-menu-label";
     readonly gitBranchCard: "mg-rs-git-branch-card";
     readonly gitBranchIcon: "mg-rs-git-branch-icon";
     readonly gitBranchName: "mg-rs-git-branch-name";

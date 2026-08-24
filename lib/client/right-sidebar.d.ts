@@ -6,8 +6,12 @@
  * three tabs:
  *  - Overview: context-token usage rendered as a fan/donut chart.
  *  - Files: current workspace file/folder tree, strictly synced to the
- *    current session's workspace.
+ *    current session's workspace. Tree nodes expose a right-click context
+ *    menu (open in OS / path reference / copy / open terminal here).
  *  - Git: whether the workspace is a git repo, branch, and working-tree changes.
+ *
+ * A top action row offers "打开工作区文件夹" (native folder picker → new
+ * workspace, PR #40's openFolderAsWorkspace) and a terminal opener.
  */
 import { type ReactNode } from 'react';
 /** The body portal passes the client context directly; keep props loose for future additions. */

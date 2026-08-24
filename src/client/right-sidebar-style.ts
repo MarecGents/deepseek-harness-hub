@@ -28,6 +28,8 @@ export const RIGHT_SIDEBAR_CSS_CLASSES = {
   section: 'mg-rs-section',
   sectionTitle: 'mg-rs-section-title',
   refresh: 'mg-rs-refresh',
+  topRow: 'mg-rs-top-row',
+  topBtn: 'mg-rs-top-btn',
 
   chartWrap: 'mg-rs-chart-wrap',
   chart: 'mg-rs-chart',
@@ -48,6 +50,10 @@ export const RIGHT_SIDEBAR_CSS_CLASSES = {
   treeIcon: 'mg-rs-tree-icon',
   treeName: 'mg-rs-tree-name',
   treeChildren: 'mg-rs-tree-children',
+  menu: 'mg-rs-menu',
+  menuItem: 'mg-rs-menu-item',
+  menuIcon: 'mg-rs-menu-icon',
+  menuLabel: 'mg-rs-menu-label',
 
   gitBranchCard: 'mg-rs-git-branch-card',
   gitBranchIcon: 'mg-rs-git-branch-icon',
@@ -222,6 +228,36 @@ const STYLE_TEXT = `
   border-color: var(--dsw-alias-label-dimmed, rgb(0 0 0 / 20%));
   background: var(--dsw-alias-button-floating-hover, #f1f3f5);
 }
+/* Top action row (open workspace folder / terminal) above the tabs. */
+.${c.topRow} {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px 6px;
+  border-bottom: 1px solid var(--dsw-alias-border-l2, rgb(0 0 0 / 10%));
+}
+.${c.topBtn} {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 10px;
+  border: 1px solid var(--dsw-alias-state-business-primary, #3964fe);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--dsw-alias-state-business-primary, #3964fe);
+  font: inherit;
+  font-size: 12px;
+  line-height: 20px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.${c.topBtn}:hover {
+  background: var(--dsw-alias-interactive-bg-hover, rgb(0 0 0 / 6%));
+}
+.${c.topBtn}:focus-visible {
+  outline: 2px solid var(--dsw-alias-state-business-primary, #3964fe);
+  outline-offset: 1px;
+}
 .${c.chartWrap} {
   display: flex;
   flex-direction: column;
@@ -317,6 +353,56 @@ const STYLE_TEXT = `
 .${c.treeIcon} { flex: none; color: var(--dsw-alias-label-secondary, #61666b); }
 .${c.treeName} { overflow: hidden; text-overflow: ellipsis; }
 .${c.treeChildren} { list-style: none; margin: 0; padding-left: 16px; }
+/* Tree-node context menu (right-click): fixed plate pinned to the cursor,
+   token-colored like the official menu surfaces. */
+.${c.menu} {
+  position: fixed;
+  z-index: 1000;
+  min-width: 180px;
+  padding: 4px;
+  background: var(--dsw-alias-bg-layer-2, #ffffff);
+  border: 1px solid var(--dsw-alias-border-l2, rgb(0 0 0 / 10%));
+  border-radius: 8px;
+  box-shadow: 0 6px 24px rgb(0 0 0 / 20%);
+  font-family: var(--dsw-font-family);
+  font-size: 13px;
+  color: var(--dsw-alias-label-primary, #0f1115);
+}
+.${c.menuItem} {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 10px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+  line-height: 20px;
+  text-align: left;
+  cursor: pointer;
+}
+.${c.menuItem}:hover {
+  background: var(--dsw-alias-interactive-bg-hover, rgb(0 0 0 / 6%));
+}
+.${c.menuItem}:focus-visible {
+  outline: 2px solid var(--dsw-alias-state-business-primary, #3964fe);
+  outline-offset: 1px;
+}
+.${c.menuIcon} {
+  flex: none;
+  display: inline-flex;
+  color: var(--dsw-alias-label-secondary, #61666b);
+}
+.${c.menuLabel} {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .${c.gitBranchCard} {
   display: flex;
   align-items: center;

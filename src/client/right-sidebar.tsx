@@ -6,8 +6,12 @@
  * three tabs:
  *  - Overview: context-token usage rendered as a fan/donut chart.
  *  - Files: current workspace file/folder tree, strictly synced to the
- *    current session's workspace.
+ *    current session's workspace. Tree nodes expose a right-click context
+ *    menu (open in OS / path reference / copy / open terminal here).
  *  - Git: whether the workspace is a git repo, branch, and working-tree changes.
+ *
+ * A top action row offers "打开工作区文件夹" (native folder picker → new
+ * workspace, PR #40's openFolderAsWorkspace) and a terminal opener.
  */
 
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
@@ -16,11 +20,13 @@ import {
   IconBranchOutline16,
   IconCheckOutline16,
   IconCodeOutline16,
+  IconCopyOutline16,
   IconDataOutline16,
   IconDownloadOutline16,
   IconEditOutline16,
   IconFolderClose16,
   IconFolderOpen16,
+  IconLinkOutline16,
   IconPanelLeftOutline16,
   IconPlayOutline16,
   IconRightUpOutline16,
@@ -28,6 +34,7 @@ import {
   IconThinkOutline16,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import { RIGHT_SIDEBAR_CSS_CLASSES as c } from './right-sidebar-style.ts'
+import { ptyOpen, ptyRetarget } from './pty-store.ts'
 
 /** The body portal passes the client context directly; keep props loose for future additions. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- body-portal props are intentionally minimal.
@@ -163,8 +170,110 @@ async function fetchGit(path: string): Promise<GitInfo | null> {
   }
 }
 
+/** Posix-style relative path of `path` against workspace root `root`. */
+function relativePath(path: string, root: string): string {
+  const p = path.replace(/\\/g, '/')
+  const r = root.replace(/\\/g, '/').replace(/\/+$/, '')
+  if (r === '' || r === '.') return p
+  if (p === r) return '.'
+  if (p.startsWith(r + '/')) return p.slice(r.length + 1)
+  return p
+}
+
+/** Parent directory of an absolute path. */
+function parentDir(path: string): string {
+  const norm = path.replace(/\\/g, '/').replace(/\/+$/, '')
+  const idx = norm.lastIndexOf('/')
+  return idx > 0 ? norm.slice(0, idx) : norm
+}
+
+/** Copy text to the clipboard (best-effort). */
+function copyText(text: string): void {
+  void navigator.clipboard.writeText(text).catch(() => {})
+}
+
+/**
+ * Open a path with the OS default handler via the token-guarded host route
+ * (`/api/dsh-hub/workspace/open`). The Bearer token is read from the
+ * `__DSH_HUB_TOKEN__` global injected by the host; without a token the
+ * request is skipped entirely rather than failing (the route rejects 401).
+ */
+async function openInOs(path: string): Promise<void> {
+  const token = (globalThis as { __DSH_HUB_TOKEN__?: string }).__DSH_HUB_TOKEN__ ?? ''
+  if (token === '') return
+  try {
+    await fetch('/api/dsh-hub/workspace/open', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', Authorization: 'Bearer ' + token },
+      body: JSON.stringify({ path }),
+    })
+  } catch {
+    // Best-effort OS open — a failure here must never break the UI flow.
+  }
+}
+
+/**
+ * Open a workspace folder: prefer the Tauri native directory picker
+ * (`plugin:dialog|open`, already allowed by the `dialog:allow-open`
+ * capability), then register the picked path through the client workspaces
+ * service (its recency projection moves the current session onto the new
+ * workspace). When Tauri is unavailable or the user cancels, fall back to
+ * opening the current workspace in the OS file manager.
+ */
+async function openFolderAsWorkspace(ctx: unknown): Promise<void> {
+  try {
+    const internals = (window as unknown as {
+      __TAURI_INTERNALS__?: { invoke?: (c: string, a?: Record<string, unknown>) => Promise<unknown> }
+    }).__TAURI_INTERNALS__
+    if (internals?.invoke) {
+      const picked = await internals.invoke('plugin:dialog|open', { options: { directory: true, multiple: false } })
+      if (typeof picked === 'string' && picked !== '') {
+        const workspaces = (ctx as { workspaces?: { create?: (i: { path: string }) => Promise<unknown> } }).workspaces
+        if (workspaces?.create) { await workspaces.create({ path: picked }); return }
+      }
+    }
+  } catch {
+    // Tauri dialog rejected — fall through to the Explorer fallback.
+  }
+  const p = (window as unknown as { __mgGetCurrentWorkspace?: () => string | null }).__mgGetCurrentWorkspace?.() || ''
+  if (p !== '') void openInOs(p)
+}
+
+/**
+ * Insert a file/folder reference into the composer's draft. The dsh client
+ * runtime in this assembly exposes no `conversation.input.shell().setDraft`
+ * service, so this writes through the DOM (PR #40's fallback): focus the
+ * composer textarea (`[data-composer-seat]`, then the first textarea on the
+ * page), append the reference, and dispatch an `input` event so the React
+ * draft state synchronizes. When no textarea exists, degrade to the clipboard.
+ */
+function insertReferenceIntoComposer(text: string): void {
+  if (insertReferenceIntoComposerDom(text)) return
+  copyText(text)
+}
+
+function insertReferenceIntoComposerDom(text: string): boolean {
+  try {
+    const seat = document.querySelector('[data-composer-seat]')
+    const ta = seat?.querySelector('textarea') || document.querySelector('textarea')
+    if (ta === null) return false
+    ta.focus()
+    const cur = ta.value
+    ta.value = cur.trim() === '' ? text : cur + ' ' + text
+    ta.dispatchEvent(new Event('input', { bubbles: true }))
+    return true
+  } catch {
+    // Malformed DOM — treat as a failure so the caller falls back to clipboard.
+    return false
+  }
+}
+
 /** One expandable directory/file row. */
-function TreeNode({ entry, depth }: { entry: DirectoryRow; depth: number }): ReactNode {
+function TreeNode({ entry, depth, onContext }: {
+  entry: DirectoryRow
+  depth: number
+  onContext: (entry: DirectoryRow, event: { preventDefault(): void; stopPropagation(): void; clientX: number; clientY: number }) => void
+}): ReactNode {
   const [open, setOpen] = useState(false)
   const [children, setChildren] = useState<DirectoryRow[] | null>(null)
 
@@ -182,6 +291,9 @@ function TreeNode({ entry, depth }: { entry: DirectoryRow; depth: number }): Rea
         className={c.treeRow}
         style={{ paddingLeft: `${depth * 12 + 4}px` }}
         onClick={() => { if (expandable) setOpen(!open) }}
+        onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); onContext(entry, event) }}
+        data-row-path={entry.path}
+        data-row-dir={expandable ? '1' : '0'}
       >
         <span className={c.treeIcon}>
           {expandable
@@ -192,10 +304,59 @@ function TreeNode({ entry, depth }: { entry: DirectoryRow; depth: number }): Rea
       </div>
       {open && children !== null && (
         <ul className={c.treeChildren}>
-          {children.map((child) => <TreeNode key={child.path} entry={child} depth={depth + 1} />)}
+          {children.map((child) => <TreeNode key={child.path} entry={child} depth={depth + 1} onContext={onContext} />)}
         </ul>
       )}
     </li>
+  )
+}
+
+/**
+ * Context menu for a tree node (right-click). Directory rows offer expand/
+ * collapse, path reference, copy-directory and open-terminal-here; file rows
+ * offer OS-open, path reference, copy-folder-directory, copy-file-path and
+ * open-terminal-here. Positioned fixed at the cursor; closed by the parent on
+ * outside mousedown / Escape / item click.
+ */
+function ContextMenu({ x, y, entry, root, onClose }: {
+  x: number
+  y: number
+  entry: DirectoryRow
+  root: string
+  onClose: () => void
+}): ReactNode {
+  const items: Array<{ label: string; icon: ReactNode; run: () => void }> = []
+  const rel = relativePath(entry.path, root)
+  const reference = '[' + entry.name + '](' + rel + ')'
+  const toggleDir = (): void => {
+    try {
+      const el = document.querySelector('[data-row-path="' + CSS.escape(entry.path) + '"]')
+      el?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    } catch {
+      // Attribute-selector escaping may fail on exotic paths — best-effort.
+    }
+  }
+  if (entry.isDirectory) {
+    items.push({ label: '打开（展开/折叠）', icon: <IconFolderOpen16 size={14} />, run: toggleDir })
+    items.push({ label: '路径引用', icon: <IconLinkOutline16 size={14} />, run: () => { insertReferenceIntoComposer(reference) } })
+    items.push({ label: '复制目录', icon: <IconCopyOutline16 size={14} />, run: () => { copyText(entry.path) } })
+    items.push({ label: '在此打开终端', icon: <IconCodeOutline16 size={14} />, run: () => { void ptyOpen(entry.path) } })
+  } else {
+    items.push({ label: '打开', icon: <IconPlayOutline16 size={14} />, run: () => { void openInOs(entry.path) } })
+    items.push({ label: '路径引用', icon: <IconLinkOutline16 size={14} />, run: () => { insertReferenceIntoComposer(reference) } })
+    items.push({ label: '复制文件夹目录', icon: <IconCopyOutline16 size={14} />, run: () => { copyText(parentDir(entry.path)) } })
+    items.push({ label: '复制文件路径', icon: <IconCopyOutline16 size={14} />, run: () => { copyText(entry.path) } })
+    items.push({ label: '在此打开终端', icon: <IconCodeOutline16 size={14} />, run: () => { void ptyOpen(parentDir(entry.path)) } })
+  }
+  return (
+    <div className={c.menu} data-rs-menu role="menu" style={{ left: x, top: y }}>
+      {items.map((item) => (
+        <button key={item.label} type="button" role="menuitem" className={c.menuItem} onClick={() => { item.run(); onClose() }}>
+          <span className={c.menuIcon}>{item.icon}</span>
+          <span className={c.menuLabel}>{item.label}</span>
+        </button>
+      ))}
+    </div>
   )
 }
 
@@ -246,6 +407,27 @@ export function RightSidebar({ ctx }: RightSidebarProps): ReactNode {
   const [git, setGit] = useState<GitInfo | null>(null)
   const [workspaceLoading, setWorkspaceLoading] = useState(false)
 
+  // Context menu (right-click) on tree nodes.
+  const [menu, setMenu] = useState<{ x: number; y: number; entry: DirectoryRow } | null>(null)
+  const closeMenu = (): void => setMenu(null)
+  const onRowContext = (entry: DirectoryRow, event: { preventDefault(): void; stopPropagation(): void; clientX: number; clientY: number }): void => {
+    event.preventDefault()
+    event.stopPropagation()
+    setMenu({ x: event.clientX, y: event.clientY, entry })
+  }
+  useEffect(() => {
+    if (menu === null) return
+    const onPointerDown = (event: MouseEvent): void => {
+      const target = event.target as HTMLElement | null
+      if (target !== null && target.closest && target.closest('[data-rs-menu]') !== null) return
+      setMenu(null)
+    }
+    const onKey = (event: KeyboardEvent): void => { if (event.key === 'Escape') setMenu(null) }
+    document.addEventListener('mousedown', onPointerDown)
+    document.addEventListener('keydown', onKey)
+    return () => { document.removeEventListener('mousedown', onPointerDown); document.removeEventListener('keydown', onKey) }
+  }, [menu])
+
   useEffect(() => {
     if (effectivePath === '') {
       setRootEntries([])
@@ -261,6 +443,11 @@ export function RightSidebar({ ctx }: RightSidebarProps): ReactNode {
       setWorkspaceLoading(false)
     })
     return () => { alive = false }
+  }, [effectivePath])
+
+  // When the workspace changes, keep an open terminal's cwd in sync.
+  useEffect(() => {
+    if (effectivePath !== '') void ptyRetarget(effectivePath)
   }, [effectivePath])
 
   const refreshWorkspace = (): void => {
@@ -351,6 +538,14 @@ export function RightSidebar({ ctx }: RightSidebarProps): ReactNode {
     <div className={clsx(c.root, !open && c.collapsed)} style={{ width: open ? 360 : 56 }}>
       {open ? (
         <>
+          <div className={c.topRow}>
+            <button type="button" className={c.topBtn} onClick={() => { void openFolderAsWorkspace(ctx) }}>
+              <IconFolderOpen16 size={14} /> 打开工作区文件夹
+            </button>
+            <button type="button" className={c.topBtn} onClick={() => { void ptyOpen(effectivePath || undefined) }}>
+              <IconCodeOutline16 size={14} /> 终端
+            </button>
+          </div>
           <div className={c.header}>
             <div className={c.tabs} role="tablist" aria-label="右侧栏视图">
               {(['overview', 'files', 'git'] as Tab[]).map((key) => (
@@ -403,7 +598,7 @@ export function RightSidebar({ ctx }: RightSidebarProps): ReactNode {
                         ? <div className={c.empty}>工作区为空</div>
                         : (
                           <ul className={c.tree}>
-                            {rootEntries.map((entry) => <TreeNode key={entry.path} entry={entry} depth={0} />)}
+                            {rootEntries.map((entry) => <TreeNode key={entry.path} entry={entry} depth={0} onContext={onRowContext} />)}
                           </ul>
                         )}
                 </div>
@@ -431,6 +626,15 @@ export function RightSidebar({ ctx }: RightSidebarProps): ReactNode {
             </button>
           </div>
         </div>
+      )}
+      {menu !== null && (
+        <ContextMenu
+          x={menu.x}
+          y={menu.y}
+          entry={menu.entry}
+          root={effectivePath}
+          onClose={closeMenu}
+        />
       )}
     </div>
   )
