@@ -1,9 +1,11 @@
 /**
- * SessionTabs — a browser-style tab strip at the top of the app. Each tab is
- * an open session; click to switch, + to start a new session, × to remove.
- * Mounted as a body portal from index.ts.
+ * SessionTabs — browser-style session tabs rendered INTO the shell titlebar
+ * via createPortal (inside #dsh-hub-titlebar .tb-title). Each tab is an open
+ * session; click to switch, + to start, x to remove. Portal keeps it mounted
+ * across re-renders (manual DOM moving lost it on refresh).
  */
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { useEffect, useState, type CSSProperties, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import { tabAdd, tabRemove, useTabs } from './session-tabs.ts'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- body-portal ctx is intentionally loose.
@@ -23,43 +25,61 @@ function useSessionsSnap(ctx: any): SessionsSnap {
   return snap;
 }
 
-const BAR: CSSProperties = {
-  position: 'fixed', top: 0, left: 0, right: 0, height: 34, zIndex: 1500,
-  display: 'flex', alignItems: 'center', gap: 4, padding: '4px 8px', overflowX: 'auto',
-  background: 'var(--dsw-alias-bg-layer-1, #151517)', borderBottom: '1px solid var(--dsw-alias-border-l1, #222226)',
-  fontFamily: 'var(--dsw-font-family, system-ui)', fontSize: 12, boxSizing: 'border-box',
+const ROOT: CSSProperties = {
+  display: 'flex', alignItems: 'center', gap: 4, flex: '1', minWidth: 0,
+  overflowX: 'auto', height: '100%', boxSizing: 'border-box', paddingLeft: 8,
+  fontFamily: 'var(--dsw-font-family, system-ui)', fontSize: 12,
+  WebkitAppRegion: 'no-drag' as unknown as string,
 }
 const TAB: CSSProperties = {
-  display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 12px', borderRadius: 7, cursor: 'pointer',
-  background: 'transparent', border: 'none', color: 'var(--dsw-alias-label-tertiary, #9aa0a6)', whiteSpace: 'nowrap', maxWidth: 180,
+  display: 'inline-flex', alignItems: 'center', gap: 6, padding: '3px 10px', borderRadius: 6, cursor: 'pointer',
+  background: 'transparent', border: 'none', color: 'var(--dsw-alias-label-tertiary, #9aa7bd)', whiteSpace: 'nowrap', maxWidth: 180,
+  transition: 'background .12s ease, color .12s ease',
 }
-const TAB_ACTIVE: CSSProperties = { ...TAB, background: 'var(--dsw-alias-bg-elevated, #1e1e21)', color: 'var(--dsw-alias-label-primary, #fff)' }
-const PLUS: CSSProperties = { border: 'none', background: 'transparent', color: '#9aa0a6', cursor: 'pointer', fontSize: 15, padding: '2px 8px', borderRadius: 6 }
+const TAB_ACTIVE: CSSProperties = { ...TAB, background: 'var(--dsw-alias-interactive-bg-hover, rgba(128,128,128,.16))', color: 'var(--dsw-alias-label-primary, #fff)' }
+const PLUS: CSSProperties = { border: 'none', background: 'transparent', color: 'inherit', cursor: 'pointer', fontSize: 15, padding: '2px 8px', borderRadius: 6 }
 
 export function SessionTabs({ ctx }: SessionTabsProps): ReactNode {
   const tabs = useTabs();
   const snap = useSessionsSnap(ctx);
   const current = snap.current;
   const byId = snap.byId ?? {};
+  const validTabs = tabs.filter((id) => byId[id] !== undefined);
 
-  // Track the current session as a tab (browser-like).
   useEffect(() => { if (current) tabAdd(current) }, [current]);
 
-  if (!current && tabs.length === 0) return null;
+  // Locate the titlebar .tb-title and render into it via portal (React keeps
+  // it mounted across re-renders). Retries until the titlebar exists.
+  const [titleEl, setTitleEl] = useState<HTMLElement | null>(null);
+  useEffect(() => {
+    let timer = 0;
+    const find = (): void => {
+      const el = document.querySelector('#dsh-hub-titlebar .tb-title') as HTMLElement | null;
+      if (el) { setTitleEl(el); window.clearInterval(timer); }
+    };
+    find();
+    timer = window.setInterval(find, 300);
+    return () => window.clearInterval(timer);
+  }, []);
 
-  const titleOf = (id: string): string => (byId[id]?.displayTitle || byId[id]?.title || id).slice(0, 24);
-  const open = (id: string): void => { try { ctx?.sessions?.open?.(id) } catch { /* ignore */ } };
+  if (!current && validTabs.length === 0) return null;
+  if (titleEl === null) return null;
+
+  const titleOf = (id: string): string => (byId[id]?.displayTitle || byId[id]?.title || id).slice(0, 20);
+  const open = (id: string): void => { if (byId[id] === undefined) return; try { ctx?.sessions?.open?.(id) } catch { /* ignore */ } };
   const start = (): void => { try { ctx?.workspaces?.startSession?.() } catch { /* ignore */ } };
 
-  return (
-    <div style={BAR}>
+  const content = (
+    <div style={ROOT}>
       <button type="button" style={PLUS} title="新建会话" onClick={start}>+</button>
-      {tabs.map((id) => (
+      {validTabs.map((id) => (
         <button key={id} type="button" style={id === current ? TAB_ACTIVE : TAB} onClick={() => open(id)} title={byId[id]?.title ?? id}>
           <span>{titleOf(id)}</span>
-          <span style={{ color: '#666', padding: '0 2px', borderRadius: 4 }} onClick={(e) => { e.stopPropagation(); tabRemove(id) }}>×</span>
+          <span style={{ color: 'var(--dsw-alias-label-tertiary,#777)', padding: '0 2px', borderRadius: 4 }} onClick={(e) => { e.stopPropagation(); tabRemove(id) }}>×</span>
         </button>
       ))}
     </div>
   );
+
+  return createPortal(content, titleEl);
 }
