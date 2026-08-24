@@ -35,6 +35,7 @@ import { applyBackground, fetchStoredBackground, hasUserPickedBackground } from 
 import { installPinnedConversations } from './pin-conversations.ts'
 import { installConversationRail, refreshConversationRailPalette } from './conversation-rail.ts'
 import { installModelSelect } from './model-select.tsx'
+import { SessionTabs } from './SessionTabs.tsx'
 
 /**
  * Tray-bridge ready flag, set at module scope — the very first thing that
@@ -317,6 +318,27 @@ export function apply(ctx: ClientContext): void {
     }, 'dsh-hub: right sidebar mount')
   } catch (error) {
     console.warn('[dsh-hub] right sidebar mount failed:', error)
+  }
+
+  // Title-bar session tabs (顶部会话标签栏): a browser-style tab strip at the
+  // top, portaled into the titlebar (#dsh-hub-titlebar .tb-title). The host
+  // div on body keeps the React root independent of the official titlebar
+  // DOM; the effect disposer unmounts + removes it on reload (HMR /
+  // include.refresh), so a re-install never stacks duplicate roots.
+  try {
+    ctx.effect(() => {
+      const host = document.createElement('div')
+      host.id = 'dsh-hub-session-tabs'
+      document.body.appendChild(host)
+      const root: Root = createRoot(host)
+      root.render(createElement(SessionTabs, { ctx }))
+      return () => {
+        root.unmount()
+        host.remove()
+      }
+    }, 'dsh-hub: session tabs mount')
+  } catch (error) {
+    console.warn('[dsh-hub] session tabs mount failed:', error)
   }
 
   // Pinned conversations (置顶会话): augment the official session list with
