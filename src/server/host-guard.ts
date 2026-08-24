@@ -65,3 +65,21 @@ export function rejectIfBadOrigin(req: IncomingMessage, res: ServerResponse): bo
   res.end(JSON.stringify({ ok: false, error: 'origin-not-allowed' }))
   return true
 }
+
+/**
+ * Reject state-changing requests that carry a FOREIGN Origin (CSRF depth for
+ * browser callers). Requests with NO Origin pass through — on token-protected
+ * routes the token layer already authenticated the caller (non-browser CLI),
+ * so a missing Origin is not a CSRF signal (CSRF requires a browser, and a
+ * browser always sends its Origin).
+ * @returns true when the request was rejected (caller must stop handling).
+ */
+export function rejectIfBadOriginPresent(req: IncomingMessage, res: ServerResponse): boolean {
+  if (req.method === 'GET' || req.method === 'HEAD') return false
+  const origin = (req.headers.origin ?? '').trim()
+  if (origin === '') return false
+  if (isOriginAllowed(req)) return false
+  res.writeHead(403, { 'content-type': 'application/json; charset=utf-8' })
+  res.end(JSON.stringify({ ok: false, error: 'origin-not-allowed' }))
+  return true
+}

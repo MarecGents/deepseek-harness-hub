@@ -20,7 +20,7 @@ import { readdir } from 'node:fs/promises'
 import { isAbsolute, join } from 'node:path'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { WebRoute } from '@deepseek-ai/dsh-host-webserver'
-import { rejectIfBadHost, rejectIfBadOrigin } from './host-guard.ts'
+import { rejectIfBadHost, rejectIfBadOriginPresent } from './host-guard.ts'
 import { verifyToken } from './token.ts'
 
 const API_PREFIX = '/api/dsh-hub/workspace'
@@ -244,11 +244,11 @@ export function makeWorkspaceRoutes(): WebRoute[] {
       path: `${API_PREFIX}/open`,
       handler: (req: IncomingMessage, res: ServerResponse): Promise<void> => {
         if (rejectIfBadHost(req, res)) return Promise.resolve()
-        if (rejectIfBadOrigin(req, res)) return Promise.resolve()
         if (!verifyToken(req)) {
           json(res, 401, { ok: false, error: 'unauthorized' })
           return Promise.resolve()
         }
+        if (rejectIfBadOriginPresent(req, res)) return Promise.resolve()
         if (req.method !== 'POST') {
           json(res, 405, { ok: false, error: 'method-not-allowed' })
           return Promise.resolve()

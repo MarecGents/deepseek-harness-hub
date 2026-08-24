@@ -29,7 +29,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { WebRoute } from '@deepseek-ai/dsh-host-webserver'
 import { existsSync, statSync } from 'node:fs'
 import { isAbsolute } from 'node:path'
-import { rejectIfBadHost, rejectIfBadOrigin } from './host-guard.ts'
+import { rejectIfBadHost, rejectIfBadOriginPresent } from './host-guard.ts'
 import { verifyToken } from './token.ts'
 import { createPty, getTab, listTabs, ptyClose, ptyResize, ptySubscribe, ptyWrite } from '../services/pty-manager.ts'
 
@@ -130,8 +130,8 @@ export function makePtyRoutes(): WebRoute[] {
       path: P + '/create',
       handler: (req: IncomingMessage, res: ServerResponse): Promise<void> => {
         if (rejectIfBadHost(req, res)) return Promise.resolve()
-        if (rejectIfBadOrigin(req, res)) return Promise.resolve()
         if (rejectUnauthorized(req, res)) return Promise.resolve()
+        if (rejectIfBadOriginPresent(req, res)) return Promise.resolve()
         if (rejectWrongMethod(req, res, 'POST')) return Promise.resolve()
         return readJsonBody(req).then((body) => {
           const record = (body ?? {}) as { cwd?: unknown; cols?: unknown; rows?: unknown }
@@ -158,8 +158,8 @@ export function makePtyRoutes(): WebRoute[] {
       path: P + '/write',
       handler: (req: IncomingMessage, res: ServerResponse): Promise<void> => {
         if (rejectIfBadHost(req, res)) return Promise.resolve()
-        if (rejectIfBadOrigin(req, res)) return Promise.resolve()
         if (rejectUnauthorized(req, res)) return Promise.resolve()
+        if (rejectIfBadOriginPresent(req, res)) return Promise.resolve()
         if (rejectWrongMethod(req, res, 'POST')) return Promise.resolve()
         return readJsonBody(req).then((body) => {
           const record = (body ?? {}) as { id?: unknown; data?: unknown }
@@ -182,8 +182,8 @@ export function makePtyRoutes(): WebRoute[] {
       path: P + '/resize',
       handler: (req: IncomingMessage, res: ServerResponse): Promise<void> => {
         if (rejectIfBadHost(req, res)) return Promise.resolve()
-        if (rejectIfBadOrigin(req, res)) return Promise.resolve()
         if (rejectUnauthorized(req, res)) return Promise.resolve()
+        if (rejectIfBadOriginPresent(req, res)) return Promise.resolve()
         if (rejectWrongMethod(req, res, 'POST')) return Promise.resolve()
         return readJsonBody(req).then((body) => {
           const record = (body ?? {}) as { id?: unknown; cols?: unknown; rows?: unknown }
@@ -207,8 +207,8 @@ export function makePtyRoutes(): WebRoute[] {
       path: P + '/close',
       handler: (req: IncomingMessage, res: ServerResponse): Promise<void> => {
         if (rejectIfBadHost(req, res)) return Promise.resolve()
-        if (rejectIfBadOrigin(req, res)) return Promise.resolve()
         if (rejectUnauthorized(req, res)) return Promise.resolve()
+        if (rejectIfBadOriginPresent(req, res)) return Promise.resolve()
         if (rejectWrongMethod(req, res, 'POST')) return Promise.resolve()
         return readJsonBody(req).then((body) => {
           const record = (body ?? {}) as { id?: unknown }
@@ -230,8 +230,8 @@ export function makePtyRoutes(): WebRoute[] {
       path: P + '/list',
       handler: (req: IncomingMessage, res: ServerResponse): Promise<void> => {
         if (rejectIfBadHost(req, res)) return Promise.resolve()
-        if (rejectIfBadOrigin(req, res)) return Promise.resolve()
         if (rejectUnauthorized(req, res)) return Promise.resolve()
+        if (rejectIfBadOriginPresent(req, res)) return Promise.resolve()
         if (rejectWrongMethod(req, res, 'GET')) return Promise.resolve()
         json(res, 200, { ok: true, tabs: listTabs() })
         return Promise.resolve()
@@ -242,8 +242,8 @@ export function makePtyRoutes(): WebRoute[] {
       path: P + '/stream',
       handler: (req: IncomingMessage, res: ServerResponse): Promise<void> => {
         if (rejectIfBadHost(req, res)) return Promise.resolve()
-        if (rejectIfBadOrigin(req, res)) return Promise.resolve()
         if (rejectUnauthorized(req, res)) return Promise.resolve()
+        if (rejectIfBadOriginPresent(req, res)) return Promise.resolve()
         if (rejectWrongMethod(req, res, 'GET')) return Promise.resolve()
         const id = qp(req, 'id')
         if (getTab(id) === undefined) {

@@ -1,4 +1,6 @@
-# dsh-project-memory — profile-level mount patch (pure host plugin, no client bundle).
-plugins:
-  - id: '@dsh-external/dsh-project-memory'
-    name: dsh-project-memory
+# dsh-project-memory bundle patch — mounts the plugin when this package is
+# listed in a profile's dsh.profile.bundles (declared by package.json
+# dsh.bundle.patch). Top-level YAML array of loader patch entries.
+- insert:
+    - id: '@dsh-external/dsh-project-memory'
+      name: '@dsh-external/dsh-project-memory'

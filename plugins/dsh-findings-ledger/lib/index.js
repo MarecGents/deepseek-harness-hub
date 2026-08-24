@@ -222,9 +222,4 @@ export function apply(ctx) {
 }
 
 // 插件配置：快照跳过目录（Config schema——普通对象作默认值；如需校验用 schemastery）
-export const Config = {
-  baseline: {
-    skip: ['node_modules', '.git', '.dsh', 'dist', 'build', 'lib'],
-    maxFileBytes: 4 * 1024 * 1024,
-  },
-}
+export const Config = undefined
