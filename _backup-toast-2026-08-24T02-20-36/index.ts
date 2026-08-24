@@ -150,24 +150,6 @@ function handleShellCommand(ctx: ClientContext, event: Event): void {
     }
   }
   report('client-shell-command:' + (detail?.command ?? '?'))
-  if (detail?.command === 'focus-session') {
-    // 点击 Windows 通知中心的 toast → 跳到对应会话对话（ZCode 同款体验）。
-    // 通知触发时该会话在后台完成，用户点击 toast 后窗口拉回前台并打开该会话。
-    const sessionId = (detail as { sessionId?: string }).sessionId
-    const sessions = (ctx as unknown as { sessions?: { open?: (id: string) => void } }).sessions
-    if (sessions?.open !== undefined && sessionId !== undefined && sessionId !== '') {
-      console.log('[dsh-hub] focus-session: ' + sessionId)
-      try {
-        sessions.open(sessionId)
-        report('client-focus-session:' + sessionId)
-      } catch (error) {
-        console.warn('[dsh-hub] focus-session open failed:', error)
-      }
-    } else {
-      console.warn('[dsh-hub] focus-session skipped (no sessions service or sessionId)')
-    }
-    return
-  }
   if (detail?.command === 'new-task') {
     // Official New Session flow (sidebar "+" button path). Deliberately pass no
     // explicit workspaceId: startSession resolves the current session's

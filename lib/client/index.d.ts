@@ -44,6 +44,26 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
             scope: 'root';
             owner: DesktopSettingsCardProps;
         };
+        /**
+         * The conversation-bottom input dock (declared by ui-conversation). The
+         * terminal command dock rides this list slot below the composer input.
+         */
+        'conversation.input.dock': {
+            kind: 'list';
+            scope: 'session';
+            owner: Record<string, never>;
+        };
+        /**
+         * Sidebar footer action (declared by ui-sidebar): the 终端 entry rendered
+         * beside/above Settings. Owner props carry the column's wide/rail state.
+         */
+        'sidebar.footer.action': {
+            kind: 'list';
+            scope: 'root';
+            owner: {
+                wide: boolean;
+            };
+        };
     }
 }
 /** Owner share of a plugin card (the section supplies nothing). */
