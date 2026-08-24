@@ -36,6 +36,7 @@ import { applyBackground, fetchStoredBackground, hasUserPickedBackground } from 
 import { installPinnedConversations } from './pin-conversations.ts'
 import { installConversationRail } from './conversation-rail.ts'
 import { TerminalPage } from './terminal-dock.tsx'
+import { SessionTabs } from './SessionTabs.tsx'
 import { ptyOpen, ptyToggle } from './pty-store.ts'
 
 /**
@@ -360,6 +361,23 @@ export function apply(ctx: ClientContext): void {
     }, 'dsh-hub: terminal page mount')
   } catch (error) {
     console.warn('[dsh-hub] terminal page mount failed:', error)
+  }
+
+  // Title-bar session tabs (多页会话切换): a browser-style tab strip at the top.
+  try {
+    ctx.effect(() => {
+      const host = document.createElement('div')
+      host.id = 'dsh-hub-session-tabs'
+      document.body.appendChild(host)
+      const root: Root = createRoot(host)
+      root.render(createElement(SessionTabs, { ctx }))
+      return () => {
+        root.unmount()
+        host.remove()
+      }
+    }, 'dsh-hub: session tabs mount')
+  } catch (error) {
+    console.warn('[dsh-hub] session tabs mount failed:', error)
   }
 
   // Left sidebar footer action (终端), stacked beside/above Settings.
