@@ -22,7 +22,7 @@ import type { WebRoute } from '@deepseek-ai/dsh-host-webserver'
 import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { dshHome } from '../helpers/state-store.js'
-import { rejectIfBadHost } from './host-guard.ts'
+import { rejectIfBadHost, rejectIfBadOrigin } from './host-guard.ts'
 
 
 /** Route prefix shared with the other dsh-hub APIs. */
@@ -121,6 +121,7 @@ export function makePinsRoutes(): WebRoute[] {
       path: `${API_PREFIX}/pins`,
       handler: (req: IncomingMessage, res: ServerResponse): Promise<void> => {
         if (rejectIfBadHost(req, res)) return Promise.resolve()
+        if (rejectIfBadOrigin(req, res)) return Promise.resolve()
         if (req.method === 'GET') {
           json(res, 200, { ok: true, ids: readPinnedSessions() })
           return Promise.resolve()

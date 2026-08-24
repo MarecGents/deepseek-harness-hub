@@ -165,11 +165,13 @@ export function openSessionMenu(params: SessionMenuParams): void {
   ]
   // Pin / rename items render only when the owning module (pin-conversations)
   // supplies the callbacks — SessionTabs (no pins store) omits them.
-  if (params.onTogglePin !== undefined) {
-    entries.push({ label: params.pinned ? '取消置顶' : '置顶任务', run: () => params.onTogglePin() })
+  // Destructure to local consts so TS narrowing survives the closure.
+  const { pinned, onTogglePin, onRename } = params
+  if (onTogglePin !== undefined) {
+    entries.push({ label: pinned ? '取消置顶' : '置顶任务', run: () => onTogglePin() })
   }
-  if (params.onRename !== undefined) {
-    entries.push({ label: '重命名任务', run: () => params.onRename() })
+  if (onRename !== undefined) {
+    entries.push({ label: '重命名任务', run: () => onRename() })
   }
   entries.push('sep')
   entries.push({

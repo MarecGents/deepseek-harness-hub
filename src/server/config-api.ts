@@ -16,7 +16,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync, rmSync 
 import { join } from 'node:path'
 import { dshHome } from '../helpers/state-store.js'
 import { DEFAULT_SHELL_CONFIG, type ShellConfig } from '../models/shell-config.js'
-import { rejectIfBadHost } from './host-guard.ts'
+import { rejectIfBadHost, rejectIfBadOrigin } from './host-guard.ts'
 export type { ShellConfig }
 
 
@@ -189,6 +189,7 @@ export function makeConfigRoutes(onChange?: (value: ShellConfig, changed?: { siz
       path: `${CONFIG_API_PREFIX}/config`,
       handler: (req: IncomingMessage, res: ServerResponse): Promise<void> => {
         if (rejectIfBadHost(req, res)) return Promise.resolve()
+        if (rejectIfBadOrigin(req, res)) return Promise.resolve()
         if (req.method === 'GET') {
           json(res, 200, { ok: true, value: readShellConfig() })
           return Promise.resolve()

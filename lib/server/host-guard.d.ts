@@ -17,3 +17,19 @@ export declare function isHostAllowed(req: IncomingMessage): boolean;
  * @returns true when the request was rejected (caller must stop handling).
  */
 export declare function rejectIfBadHost(req: IncomingMessage, res: ServerResponse): boolean;
+/**
+ * True when the request's Origin header is a loopback origin. Origin is only
+ * meaningful for state-changing requests — the SPA (served from 127.0.0.1)
+ * always sends its own origin, while a cross-origin page sends a foreign one.
+ * Missing Origin (non-browser callers) is rejected: no local CLI integration
+ * currently needs POST/PUT without a browser, and the token scheme (S0/M4)
+ * will cover any future non-browser client.
+ */
+export declare function isOriginAllowed(req: IncomingMessage): boolean;
+/**
+ * Reject state-changing requests (POST/PUT/etc.) whose Origin is not loopback
+ * (or a WebView2 tauri:// origin). Read-only GET/HEAD are skipped — they have
+ * no side effects and DNS-rebinding is already covered by host-guard.
+ * @returns true when the request was rejected (caller must stop handling).
+ */
+export declare function rejectIfBadOrigin(req: IncomingMessage, res: ServerResponse): boolean;
