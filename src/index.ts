@@ -46,6 +46,9 @@ import { makeSessionPathsRoutes } from './server/session-paths-api.js'
 import { makeBackgroundsRoutes } from './server/backgrounds-api.js'
 import { makeSoundsRoutes } from './server/sounds-api.js'
 import { makeIconsRoutes } from './server/icons-api.js'
+import { makePtyRoutes } from './server/terminal-pty-api.js'
+import { getToken } from './server/token.js'
+import { disposeAll as disposeAllPty } from './services/pty-manager.js'
 import { getFocusedSessionState, setupSessionRuntime, type SessionShellLike } from './controllers/session-runtime.ts'
 import { setupTrayPipe } from './controllers/tray-pipe.ts'
 import { effectiveConfig, getActiveCwd, newTaskInWeb, openWorkspaceDir, sendDshCmd, setActiveCwd } from './controllers/shell-runtime.ts'
@@ -129,6 +132,18 @@ export function apply(ctx: Context, config: Config): void {
   }
   console.log('[dsh-hub] launched by the Tauri shell; desktop shell + plugin page active')
 
+  // S0/M4: inject the per-process API token into the SPA so pty/config routes
+  // can authenticate browser calls. dsh's frontend-static emits this table per
+  // index render; the token never leaves the loopback process boundary.
+  // The event name is not in the public Events keyof union — cast through the
+  // runtime signature (dsh emits `webserver/index-inject` with a row table).
+  const hostCtx = ctx as unknown as {
+    on(name: string, cb: (table: Array<Record<string, unknown>>) => void): unknown
+  }
+  hostCtx.on('webserver/index-inject', (table) => {
+    table.push({ kind: 'global', name: '__DSH_HUB_TOKEN__', value: getToken() })
+  })
+
   let shell: TauriShellHandle | undefined
   let opened = false
   let routesDisposed: (() => void) | undefined
@@ -172,9 +187,13 @@ export function apply(ctx: Context, config: Config): void {
       ...makeBackgroundsRoutes(),
       ...makeSoundsRoutes(),
       ...makeIconsRoutes(),
+      ...makePtyRoutes(),
     ].map((route) => server.register(route))
     routesDisposed = () => {
       for (const dispose of disposers) void dispose()
+      // PTY sessions (node-pty PowerShell) are process-bound — kill them all
+      // on teardown so hot reload / profile rebuild leaves no orphan shells.
+      disposeAllPty()
       routesDisposed = undefined
     }
   }

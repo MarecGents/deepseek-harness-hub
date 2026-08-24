@@ -63,7 +63,9 @@
   },
   "dependencies": {
     "@deepseek-ai/schemastery": "^3.18.1",
-    "clsx": "^2.1.1"
+    "@xterm/xterm": "6.0.0",
+    "clsx": "^2.1.1",
+    "node-pty": "1.2.0-beta.15"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.0.1",

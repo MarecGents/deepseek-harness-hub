@@ -36,6 +36,8 @@ import { installPinnedConversations } from './pin-conversations.ts'
 import { installConversationRail, refreshConversationRailPalette } from './conversation-rail.ts'
 import { installModelSelect } from './model-select.tsx'
 import { SessionTabs } from './SessionTabs.tsx'
+import { bindPtyRuntime, ptyToggle } from './pty-store.ts'
+import { TerminalPage } from './terminal-dock.tsx'
 
 /**
  * Tray-bridge ready flag, set at module scope — the very first thing that
@@ -339,6 +341,41 @@ export function apply(ctx: ClientContext): void {
     }, 'dsh-hub: session tabs mount')
   } catch (error) {
     console.warn('[dsh-hub] session tabs mount failed:', error)
+  }
+
+  // Interactive terminal (交互终端): Ctrl+J toggles the bottom dock; the
+  // right-click "Open terminal here" entry also calls ptyToggle(cwd). The
+  // dock renders in a body portal; keydown guard keeps the xterm textarea's
+  // own Ctrl+J (PSReadLine history search) working inside the terminal.
+  try {
+    bindPtyRuntime(ctx)
+  } catch (error) {
+    console.warn('[dsh-hub] pty runtime bind failed:', error)
+  }
+  const onTerminalKey = (event: KeyboardEvent): void => {
+    if (!((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'j')) return
+    const target = event.target as HTMLElement | null
+    // Inside the terminal's own xterm textarea: let PSReadLine handle it.
+    if (target?.closest('[data-dsh-hub-terminal]') !== null) return
+    event.preventDefault()
+    void ptyToggle()
+  }
+  try {
+    ctx.effect(() => {
+      window.addEventListener('keydown', onTerminalKey)
+      const host = document.createElement('div')
+      host.id = 'dsh-hub-terminal-dock'
+      document.body.appendChild(host)
+      const root: Root = createRoot(host)
+      root.render(createElement(TerminalPage))
+      return () => {
+        window.removeEventListener('keydown', onTerminalKey)
+        root.unmount()
+        host.remove()
+      }
+    }, 'dsh-hub: terminal dock mount')
+  } catch (error) {
+    console.warn('[dsh-hub] terminal dock mount failed:', error)
   }
 
   // Pinned conversations (置顶会话): augment the official session list with

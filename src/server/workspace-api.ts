@@ -1,22 +1,32 @@
 /**
  * Workspace API — host routes for the right sidebar:
  *  - list directory entries (files + folders) under the current workspace;
- *  - detect Git repository state, branch, and working-tree changes.
+ *  - detect Git repository state, branch, and working-tree changes;
+ *  - open a file/folder with the OS default handler / Explorer
+ *    (Windows start / explorer, macOS open, Linux xdg-open).
  *
  * These are plugin-owned HTTP routes (same pattern as the config API), so the
  * client right sidebar can stay in sync with the current session workspace.
+ *
+ * The `open` route is state-changing: it carries the full guard stack —
+ * rejectIfBadHost + rejectIfBadOrigin (host-guard.ts) + verifyToken
+ * (token.ts) — and validates its path the same way `list`/`git` do
+ * (existing absolute path; the path-guard keeps cwd/path out of the shell).
  */
 
 import { spawn } from 'node:child_process'
+import { existsSync, statSync } from 'node:fs'
 import { readdir } from 'node:fs/promises'
 import { isAbsolute, join } from 'node:path'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { WebRoute } from '@deepseek-ai/dsh-host-webserver'
-import { rejectIfBadHost } from './host-guard.ts'
+import { rejectIfBadHost, rejectIfBadOrigin } from './host-guard.ts'
+import { verifyToken } from './token.ts'
 
 const API_PREFIX = '/api/dsh-hub/workspace'
 const MAX_ENTRIES = 1000
 const GIT_TIMEOUT_MS = 3000
+const MAX_BODY = 64 * 1024
 
 interface DirectoryRow {
   name: string
@@ -44,6 +54,35 @@ function json(res: ServerResponse, status: number, body: unknown): void {
   res.end(JSON.stringify(body))
 }
 
+/**
+ * Read a JSON request body bounded to 64KB. Oversized bodies reject with
+ * 'body-too-large' and destroy the request; malformed JSON rejects with
+ * 'invalid-json'. The caller maps both to sanitized 400 responses.
+ */
+function readJsonBody(req: IncomingMessage): Promise<unknown> {
+  return new Promise((resolve, reject) => {
+    let size = 0
+    const chunks: Buffer[] = []
+    req.on('data', (chunk: Buffer) => {
+      size += chunk.length
+      if (size > MAX_BODY) {
+        reject(new Error('body-too-large'))
+        queueMicrotask(() => req.destroy())
+        return
+      }
+      chunks.push(chunk)
+    })
+    req.on('end', () => {
+      try {
+        resolve(chunks.length === 0 ? {} : JSON.parse(Buffer.concat(chunks).toString('utf8')))
+      } catch {
+        reject(new Error('invalid-json'))
+      }
+    })
+    req.on('error', reject)
+  })
+}
+
 function queryPath(req: IncomingMessage): string | null {
   try {
     const url = new URL(req.url ?? '', 'http://localhost')
@@ -56,6 +95,24 @@ function queryPath(req: IncomingMessage): string | null {
   } catch {
     return null
   }
+}
+
+/**
+ * Validate a path from a request body: must be an existing ABSOLUTE path.
+ * @param value - the raw body field.
+ * @param directoryOnly - when true the path must be a directory.
+ * @returns the validated path, or null when unusable.
+ */
+function validPath(value: unknown, directoryOnly: boolean): string | null {
+  if (typeof value !== 'string' || value === '') return null
+  if (!isAbsolute(value)) return null
+  try {
+    if (!existsSync(value)) return null
+    if (directoryOnly && !statSync(value).isDirectory()) return null
+  } catch {
+    return null
+  }
+  return value
 }
 
 /** List one directory level, directories first, then files. */
@@ -119,7 +176,27 @@ async function gitInfo(path: string): Promise<GitInfo> {
   return { isGit: true, branch, head, changes }
 }
 
-/** Build the workspace API routes (list + git). */
+/** Open a path with the OS default handler (Explorer / Finder / xdg-open). */
+function openInOs(path: string): Promise<{ ok: boolean }> {
+  return new Promise((resolve) => {
+    let child: ReturnType<typeof spawn>
+    if (process.platform === 'win32') {
+      // explorer.exe reliably opens a folder in Explorer (cmd start often
+      // fails detached).
+      child = spawn('explorer.exe', [path], { detached: true, stdio: 'ignore' })
+    } else {
+      const opener = process.platform === 'darwin' ? 'open' : 'xdg-open'
+      child = spawn(opener, [path], { detached: true, stdio: 'ignore' })
+    }
+    child.on('error', () => resolve({ ok: false }))
+    child.on('spawn', () => {
+      child.unref()
+      resolve({ ok: true })
+    })
+  })
+}
+
+/** Build the workspace API routes (list + git + open). */
 export function makeWorkspaceRoutes(): WebRoute[] {
   return [
     {
@@ -160,6 +237,32 @@ export function makeWorkspaceRoutes(): WebRoute[] {
           (value) => json(res, 200, { ok: true, ...value }),
           (error) => json(res, 500, { ok: false, error: error instanceof Error ? error.message : String(error) }),
         )
+      },
+    },
+    {
+      kind: 'exact',
+      path: `${API_PREFIX}/open`,
+      handler: (req: IncomingMessage, res: ServerResponse): Promise<void> => {
+        if (rejectIfBadHost(req, res)) return Promise.resolve()
+        if (rejectIfBadOrigin(req, res)) return Promise.resolve()
+        if (!verifyToken(req)) {
+          json(res, 401, { ok: false, error: 'unauthorized' })
+          return Promise.resolve()
+        }
+        if (req.method !== 'POST') {
+          json(res, 405, { ok: false, error: 'method-not-allowed' })
+          return Promise.resolve()
+        }
+        return readJsonBody(req).then(async (body) => {
+          const record = (body ?? {}) as { path?: unknown }
+          const target = validPath(record.path, false)
+          if (target === null) {
+            json(res, 400, { ok: false, error: 'invalid-request' })
+            return
+          }
+          const result = await openInOs(target)
+          json(res, result.ok ? 200 : 500, { ok: result.ok, error: result.ok ? undefined : 'open-failed' })
+        }, () => json(res, 400, { ok: false, error: 'invalid-request' }))
       },
     },
   ]

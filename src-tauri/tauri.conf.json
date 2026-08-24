@@ -40,6 +40,7 @@
       "../node_modules/@standard-schema/spec/**/*",
       "../node_modules/argparse/**/*",
       "../node_modules/js-yaml/**/*",
+      "../node_modules/node-pty/**/*",
       "../plugins/**/*",
     "icons/*.ico"
     ],
