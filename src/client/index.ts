@@ -177,6 +177,17 @@ function handleShellCommand(ctx: ClientContext, event: Event): void {
       // Best-effort; the shell falls back to its own cwd tracking.
     }
   }
+  if (detail?.command === 'focus-session') {
+    // Toast click in the Windows notification center → jump to the session's
+    // conversation (the session finished in the background; clicking the toast
+    // brings the window forward and opens that session).
+    const sessionId = (detail as { sessionId?: string }).sessionId
+    const sessions = (ctx as unknown as { sessions?: { open?: (id: string) => void } }).sessions
+    if (sessions?.open !== undefined && sessionId !== undefined && sessionId !== '') {
+      console.log('[dsh-hub] focus-session: ' + sessionId)
+      sessions.open(sessionId)
+    }
+  }
 }
 
 /** Client plugin body. */

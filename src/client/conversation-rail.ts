@@ -60,10 +60,18 @@ interface ConversationNodeLike {
   content?: unknown
   /** 'assistant' messages carry AssistantBlock[] (kind:'text'). */
   blocks?: unknown
+  /** Node timestamp (ms) — used with turnTimings time windows (PR #40 scheme). */
+  time?: number
+  /** Turn index (assistant nodes) — direct alignment with turnTimings. */
+  turn?: number
+  /** Command nodes expose name/args; compaction nodes expose summary. */
+  name?: string
+  args?: string
+  summary?: string
 }
 interface ConversationSnapshotLike {
   nodes?: readonly ConversationNodeLike[]
-  turnTimings?: { size?: number }
+  turnTimings?: ReadonlyMap<number, { startTime?: number; endTime?: number }>
   blank?: boolean
 }
 interface ClientCtxLike {
@@ -303,38 +311,60 @@ export function installConversationRail(ctx: unknown): () => void {
   }
 
   // ── Rendering ────────────────────────────────────────────────────────────
-  // Per-turn opening text (PR #35 hover preview). Data source must use REAL
-  // node kinds — the snapshot has no 'turn'/'text' kinds. Turn boundaries are
-  // derived from 'turn-tail' nodes so indices align with turnTimings.size;
-  // text comes from 'user' content[0] (type:'text') or 'assistant' blocks[0]
-  // (kind:'text'). Command turns (no user node) leave an empty slot → tooltip
-  // falls back to "第 N 段对话".
-  function textOfContent(content: unknown): string {
-    const first = Array.isArray(content) ? content[0] : undefined
-    return first && first.type === 'text' && typeof first.text === 'string'
-      ? first.text.trim().slice(0, 60)
-      : ''
+  // Per-turn opening text (hover preview). Data source uses REAL node kinds —
+  // the snapshot has no 'turn'/'text' kinds (and no 'turn-tail' node either:
+  // legacy projection drops it). PR #40 scheme: extractNodeText (user/steering/
+  // context/assistant/command/compaction) + extractTurnSummaries (aligns each
+  // turn with turnTimings time windows [startTime, endTime) and node.turn).
+  // Command turns (no user node) fall back to the assistant reply; empty slots
+  // keep the tooltip on "第 N 段对话".
+  function extractNodeText(node: ConversationNodeLike | undefined): string {
+    if (node === undefined) return ''
+    if (node.kind === 'assistant') {
+      return (node.blocks as Array<{ kind?: string; text?: string }> | undefined ?? [])
+        .filter((b) => b.kind === 'text' && typeof b.text === 'string')
+        .map((b) => b.text ?? '')
+        .join(' ')
+    }
+    if (node.kind === 'user' || node.kind === 'steering' || node.kind === 'context') {
+      return (node.content as Array<{ type?: string; text?: string }> | undefined ?? [])
+        .map((blk) => (typeof blk.text === 'string' ? blk.text : ''))
+        .join(' ')
+    }
+    if (node.kind === 'command') {
+      return `/${node.name ?? ''} ${node.args ?? ''}`.trim()
+    }
+    if (node.kind === 'compaction') return node.summary ?? ''
+    return ''
   }
-  function textOfBlocks(blocks: unknown): string {
-    const first = Array.isArray(blocks) ? blocks[0] : undefined
-    return first && first.kind === 'text' && typeof first.text === 'string'
-      ? first.text.trim().slice(0, 60)
-      : ''
-  }
-  function turnPreviews(snapshot: ConversationSnapshotLike | undefined): string[] {
+  function extractTurnSummaries(snapshot: ConversationSnapshotLike | undefined): string[] {
+    const count = deriveSegmentCount(snapshot)
+    if (count <= 0) return []
+    const nodes = snapshot?.nodes ?? []
+    const entries = snapshot?.turnTimings ? Array.from(snapshot.turnTimings.entries()) : []
     const out: string[] = []
-    let cur = -1
-    for (const node of snapshot?.nodes ?? []) {
-      if (node.kind === 'turn-tail') {
-        cur += 1
-        out[cur] = out[cur] ?? ''
-        continue
+    for (let t = 0; t < count; t += 1) {
+      const range = entries[t]?.[1]
+      const lo = range?.startTime ?? -Infinity
+      const hi = range?.endTime ?? Infinity
+      let userText = ''
+      let fallback = ''
+      for (const node of nodes) {
+        if (node === undefined) continue
+        if (node.kind === 'assistant') {
+          if (node.turn === t) fallback += extractNodeText(node) + ' '
+          continue
+        }
+        if (node.time === undefined) continue
+        if (node.time >= lo && node.time < hi) {
+          const txt = extractNodeText(node)
+          if (node.kind === 'user' || node.kind === 'steering') userText += txt + ' '
+          else fallback += txt + ' '
+        }
       }
-      if (cur < 0 || out[cur]) continue
-      const t = node.kind === 'user'
-        ? textOfContent(node.content)
-        : node.kind === 'assistant' ? textOfBlocks(node.blocks) : ''
-      if (t) out[cur] = t
+      // Prefer the user's own message as the preview; fall back to the reply
+      // only when this turn had no human message.
+      out.push((userText || fallback).trim())
     }
     return out
   }
@@ -471,12 +501,12 @@ export function installConversationRail(ctx: unknown): () => void {
     unsubCurrentSession = session.subscribe?.(() => {
       const snap = session.getSnapshot?.()
       segmentCount = deriveSegmentCount(snap)
-      previews = turnPreviews(snap)
+      previews = extractTurnSummaries(snap)
       syncGeometry()
     }) ?? (() => {})
     const snap = session.getSnapshot?.()
     segmentCount = deriveSegmentCount(snap)
-    previews = turnPreviews(snap)
+    previews = extractTurnSummaries(snap)
     syncGeometry()
   }
 
