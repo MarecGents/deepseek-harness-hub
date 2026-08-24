@@ -1,7 +1,7 @@
 /**
- * SessionTabs — a browser-style tab strip at the top of the app. Each tab is
- * an open session; click to switch, + to start a new session, × to remove.
- * Mounted as a body portal from index.ts.
+ * SessionTabs — a browser-style tab strip spanning the CENTER conversation
+ * column (so it never covers the left DSH icon or the right sidebar). Each
+ * tab is an open session; click to switch, + to start, × to remove.
  */
 import { type ReactNode } from 'react';
 type SessionTabsProps = {
