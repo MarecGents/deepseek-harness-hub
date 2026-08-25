@@ -87,16 +87,44 @@ const POWERSHELL_5 = join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', '
 /** System cmd.exe (always present on Windows). */
 const CMD_EXE = join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'cmd.exe')
 
-/** Resolve an executable by name on PATH (Windows `where`, POSIX `which`). */
-function findOnPath(name: string): string | null {
-  try {
-    const cmd = process.platform === 'win32' ? 'where' : 'which'
-    const out = execFileSync(cmd, [name], { encoding: 'utf8', windowsHide: true, timeout: 5000 })
-    const first = out.split(/\r?\n/).map((l) => l.trim()).find((l) => l !== '')
-    return first !== undefined && existsSync(first) ? first : null
-  } catch {
-    return null
+/**
+ * Directories that can hold a shell executable: the current process PATH plus
+ * the machine-wide PATH (read from the registry). The app may be launched with
+ * a narrower PATH than the system — e.g. from Git Bash — while a shell such as
+ * pwsh lives in a custom install directory known only to the machine PATH
+ * (Bug: pwsh at D:\Tools\PowerShell\7 was installed but not detected).
+ */
+function pathDirs(): string[] {
+  const dirs = new Set<string>()
+  const sep = process.platform === 'win32' ? ';' : ':'
+  for (const p of (process.env.PATH ?? '').split(sep)) {
+    const t = p.trim()
+    if (t !== '') dirs.add(t)
   }
+  if (process.platform === 'win32') {
+    try {
+      const out = execFileSync('reg', ['query', 'HKLM\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment', '/v', 'Path'], { encoding: 'utf8', windowsHide: true, timeout: 5000 })
+      const m = /Path\s+REG_(?:EXPAND_)?SZ\s+(.+)/i.exec(out)
+      if (m !== null) {
+        for (const p of m[1].split(';')) {
+          const t = p.trim().replace(/%SystemRoot%/i, process.env.SystemRoot ?? 'C:\\Windows')
+          if (t !== '') dirs.add(t)
+        }
+      }
+    } catch {
+      // Registry read unavailable — the process PATH alone still works.
+    }
+  }
+  return [...dirs]
+}
+
+/** Resolve an executable by name across the process + machine PATH dirs. */
+function findOnPath(name: string): string | null {
+  for (const dir of pathDirs()) {
+    const candidate = join(dir, name)
+    if (existsSync(candidate)) return candidate
+  }
+  return null
 }
 
 /** Shell candidates in display order, each with an availability probe. */
