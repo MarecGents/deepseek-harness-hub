@@ -213,28 +213,14 @@ async function openInOs(path: string): Promise<void> {
 }
 
 /**
- * Open a workspace folder: prefer the Tauri native directory picker
- * (`plugin:dialog|open`, already allowed by the `dialog:allow-open`
- * capability), then register the picked path through the client workspaces
- * service (its recency projection moves the current session onto the new
- * workspace). When Tauri is unavailable or the user cancels, fall back to
- * opening the current workspace in the OS file manager.
+ * Open the current workspace folder in the OS file manager. Bug-A fix: the
+ * previous implementation first popped the native directory PICKER and
+ * registered a workspace (`workspaces.create`), then fell through to Explorer —
+ * a double action that did not match the button's label ("打开工作区文件夹" =
+ * open the folder, not pick one). Adding a workspace is dsh's own
+ * "添加工作区" flow; this button only opens the folder.
  */
-async function openFolderAsWorkspace(ctx: unknown): Promise<void> {
-  try {
-    const internals = (window as unknown as {
-      __TAURI_INTERNALS__?: { invoke?: (c: string, a?: Record<string, unknown>) => Promise<unknown> }
-    }).__TAURI_INTERNALS__
-    if (internals?.invoke) {
-      const picked = await internals.invoke('plugin:dialog|open', { options: { directory: true, multiple: false } })
-      if (typeof picked === 'string' && picked !== '') {
-        const workspaces = (ctx as { workspaces?: { create?: (i: { path: string }) => Promise<unknown> } }).workspaces
-        if (workspaces?.create) { await workspaces.create({ path: picked }); return }
-      }
-    }
-  } catch {
-    // Tauri dialog rejected — fall through to the Explorer fallback.
-  }
+function openCurrentWorkspaceFolder(): void {
   const p = (window as unknown as { __mgGetCurrentWorkspace?: () => string | null }).__mgGetCurrentWorkspace?.() || ''
   if (p !== '') void openInOs(p)
 }
@@ -549,7 +535,7 @@ export function RightSidebar({ ctx }: RightSidebarProps): ReactNode {
       {open ? (
         <>
           <div className={c.topRow}>
-            <button type="button" className={c.topBtn} onClick={() => { void openFolderAsWorkspace(ctx) }}>
+            <button type="button" className={c.topBtn} onClick={() => { openCurrentWorkspaceFolder() }}>
               <IconFolderOpen16 size={14} /> 打开工作区文件夹
             </button>
             <button type="button" className={c.topBtn} onClick={() => { void ptyOpen(effectivePath || undefined) }}>

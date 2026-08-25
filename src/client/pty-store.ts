@@ -82,6 +82,19 @@ function getToken(): string {
 function appendOutput(tabId: string, chunk: string): void {
   const prev = state.outputs[tabId] ?? ''
   set({ outputs: { ...state.outputs, [tabId]: (prev + chunk).slice(-RING_LIMIT) } })
+  // Fan out to raw-data subscribers (the xterm writer). The store update alone
+  // never reaches them — without this the terminal stays blank and typed input
+  // has no echo (Bug-1: "no PS prompt, cannot type").
+  const subs = dataSubs.get(tabId)
+  if (subs !== undefined) {
+    for (const cb of Array.from(subs)) {
+      try {
+        cb(chunk)
+      } catch {
+        // A subscriber disposed mid-write (tab unmounted) — drop it.
+      }
+    }
+  }
 }
 
 /**

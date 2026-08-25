@@ -366,8 +366,15 @@ export function TerminalPage(): ReactNode {
 
   if (!visible) return null
 
+  // Maximized: the dock would cover the 42px custom titlebar (z-index 99999),
+  // hiding its own restore/close buttons under it — Bug-2: "maximized terminal
+  // cannot be restored". Start the maximized dock below the titlebar instead.
+  const dockTop = maximized ? 42 : undefined
+  const dockBottom = maximized ? undefined : 0
+  const dockHeight = maximized ? 'calc(100vh - 42px)' : height + 'px'
+
   return (
-    <div ref={dockRef} style={{ ...DOCK, height: maximized ? '100vh' : height + 'px', borderRadius: maximized ? 0 : '12px 12px 0 0' }}>
+    <div ref={dockRef} style={{ ...DOCK, top: dockTop, bottom: dockBottom, height: dockHeight, borderRadius: maximized ? 0 : '12px 12px 0 0' }}>
       <div
         onPointerDown={onHandleDown}
         title="拖拽调整高度"
