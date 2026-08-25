@@ -213,16 +213,14 @@ async function openInOs(path: string): Promise<void> {
 }
 
 /**
- * Open the current workspace folder in the OS file manager. Bug-A fix: the
- * previous implementation first popped the native directory PICKER and
- * registered a workspace (`workspaces.create`), then fell through to Explorer —
- * a double action that did not match the button's label ("打开工作区文件夹" =
- * open the folder, not pick one). Adding a workspace is dsh's own
- * "添加工作区" flow; this button only opens the folder.
+ * Open a folder in the OS file manager. Bug-A: the top-row button must simply
+ * open the workspace folder the sidebar is showing — no directory picker, no
+ * workspace-create (that is dsh's own "添加工作区" flow). The path comes from
+ * the sidebar's own three-tier resolution (`effectivePath`), NOT the
+ * page-global getter which can be empty while the sidebar has a path.
  */
-function openCurrentWorkspaceFolder(): void {
-  const p = (window as unknown as { __mgGetCurrentWorkspace?: () => string | null }).__mgGetCurrentWorkspace?.() || ''
-  if (p !== '') void openInOs(p)
+function openFolderInOs(path: string): void {
+  if (path !== '') void openInOs(path)
 }
 
 /**
@@ -535,7 +533,7 @@ export function RightSidebar({ ctx }: RightSidebarProps): ReactNode {
       {open ? (
         <>
           <div className={c.topRow}>
-            <button type="button" className={c.topBtn} onClick={() => { openCurrentWorkspaceFolder() }}>
+            <button type="button" className={c.topBtn} onClick={() => { openFolderInOs(effectivePath) }}>
               <IconFolderOpen16 size={14} /> 打开工作区文件夹
             </button>
             <button type="button" className={c.topBtn} onClick={() => { void ptyOpen(effectivePath || undefined) }}>
