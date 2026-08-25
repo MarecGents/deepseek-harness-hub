@@ -69,6 +69,9 @@ const TAB: CSSProperties = {
   // Fixed preferred width 180px; flex-shrink compresses it (down to minWidth
   // 60px) when many tabs overflow — the browser tab-strip behavior.
   flex: '0 1 180px', minWidth: 60,
+  // Tab label one step above the 12px strip (browser-tab feel); the label
+  // flexes to center and pins the close × to the tab's right edge.
+  fontSize: 13,
   transition: 'background .12s ease, color .12s ease',
   userSelect: 'none',
 }
@@ -291,7 +294,7 @@ export function SessionTabs({ ctx }: SessionTabsProps): ReactNode {
                 style={{ ...INLINE_INPUT, width: Math.max(80, draft.length * (draft.length && /[\u4e00-\u9fff]/.test(draft) ? 12 : 7) + 22) }}
               />
             ) : (
-              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>{titleOf(id)}</span>
+              <span style={{ flex: '1', textAlign: 'center', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>{titleOf(id)}</span>
             )}
             <span
               role="button"
