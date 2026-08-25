@@ -1,4 +1,4 @@
-﻿#requires -Version 5.1
+#requires -Version 5.1
 <#
 .SYNOPSIS
   dsh-hub M5 bootstrap: installs a private Node runtime + dsh dependencies
@@ -334,5 +334,17 @@ if (-not (Test-PrivateDepsReady)) {
 Write-Dep "95% cleaning up temporary files"
 Remove-Item -LiteralPath $WorkDir -Recurse -Force -ErrorAction SilentlyContinue
 Write-Dep "100% private runtime ready: node=$NodeExe dsh=$DshCmd"
+
+# 5. Windows Defender 排除（尽力提速卸载器启动）：全新电脑 Defender 首次扫描
+# 私有运行时（~3.5 万文件）会导致 uninstall.exe 双击启动 3-5 分钟。加入排除后
+# Defender 跳过该目录 → 卸载器秒开。Add-MpPreference 需管理员——无权限/第三方
+# 杀毒/Defender 不可用时静默跳过（绝不影响安装）。
+try {
+  Add-MpPreference -ExclusionPath $InstallDir -ErrorAction Stop
+  Write-Dep "Defender exclusion added: $InstallDir"
+} catch {
+  # 非管理员（currentUser 安装）或 Defender 不可用——静默跳过，安装继续。
+}
+
 Write-Dep "done"  # stdout + 日志哨兵（NSIS 轮询据此结束安装进度镜像）
 exit 0

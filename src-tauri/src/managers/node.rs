@@ -70,17 +70,17 @@ fn dispatch_dsh_cmd(app: &tauri::AppHandle, cmd_json: &str) {
         // tauri-shell.ts 经 invoke() 发出的命令名（= Rust #[tauri::command] 名）。
         "set_window_theme" => {
             if let Some(theme) = value.get("theme").and_then(|t| t.as_str()) {
-                // 统一走命令：DWM + 外壳 chrome 覆盖属性（Q2）。
-                let _ = crate::commands::set_window_theme(app.clone(), theme.to_string());
+                // 统一走窗口操作唯一实现（window_ops）：DWM + 外壳 chrome 覆盖属性（Q2）。
+                let _ = crate::window_ops::set_window_theme(app, theme.to_string());
             }
         }
         "set_window_size" => {
             let w = value.get("width").and_then(|v| v.as_f64());
             let h = value.get("height").and_then(|v| v.as_f64());
             if let (Some(w), Some(h)) = (w, h) {
-                if let Some(win) = app.get_webview_window("main") {
-                    let _ = win.set_size(tauri::Size::Logical(tauri::LogicalSize::new(w, h)));
-                }
+                // 与页面 invoke 路径同一实现（window_ops）：最大化状态下先
+                // unmaximize 再 set_size（R2-3 发现 2 修复，双路径行为一致）。
+                let _ = crate::window_ops::set_window_size(app, w, h);
             }
         }
         // S6：设置桌面图标（tauri-shell.ts setDesktopIcon 上行）。设置卡页面
@@ -88,7 +88,7 @@ fn dispatch_dsh_cmd(app: &tauri::AppHandle, cmd_json: &str) {
         // 侧 config onChange 重放（DSH_CMD）也生效，二者幂等。
         "set_desktop_icon" => {
             if let Some(icon_id) = value.get("iconId").and_then(|v| v.as_str()) {
-                let _ = crate::commands::set_desktop_icon(app.clone(), icon_id.to_string());
+                let _ = crate::window_ops::set_desktop_icon(app, icon_id.to_string());
             }
         }
         "notify_task_complete" => {
@@ -109,14 +109,14 @@ fn dispatch_dsh_cmd(app: &tauri::AppHandle, cmd_json: &str) {
         // Q4：提示音 — Node 进程无 Audio，经 eval 到浏览器 HTMLAudio 播放。
         "play_sound" => {
             if let Some(kind) = value.get("kind").and_then(|k| k.as_str()) {
-                let _ = crate::commands::play_sound(app.clone(), kind.to_string());
+                let _ = crate::window_ops::play_sound(app, kind.to_string());
             }
         }
         // 双向管道上行：host 解析聚焦会话工作区后回传 → Rust 打开目录（Q6 打开工作区）。
         "open_workspace_path" => {
             let path = value.get("path").and_then(|v| v.as_str()).unwrap_or("").to_string();
             info!("node: DSH_CMD open_workspace_path from host: '{}'", path);
-            let _ = crate::commands::open_workspace_path(path);
+            let _ = crate::window_ops::open_workspace_path(path);
         }
         // 双向管道上行：host 请求壳把页面事件派发到浏览器（D-2 win.eval 可靠通道）。
         // 替代坏掉的 Node 侧 dispatchPageEvent（globalThis.__mgShellReady 不存在）。
@@ -508,6 +508,67 @@ pub fn start_dsh(state: Arc<NodeState>, app: tauri::AppHandle) -> Result<(), Str
 /// - Windows：优先解析 .cmd shim → node.exe + entry 直接 spawn（CreateProcess
 ///   不能执行 .cmd）；解析失败退 cmd /c 兜底。非 Windows：直接 spawn dsh。
 /// - 成功后在 state.child 放入新 child（supervisor 每轮 take 出来 try_wait）。
+///
+/// KILL_ON_JOB_CLOSE 作业对象（单例，句柄故意泄漏到进程结束）：sidecar 及其
+/// 整个子进程树绑进作业——壳进程无论正常退出、崩溃还是被外部强杀（卸载器
+/// KillProcess / 任务管理器），内核随最后一个作业句柄关闭终止作业内全部
+/// 进程，根治 node.exe 孤儿锁文件（卸载不净的根因，踩坑 #68）。
+/// Windows 8+ 支持嵌套作业；子进程默认继承所属作业，dsh web 再派生的进程
+/// 一样随作业陪葬（本壳语义下 sidecar 绝不应比壳活得久——多实例会话损坏）。
+#[cfg(target_os = "windows")]
+fn assign_sidecar_to_kill_job(child: &std::process::Child) {
+    use std::sync::OnceLock;
+    use windows::core::PCWSTR;
+    use windows::Win32::Foundation::HANDLE;
+    use windows::Win32::System::JobObjects::{
+        AssignProcessToJobObject, CreateJobObjectW, JobObjectExtendedLimitInformation,
+        JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+        SetInformationJobObject,
+    };
+
+    /// HANDLE 是裸指针（未实现 Send/Sync），但 Job Object 句柄跨线程共享是
+    /// 安全的（不转移所有权，仅复用内核句柄值）——包一层标记类型。
+    struct SyncHandle(HANDLE);
+    unsafe impl Send for SyncHandle {}
+    unsafe impl Sync for SyncHandle {}
+
+    static JOB: OnceLock<SyncHandle> = OnceLock::new();
+    let job = JOB.get_or_init(|| {
+        unsafe {
+            match CreateJobObjectW(None, PCWSTR::null()) {
+                Ok(job) => {
+                    let mut info = JOBOBJECT_EXTENDED_LIMIT_INFORMATION::default();
+                    info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+                    let size = std::mem::size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32;
+                    if let Err(e) = SetInformationJobObject(
+                        job,
+                        JobObjectExtendedLimitInformation,
+                        &info as *const _ as *const core::ffi::c_void,
+                        size,
+                    ) {
+                        warn!("node: SetInformationJobObject failed: {}", e);
+                        return SyncHandle(HANDLE(std::ptr::null_mut()));
+                    }
+                    SyncHandle(job)
+                }
+                Err(e) => {
+                    warn!("node: CreateJobObjectW failed: {}", e);
+                    SyncHandle(HANDLE(std::ptr::null_mut()))
+                }
+            }
+        }
+    })
+    .0;
+    if job.is_invalid() {
+        return;
+    }
+    use std::os::windows::io::AsRawHandle;
+    let process = HANDLE(child.as_raw_handle());
+    if let Err(e) = unsafe { AssignProcessToJobObject(job, process) } {
+        warn!("node: AssignProcessToJobObject failed: {}", e);
+    }
+}
+
 fn spawn_inner(state: Arc<NodeState>, app: tauri::AppHandle) -> Result<(), String> {
     // 重启后端口会变：先清 READY 状态，supervisor 重新等新端口。
     *state.ready.lock().unwrap() = false;
@@ -554,6 +615,10 @@ fn spawn_inner(state: Arc<NodeState>, app: tauri::AppHandle) -> Result<(), Strin
     }
 
     let mut child = cmd.spawn().map_err(|e| format!("spawn dsh web failed: {e}"))?;
+
+    // 壳死则 sidecar 树陪葬（防孤儿 node.exe 锁文件；见函数注释）。
+    #[cfg(target_os = "windows")]
+    assign_sidecar_to_kill_job(&child);
 
     let stdout = child.stdout.take().expect("stdout pipe");
     let stderr = child.stderr.take();
@@ -630,6 +695,10 @@ fn spawn_via_cmd_shim(state: Arc<NodeState>, app: tauri::AppHandle, dsh_cmd: &Pa
     }
 
     let mut child = cmd.spawn().map_err(|e| format!("spawn dsh web via cmd failed: {e}"))?;
+
+    // 壳死则 sidecar 树陪葬（防孤儿 node.exe 锁文件；同 spawn_inner）。
+    #[cfg(target_os = "windows")]
+    assign_sidecar_to_kill_job(&child);
 
     let stdout = child.stdout.take().expect("stdout pipe");
     let stderr = child.stderr.take();

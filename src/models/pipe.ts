@@ -33,10 +33,16 @@ export interface DshCmdPayload {
   [key: string]: unknown
 }
 
-/** 已知 DSH_CMD 命令名（node.rs 分发表 ↔ tauri-shell.ts ↔ index.ts 三端同步）。 */
+/**
+ * 已知 DSH_CMD 命令名（node.rs 分发表 ↔ tauri-shell.ts ↔ index.ts 三端同步）。
+ * 与 `src-tauri/src/managers/node.rs` `dispatch_dsh_cmd` 的 7 个活动臂一致；
+ * 旧名兼容臂（applyTheme/applySize/notify）与页面→Rust 直连 invoke
+ * （如 get_workspace_path）不走此类型。
+ */
 export type DshCmdName =
   | 'set_window_theme'
   | 'set_window_size'
+  | 'set_desktop_icon'
   | 'notify_task_complete'
   | 'play_sound'
   | 'open_workspace_path'

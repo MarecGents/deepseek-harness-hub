@@ -100,15 +100,13 @@ pub fn setup_tray(app: &App) -> Result<TrayIcon, Box<dyn std::error::Error>> {
 /// 托盘图标跟随用户桌面图标选择（S6，PR #25）：'default' 随主题翻转白/黑鲸，
 /// 鲸鱼娘固定。与窗口 SMALL/BIG 图标共用 theme::desktop_icon_png 内嵌资产
 /// （同份 static，零额外打包）。失败仅 warn（不得破坏设置链路）。
-pub fn set_tray_icon(app: &tauri::AppHandle, icon_id: &str) {
+/// `dark` 由调用方（managers/icon.rs）显式传入——本函数不再内部读窗口主题，
+/// 保证与窗口面用同一 (id, dark) 判定（幂等一致）。
+pub fn set_tray_icon(app: &tauri::AppHandle, icon_id: &str, dark: bool) {
     let Some(tray) = app.tray_by_id(TRAY_ID) else {
         log::warn!("tray: set_tray_icon skipped (tray '{}' not found)", TRAY_ID);
         return;
     };
-    let dark = app
-        .get_webview_window("main")
-        .map(|w| w.theme().unwrap_or(tauri::Theme::Dark) == tauri::Theme::Dark)
-        .unwrap_or(true);
     let (bytes, name) = crate::theme::desktop_icon_png(dark, icon_id);
     match tauri::image::Image::from_bytes(bytes) {
         Ok(img) => match tray.set_icon(Some(img)) {
@@ -138,7 +136,8 @@ fn handle_menu_event(app: &tauri::AppHandle, event: MenuEvent) {
     match event.id().as_ref() {
         MENU_TOGGLE => {
             // 显示/隐藏主界面（由 window_toggle_visible 按当前可见性判断）。
-            let _ = crate::commands::window_toggle_visible(app.clone());
+            // 经 window_ops（managers 层唯一实现），避免 managers→commands 反向依赖。
+            let _ = crate::window_ops::window_toggle_visible(app);
         }
         MENU_OPEN_WORKSPACE | MENU_NEW_TASK => {
             // rc.14 tray-helper 模式：托盘命令经独立进程管道（dsh web stdin）下行

@@ -15,13 +15,73 @@ use log::info;
 use tauri::{Manager, WebviewWindow};
 
 /// 若 DSH_HUB_E2E=1，启动脚本化验证线程（fire-and-forget）。
+/// 数据安全红线（铁律 8 / src-tauri AGENTS 红线 9）：启用前必须先断言
+/// DSH_HOME 为隔离目录（≠ 真实 ~/.dsh），否则拒绝运行——E2E 会写
+/// quit.marker、弹真实 toast，误跑会污染真实 ~/.dsh。
 pub fn maybe_run_e2e(win: WebviewWindow) {
     let enabled = std::env::var("DSH_HUB_E2E").map(|v| v == "1").unwrap_or(false);
     if !enabled {
         return;
     }
+    info!("e2e: DSH_HUB_E2E=1 — checking DSH_HOME isolation before starting");
+    if !dsh_home_is_isolated() {
+        log::error!("e2e: scripted verification REFUSED — isolated DSH_HOME required");
+        return;
+    }
     info!("e2e: DSH_HUB_E2E=1 — scripted verification started");
     thread::spawn(move || run_e2e(win));
+}
+
+/// e2e 专用的 DSH_HOME 隔离判定：返回 true 表示 e2e 可安全运行。
+/// 要求：DSH_HOME 已设置、目录存在、且不等于真实默认 ~/.dsh。
+/// Windows 下大小写/尾部分隔符经 canonicalize 或归一化比较（R1-3 发现 4 修复）。
+fn dsh_home_is_isolated() -> bool {
+    let Ok(env_home) = std::env::var("DSH_HOME") else {
+        log::error!(
+            "e2e: REFUSING to run — DSH_HOME not set. E2E requires an isolated DSH_HOME \
+             (temp/E-drive dir), never the real ~/.dsh."
+        );
+        return false;
+    };
+    let home = crate::state::dsh_home();
+    if !home.is_dir() {
+        log::error!(
+            "e2e: REFUSING to run — DSH_HOME '{}' does not exist. Create the isolated dir first.",
+            home.display()
+        );
+        return false;
+    }
+    let default_home = dirs::home_dir().unwrap_or_default().join(".dsh");
+    let equals_default =
+        match (std::fs::canonicalize(&home), std::fs::canonicalize(&default_home)) {
+            (Ok(a), Ok(b)) => a == b,
+            // canonicalize 失败（如权限）时退回大小写折叠 + 去尾部分隔符比较。
+            _ => normalize_path(&home) == normalize_path(&default_home),
+        };
+    if equals_default {
+        log::error!(
+            "e2e: REFUSING to run — DSH_HOME '{}' equals the real default ~/.dsh '{}'. \
+             Point DSH_HOME at an isolated temp/E-drive dir.",
+            home.display(),
+            default_home.display()
+        );
+        false
+    } else {
+        info!(
+            "e2e: DSH_HOME isolation verified (DSH_HOME={}, default ~/.dsh={})",
+            env_home,
+            default_home.display()
+        );
+        true
+    }
+}
+
+/// 路径字符串归一化（隔离判定兜底比较）：Windows 折叠大小写，去尾部分隔符。
+fn normalize_path(p: &std::path::Path) -> String {
+    let s = p.to_string_lossy();
+    #[cfg(target_os = "windows")]
+    let s = s.to_lowercase();
+    s.trim_end_matches(['/', '\\']).to_string()
 }
 
 fn sleep(secs: u64) {

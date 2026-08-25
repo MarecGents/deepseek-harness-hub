@@ -1,0 +1,7 @@
+# dsh-usage-stats bundle patch — mounts the plugin when this package is
+# listed in a profile's dsh.profile.bundles (declared by package.json
+# dsh.bundle.patch). Top-level YAML array of loader patch entries.
+# The `id` must equal package.json `name` (plugin-identity consistency rule).
+- insert:
+    - id: '@dsh-external/dsh-usage-stats'
+      name: '@dsh-external/dsh-usage-stats'

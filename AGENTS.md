@@ -20,6 +20,12 @@
 5. **settings 命名空间约束**：`settingsNamespace('dsh-hub')` 强制小写 kebab-case；带 scope 的包名（`@marecgents/dsh-hub`）不能用作 settings ns 或 API 前缀。第三方配置 UI 一律走插件自有 HTTP 路由 `/api/dsh-hub/*`。
 6. **发布前检查不可跳过**：每次 `npm publish` 之前**必须**运行 `node scripts/verify-release.mjs` 且**全部 PASS**（含「干净安装 → 首启装配」冒烟），FAIL 立即停止排查，**禁止发布**。发布流程与检查细则见 §5（rc.10–rc.13 曾因跳过"全新环境安装验证"连发 4 版首启即崩的包，见 [docs/关键踩坑记录.md#33](docs/关键踩坑记录.md)）。
 7. **开发流程必须遵循 PROCESS_QUALITY**：任何开发任务（迁移、功能、修复、文档、发布）**必须严格遵循 [PROCESS_QUALITY.md](PROCESS_QUALITY.md) 的 SOP（标准作业程序）与质量管理规范**——含阶段输入/输出/门禁（Gate）逐项核查、验收表、回归基线、DMAIC 改进循环。**禁止跳过阶段门禁**；与本文件铁律冲突时，以本文件（AGENTS.md）为准。
+8. **数据安全红线：绝不触碰 home / C 盘**（历史血泪：`~/` 与 C 盘曾被删除导致配置全丢、系统重装，2026-08-25 复现）。**任何 agent / 脚本 / 手工操作都必须遵守**：
+   - **禁止**删除/移动/清空 `C:\Users\*` 下任何文件（尤其 `~`、`$HOME`、`USERPROFILE`、真实 `~/.dsh`、`.ssh`、`.gitconfig` 等配置文件）；任何 `rm` / `Remove-Item` / `RMDir` / `unlinkSync` / `rmSync` 的目标路径**不得含** `~`、`$HOME`、`USERPROFILE`、`C:\Users`、`homedir()`。
+   - **测试 / 复现 / 安装 / 卸载一律用隔离环境**：`DSH_HOME` 指向 E:/D: 盘或 `%TEMP%` 下的独立目录（如 `$env:TEMP\dsh-hub-repro`），**禁止**指向真实 `~/.dsh`；「清干净重来」只对隔离目录执行，**永不删除真实 `~/.dsh`**（dsh 会自动重建空 profile，配置/会话/凭据不可恢复）。
+   - **删除纪律**：执行任何删除前，先打印/回显目标绝对路径并确认不是 home 子树；`rm -rf` / `Remove-Item -Recurse -Force` 必须写完整绝对路径，禁止裸 `~`、禁止环境变量缩写、禁止 `$INSTDIR` 未经展开即递归删除。
+   - **权限纪律**：破坏性操作（删目录、卸载、覆盖配置）不得在 `never` 审批模式下静默执行；执行前必须自检目标路径是否属于 home 子树。
+   - **排查初始化/装配问题**：先换「新的隔离 DSH_HOME」复现，再查日志；把「删掉用户真实配置」列为最后手段且需用户明示同意。
 
 ---
 
@@ -34,7 +40,7 @@ dsh-hub 是**双 half** 结构，且**套壳代码与插件代码必须严格模
 │   src/core/             Core：命令注册表 / 生命周期（registry）  │
 │   src/managers/         壳 Manager：tauri-shell（唯一壳 Manager）│
 │   src/server/           Server：HTTP 路由工厂（/api/dsh-hub/*） │
-│   src/services/         Services：纯领域业务（config/pins-store）│
+│   src/services/         Services：纯领域业务（config-store / pty-manager）│
 │   src/helpers/          Helper：无状态工具（state-store）          │
 │   src/controllers/     Controller：业务编排（session-runtime/tray-pipe）│
 │   src/models/          Model：共享类型/常量（pipe 帧、ShellConfig）     │
@@ -42,6 +48,9 @@ dsh-hub 是**双 half** 结构，且**套壳代码与插件代码必须严格模
 ├─────────────────────────────────────────────────────────────┤
 │ client half（浏览器内，React）                                 │
 │   src/client/*          插件 UI：设置卡片 + 右侧栏（body portal）│
+├─────────────────────────────────────────────────────────────┤
+│ 独立 dsh 插件（双轨分发，见 §1.1 铁律 8）
+│   plugins/<name>/      独立插件（独立 npm + 随 hub resources 分发）
 ├─────────────────────────────────────────────────────────────┤
 │ Tauri 原生壳（Rust，src-tauri/src/）——见 src-tauri/src/AGENTS.md│
 │   lib.rs / main.rs      Controller：壳入口                    │
@@ -64,7 +73,7 @@ dsh-hub 是**双 half** 结构，且**套壳代码与插件代码必须严格模
 | 类别 | 职责 | 命名示例 |
 |---|---|---|
 | **Controller** | 入口编排、装配、生命周期挂钩 | `index.ts`、`lib.rs` |
-| **Manager** | 管理复杂对象的生命周期/状态机 | `managers/tauri-shell.ts`（壳）、`managers/tray.rs` |
+| **Manager** | 管理复杂对象的生命周期/状态机 | `managers/tauri-shell.ts`（壳）、`managers/tray.rs`、`managers/icon.rs`（图标 6 面编排：面级幂等 + 全局串行锁 + 单 worker/pending 合并防快速切换卡死；`theme.rs` 回归无状态纯函数） |
 | **Services** | 业务服务，对外提供能力 | `services/config-store.ts`、`services/notify.rs` |
 | **Server** | HTTP 路由 / 对外端口 | `server/config-api.ts`、`server/workspace-api.ts` |
 | **Helper** | 纯工具函数，无状态、无副作用 | `helpers/state-store.ts` |
@@ -75,7 +84,22 @@ dsh-hub 是**双 half** 结构，且**套壳代码与插件代码必须严格模
 - **单向依赖**：上层可依赖下层，下层**禁止**依赖上层。层级：`index.ts → controllers → core → managers/server/services → helpers → models/utils`（host half）；`lib.rs → commands → managers/services → helpers`（Rust 壳 half）。
 - 跨层引用违规 = 审查必纠项；新增文件先归类（Core/Controller/Manager/Services/Server/Helper/Model/Utils），命名清晰表达职能。
 - **命令分发**：托盘/管道命令一律走 `core/registry.ts` 注册表（新增命令 = `trayCommands.register(...)`），禁止在 index.ts 散落 if/else 分发链。
-- **双向管道协议同步**：壳→host 走 stdin `MG_TRAY`；host→壳走 stdout `DSH_CMD`。帧格式与命令名变更必须同步 `src-tauri/src/managers/node.rs` 分发表 ↔ `src/managers/tauri-shell.ts`（sendDshCmd）↔ `src/index.ts`（MG_TRAY 读取）。
+- **双向管道协议同步**：壳→host 走 stdin `MG_TRAY`；host→壳走 stdout `DSH_CMD`。帧格式与命令名变更必须同步 `src-tauri/src/managers/node.rs` 分发表 ↔ `src/managers/tauri-shell.ts`（sendDshCmd）↔ `src/controllers/tray-pipe.ts`（MG_TRAY 读取）。
+
+### 1.1 新功能分发策略（2026-08-23 确立，铁律 8）
+
+新功能落地**先判定类型、再定分发**；**禁止"死目录"**（只放代码不接装配链——代码进仓库但无法生效 = 未完成的功能）。
+
+| 功能类型 | 判定 | 分发策略 |
+|---|---|---|
+| **dsh plugin**（独立插件） | 纯 dsh 生态能力（`ctx.tools` / `systemPrompt` / `session/event` / `webServer` / 独立 client section），**可脱离本壳使用** | **双轨必须同时**：① 独立 npm 发布（`plugins/<name>/` 包 `private:false`，走 §5 发布流程 + verify-release 门禁）；② 随 hub 分发（tauri resources 含 `plugins/<name>/**/*` + assemble-profile 装配进 profile + cordis.patch.yml 挂载 → NSIS 自带） |
+| **壳单一功能** | 壳/插件层增强（client UI、托盘、窗口、Rust 壳、设置卡），**只在本壳有意义** | **不发布 npm**：随 hub 仓库走（client 经 `build:client` 编译进 lib/；Rust 经 cargo 编译进 exe）；装配走 `src/client/index.ts` 或 `src-tauri` |
+| **plugin + 壳联动** | 既有通用插件能力、又有壳侧集成（如插件 host 能力 + 壳 UI/托盘接线） | **拆分双轨**：插件部分（通用能力）→ 独立 npm 发布 **且** 随 hub 分发；壳侧集成（UI/装配/托盘接线）→ 随 hub。**两边都必须接装配链**（插件进 profile；壳侧走 hub 装配），禁止只发一半 |
+
+**判定要点**：
+- 依赖 dsh 官方扩展点（tools / systemPrompt / 事件 / webServer）且脱离本壳仍有用 = **plugin** → 双轨（npm + hub）。
+- 依赖壳能力（tauri 命令、托盘、窗口、`DSH_CMD`、壳配置）或本壳专属视觉（皮肤/背景/rail/右侧栏）= **壳功能** → 随 hub，不发 npm。
+- 每个新功能落地时必须回答："**不接装配链它能生效吗？**" 不能 = 必须补装配链（插件：cordis.patch.yml 挂载 + 进 profile；壳功能：index.ts 装配）；能 = 才算完成。
 
 ---
 
@@ -124,9 +148,9 @@ dsh-hub 是**双 half** 结构，且**套壳代码与插件代码必须严格模
    - 是否引入未处理错误路径（catch 是否吞错、Promise 是否遗漏）；
    - 是否符合本 AGENTS.md 约束（身份一致性、门控、多实例、UI token）。
    - 推演通过后再构建；**禁止**"先 build 报错再回改"的返工式开发。
-4. **错误处理**：空 `catch` 必须注释吞掉什么、为何无碍；`try` 保持单一语句；进程退出用 `quit.marker` + `process.exit(0)`（webviewjs teardown 崩溃规避），不用 `app.exit()`。
+4. **错误处理**：空 `catch` 必须注释吞掉什么、为何无碍；`try` 保持单一语句。**进程退出语义归 Rust 壳**（`src-tauri/src/helpers/quit.rs`：写 `quit.marker` + `process::exit(0)`，supervisor 据此区分主动退出/崩溃重启）；host 侧**不**自行 `process.exit()`（WebView2 时代的 `exitProcess()` 已删除，勿复活），不用 `app.exit()`。
 5. **类型**：`strict: true`；`any` 必须解释为何无法收窄；ESM（`"type": "module"`）；相对导入用 `.ts` 后缀（host）或构建约定。
-6. **文档同步**：行为/配置/接口变更必须同步更新 `README.md`、`docs/关键踩坑记录.md`（新坑补录）或本项目任务日志。
+6. **文档同步**：行为/配置/接口变更必须同步更新 `README.md`、`FUNCTIONS.md`（功能状态事实源）、`docs/关键踩坑记录.md`（新坑补录）或本项目任务日志。
 
 ## 5. 构建 / 发布 / 分支 / 发包前强制检查
 
@@ -153,7 +177,7 @@ npm run build:client   # client（tsdown + SDK junction）
 4. **dist-tags 直查 registry**：发布后 `Invoke-RestMethod 'https://registry.npmjs.org/-/package/@marecgents/dsh-hub/dist-tags'` 必须 `latest == rc == 当前版本`。**`npm view` 有镜像缓存，不可信**。
 5. **registry 显式官方**：publish / dist-tag 一律 `--registry=https://registry.npmjs.org/`（本机默认是华为镜像）。
 6. **版本不可覆盖**：`npm version <bump>` 每次升版本，同版本 publish 会被拒绝。
-7. **main 发布 + dev-v2 回灌 + tag**：push main 与 `v0.0.1-rc.<N>` tag；dev-v2 ff 到 main；**dev-v1 冻结不动**（§5.1）。
+7. **main 发布 + dev-v2 回灌 + tag**：push main 与 `v0.0.2-rc.<N>` tag；dev-v2 ff 到 main；**dev-v1 冻结不动**（§5.1）。
 8. **发布后真机验证**：测试电脑安装 `cargo tauri build` 的 **NSIS 安装器**（M5）后首启冒烟；插件层 npm 发布仍走 `node scripts/verify-release.mjs` 门禁（保留）。
 
 ### 5.3 发布命令（rc 流程，逐步执行）
@@ -168,24 +192,24 @@ gh pr merge <N> --merge --admin
 
 # 2. main 上 bump + 重建
 git checkout main && git pull origin main
-npm version 0.0.1-rc.<N+1>
+npm version 0.0.2-rc.<N+1>
 npm run build && npm run build:client
 
 # 3. 发布 + latest dist-tag（显式官方 registry）
 npm publish --access public --tag rc --registry=https://registry.npmjs.org/
-npm dist-tag add @marecgents/dsh-hub@0.0.1-rc.<N+1> latest --registry=https://registry.npmjs.org/
+npm dist-tag add @marecgents/dsh-hub@0.0.2-rc.<N+1> latest --registry=https://registry.npmjs.org/
 
 # 4. 校验（registry 直查，勿用 npm view）
 (Invoke-RestMethod 'https://registry.npmjs.org/-/package/@marecgents/dsh-hub/dist-tags').latest   # 必须 = 0.0.1-rc.<N+1>
 
 # 5. 推送 main + tag + 回灌 dev-v2（dev-v1 冻结不动）
-git push origin main && git push origin v0.0.1-rc.<N+1>
+git push origin main && git push origin v0.0.2-rc.<N+1>
 git checkout dev-v2 && git merge main --ff-only && git push origin dev-v2
 
 # 6. 发布记录 docs/发布记录-rc<N>-YYYY-MM-DD-HHmm.md → commit（main）→ 回灌 dev-v2
 ```
 
-- **发布版本号策略**：当前 rc 预览期（`0.0.1-rc.x`）；正式版需在 **Tauri 2.x 迁移完成并达到良好体验后**再发布（见 [外部档案 docs/dsh桌面端技术路线-2026-08-16.md](../docs/dsh桌面端技术路线-2026-08-16.md)）。
+- **发布版本号策略**：当前 rc 预览期（`0.0.2-rc.x`，以 package.json 当前值为准）；正式版需在 **Tauri 2.x 迁移完成并达到良好体验后**再发布（见 [外部档案 docs/dsh桌面端技术路线-2026-08-16.md](../docs/dsh桌面端技术路线-2026-08-16.md)）。
 
 ### 5.4 全新环境首启崩溃事故（rc.10–rc.13，勿重蹈）
 
@@ -203,6 +227,7 @@ git checkout dev-v2 && git merge main --ff-only && git push origin dev-v2
 - **运行 / 发布**：`npm run tauri:build`（=`cargo tauri build`）产出 **NSIS 安装器（M5）**；测试电脑安装后首启冒烟，运行真实 `$DSH_HOME`。
 - **多实例门禁**：已由 **Rust 壳 `src-tauri/src/lib.rs`** 承担（single-instance + netstat/CIM 检测，默认拒绝共存），不再依赖 npm launcher 的 PID 锁（`lock.mjs` 已删）。
 - **状态核查**（2026-08）：launcher 家族 / 桌面快捷方式等 WebView2 时代产物已从仓库删除；运行 profile 装配由 Rust 壳（node.rs → `scripts/assemble-profile.mjs`）承担，dev 时以 `DSH_HUB_PACKAGE_ROOT=仓库根` 建 scoped junction（幂等自愈，见 [docs/关键踩坑记录.md#33](docs/关键踩坑记录.md) / #34）。
+- **sidecar 进程受 Job Object KILL_ON_JOB_CLOSE 约束**（node.rs ssign_sidecar_to_kill_job，`SyncHandle` 包装 HANDLE 解决 Send/Sync）：sidecar 及整棵子进程树绑进作业——壳退出/崩溃/被卸载强杀时，内核随最后一个作业句柄关闭连带清理，根治 node.exe 孤儿锁文件（卸载不净根因，见 [docs/关键踩坑记录.md#68](docs/关键踩坑记录.md)）；Cargo.toml windows features 需显式含 Win32_System_JobObjects + Win32_Security（CreateJobObjectW 依赖 Security 类型，勿靠传递依赖）。
 
 ### 5.6 自编译安装（install-local 已删除，dev-v2 Tauri-only）
 
@@ -212,8 +237,8 @@ git checkout dev-v2 && git merge main --ff-only && git push origin dev-v2
 ## 6. 未来技术路线（约束方向，不立即实施）
 
 - **目标**：Tauri 2.x 壳（自定义壳 UI、Windows/macOS/Linux 三端、~10MB、官方插件生态）。详细决策见外部档案 `../docs/dsh桌面端技术路线-2026-08-16.md`。
-- **迁移时**：壳层（`src/managers/*` + Windows 专属 `src/helpers/*` + `src-tauri/src/` 全部）重写/落地；插件层（client + `src/server/*` API）保留；dsh 生态通过 HTTP/WS 对接，client half 零改动。
-- **现在**：保持当前架构可运行，代码按本 harness 的隔离边界组织，为迁移留好切口（壳/插件接口清晰、不混层）。
+- **现状（2026-08-23）**：Tauri 2.x 迁移**已完成**（M5 打包闭环真机验证，当前 `0.0.2-rc.x`）；壳层落在 `src-tauri/`（Rust），插件层（client + server API）保留。
+- **未来**：自定义壳 UI（decorations:false）/ Windows·macOS·Linux 三端 / 自动更新 / 包体 ~10MB / 官方插件生态。
 
 ---
 
@@ -225,7 +250,7 @@ git checkout dev-v2 && git merge main --ff-only && git push origin dev-v2
 | `src/core/` | [src/core/AGENTS.md](src/core/AGENTS.md) | Core 层：命令注册表、生命周期、无业务 |
 | `src/managers/` | [src/managers/AGENTS.md](src/managers/AGENTS.md) | 壳 Manager 红线、壳/插件隔离、命令上行通道 |
 | `src/server/` | [src/server/AGENTS.md](src/server/AGENTS.md) | Server 路由规范、配置三处一致、请求体校验 |
-| `src/services/` | [src/services/AGENTS.md](src/services/AGENTS.md) | Services 层（config-store / pins-store）规范 |
+| `src/services/` | [src/services/AGENTS.md](src/services/AGENTS.md) | Services 层（config-store / pty-manager）规范 |
 | `src/helpers/` | [src/helpers/AGENTS.md](src/helpers/AGENTS.md) | Helper 纯函数规范、零依赖、Windows 专属标记 |
 | `src/client/` | [src/client/AGENTS.md](src/client/AGENTS.md) | UI 风格强制、client 注册规范、body portal 约束 |
 | `src-tauri/src/` | [src-tauri/src/AGENTS.md](src-tauri/src/AGENTS.md) | Rust 壳红线：双向管道协议、ACL 三处一致、退出语义、E2E |

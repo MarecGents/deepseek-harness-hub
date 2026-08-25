@@ -1,0 +1,8 @@
+# dsh-permission-guard bundle patch — mounts the plugin when this package is
+# listed in a profile's dsh.profile.bundles (declared by package.json
+# dsh.bundle.patch). Must be a top-level YAML array of loader patch entries:
+# an `insert` row appends the loader entry for this plugin (no id target, so
+# it mounts over the empty bundle-layer entry list).
+- insert:
+    - id: '@dsh-external/dsh-permission-guard'
+      name: '@dsh-external/dsh-permission-guard'

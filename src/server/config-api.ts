@@ -6,174 +6,28 @@
  * namespaces are explicitly "deferred work" in the api-proxy source), so a
  * plugin-owned config document + own HTTP routes is the supported pattern —
  * the same one dsh-web-ui's packages use (`/api/pet/*` etc).
+ *
+ * Module category: Server (thin route factory). All config persistence lives
+ * in `../services/config-store.ts` (readShellConfig / writeShellConfig /
+ * migrateLegacyPaths — single implementation); this file only validates the
+ * request, narrows fields, and frames JSON responses.
  */
 
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { WebRoute } from '@deepseek-ai/dsh-host-webserver'
-
-
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync, rmSync } from 'node:fs'
-import { join } from 'node:path'
-import { dshHome } from '../helpers/state-store.js'
-import { DEFAULT_SHELL_CONFIG, type ShellConfig } from '../models/shell-config.js'
-import { rejectIfBadHost } from './host-guard.ts'
+import { type ShellConfig } from '../models/shell-config.js'
+import { readShellConfig, writeShellConfig } from '../services/config-store.js'
+import { readJsonBody } from '../helpers/read-json-body.js'
+import { rejectIfBadHost, rejectIfBadOrigin } from './host-guard.ts'
 export type { ShellConfig }
-
-
-
-/**
- * One-time migration from the pre-release names (`marec-dsh-desktop` and
- * `mg-dsh-desktop`) to the current `dsh-hub` home directory. Best-effort;
- * called at plugin apply so existing installs keep their window settings.
- */
-export function migrateLegacyPaths(): void {
-  try {
-    const newDir = join(dshHome(), 'dsh-hub')
-    for (const legacy of ['marec-dsh-desktop', 'mg-dsh-desktop']) {
-      const oldDir = join(dshHome(), legacy)
-      if (existsSync(oldDir) && !existsSync(newDir)) renameSync(oldDir, newDir)
-      const oldState = join(dshHome(), `${legacy}-window-state.json`)
-      const newState = join(dshHome(), 'dsh-hub-window-state.json')
-      if (existsSync(oldState) && !existsSync(newState)) renameSync(oldState, newState)
-    }
-  } catch {
-    // Best-effort; a failed migration must not break startup.
-  }
-}
 
 /** Browser-facing base path of the shell config API. */
 export const CONFIG_API_PREFIX = '/api/dsh-hub'
-
-/**
- * ShellConfig 接口与 DEFAULT_SHELL_CONFIG 已下沉至 src/models/shell-config.ts
- * （round-8 分层：models = 共享类型/常量单一来源）；本模块 import + 类型
- * re-export 保持既有消费方（type ShellConfig from './server/config-api.js'）兼容。
- */
-
-/** Config document path under the harness home. */
-export function configFile(): string {
-  return join(dshHome(), 'dsh-hub', 'config.json')
-}
-
-/** Read the persisted config; returns defaults when absent or malformed. */
-export function readShellConfig(): ShellConfig {
-  try {
-    const raw = JSON.parse(readFileSync(configFile(), 'utf8')) as Partial<ShellConfig>
-    return { ...DEFAULT_SHELL_CONFIG, ...raw }
-  } catch {
-    return { ...DEFAULT_SHELL_CONFIG }
-  }
-}
-
-/**
- * True when the persisted config explicitly stores a window size. A user who
- * saved the settings card's width/height gets that exact size on launch;
- * otherwise the shell sizes the default window to the launch screen.
- * Exactly-default pairs (1280×720) are ignored: old writeShellConfig builds
- * merged over DEFAULT_SHELL_CONFIG, so any save (e.g. a checkbox toggle)
- * wrote the default size into the file — that was never the user's explicit
- * choice, and honoring it would pin the window to 1280×720 forever (A4).
- */
-export function hasStoredWindowSize(): boolean {
-  try {
-    const raw = JSON.parse(readFileSync(configFile(), 'utf8')) as Partial<ShellConfig>
-    if (typeof raw.width !== 'number' || typeof raw.height !== 'number') return false
-    if (raw.width === DEFAULT_SHELL_CONFIG.width && raw.height === DEFAULT_SHELL_CONFIG.height) return false
-    return true
-  } catch {
-    return false
-  }
-}
-
-/**
- * Persist the config (best-effort, atomic write). Merges over the RAW stored
- * document — never over DEFAULT_SHELL_CONFIG — so a partial save (e.g. skin
- * only) cannot seed default width/height into the file, which would flip
- * hasStoredWindowSize() and pin the window to the defaults (A4).
- * @param patch - the narrowed fields from the POST body.
- * @returns the full effective config (defaults merged) for the response.
- */
-export function writeShellConfig(patch: Partial<ShellConfig>): ShellConfig {
-  const file = configFile()
-  const dir = join(dshHome(), 'dsh-hub')
-  let raw: Partial<ShellConfig> = {}
-  try {
-    raw = JSON.parse(readFileSync(file, 'utf8')) as Partial<ShellConfig>
-  } catch {
-    // No config yet — the patch alone becomes the document.
-  }
-  const next = { ...raw, ...patch }
-  try {
-    mkdirSync(dir, { recursive: true })
-    const tmp = `${file}.tmp`
-    writeFileSync(tmp, JSON.stringify(next, null, 2), 'utf8')
-    // Same-volume rename is atomic on Windows — never write the target file
-    // directly (a crash mid-write would tear config.json and silently drop
-    // every setting via the read fallback).
-    renameSync(tmp, file)
-  } catch {
-    // Persisting must not crash the request.
-  }
-  return { ...DEFAULT_SHELL_CONFIG, ...next }
-}
-
-/**
- * The persisted notify flag only — `undefined` when the user never saved it,
- * so callers can fall back to the composition Config value instead of the
- * DEFAULT_SHELL_CONFIG default.
- */
-export function storedNotifyOnTaskComplete(): boolean | undefined {
-  try {
-    const raw = JSON.parse(readFileSync(configFile(), 'utf8')) as Partial<ShellConfig>
-    return typeof raw.notifyOnTaskComplete === 'boolean' ? raw.notifyOnTaskComplete : undefined
-  } catch {
-    return undefined
-  }
-}
-
-/**
- * The persisted sound flag only — `undefined` when the user never saved it,
- * so callers can fall back to the composition Config value.
- */
-export function storedSoundEnabled(): boolean | undefined {
-  try {
-    const raw = JSON.parse(readFileSync(configFile(), 'utf8')) as Partial<ShellConfig>
-    return typeof raw.soundEnabled === 'boolean' ? raw.soundEnabled : undefined
-  } catch {
-    return undefined
-  }
-}
 
 /** Write one JSON response. */
 function json(res: ServerResponse, status: number, body: unknown): void {
   res.writeHead(status, { 'content-type': 'application/json; charset=utf-8' })
   res.end(JSON.stringify(body))
-}
-
-/** Require the method or answer 405. */
-/** Read a JSON request body (bounded). */
-function readJsonBody(req: IncomingMessage): Promise<unknown> {
-  return new Promise((resolve, reject) => {
-    let size = 0
-    const chunks: Buffer[] = []
-    req.on('data', (chunk: Buffer) => {
-      size += chunk.length
-      if (size > 64 * 1024) {
-        reject(new Error('body-too-large'))
-        queueMicrotask(() => req.destroy())
-        return
-      }
-      chunks.push(chunk)
-    })
-    req.on('end', () => {
-      try {
-        resolve(chunks.length === 0 ? {} : JSON.parse(Buffer.concat(chunks).toString('utf8')))
-      } catch {
-        reject(new Error('invalid-json'))
-      }
-    })
-    req.on('error', reject)
-  })
 }
 
 /**
@@ -189,6 +43,7 @@ export function makeConfigRoutes(onChange?: (value: ShellConfig, changed?: { siz
       path: `${CONFIG_API_PREFIX}/config`,
       handler: (req: IncomingMessage, res: ServerResponse): Promise<void> => {
         if (rejectIfBadHost(req, res)) return Promise.resolve()
+        if (rejectIfBadOrigin(req, res)) return Promise.resolve()
         if (req.method === 'GET') {
           json(res, 200, { ok: true, value: readShellConfig() })
           return Promise.resolve()
@@ -229,9 +84,16 @@ export function makeConfigRoutes(onChange?: (value: ShellConfig, changed?: { siz
               // unknown ids fall back to the white whale on the Rust side.
               if (typeof record.desktopIcon === 'string' && record.desktopIcon.length > 0 && record.desktopIcon.length <= 64) patch.desktopIcon = record.desktopIcon
 
-              const value = writeShellConfig(patch)
-              onChange?.(value, { size: sizeChanged })
-              json(res, 200, { ok: true, value })
+              const result = writeShellConfig(patch)
+              if (!result.ok) {
+                // Persistence failed (IO error): respond with an error and do
+                // NOT echo a new value — the client must not be optimistically
+                // confirmed for a document that never changed on disk.
+                json(res, 500, { ok: false, error: 'config-write-failed' })
+                return
+              }
+              onChange?.(result.value, { size: sizeChanged })
+              json(res, 200, { ok: true, value: result.value })
             },
             (error) => json(res, 400, { ok: false, error: error instanceof Error ? error.message : String(error) }),
           )

@@ -22,6 +22,8 @@
 //   commands/ = Tauri 命令薄胶水（Callback 层）
 // #[path] 保留模块名（crate::tray 等），避免引用链改动。
 #[path = "managers/window.rs"] mod window;
+#[path = "managers/window_ops.rs"] mod window_ops;
+#[path = "managers/icon.rs"] mod icon;
 #[path = "helpers/state.rs"] mod state;
 #[path = "helpers/theme.rs"] mod theme;
 #[path = "managers/tray.rs"] mod tray;
@@ -92,11 +94,78 @@ fn read_allow_multiple_instances() -> bool {
     read_shell_config_bool("allowMultipleInstances", false)
 }
 
+/// 双通道多实例检测结果（fail-closed 判定）。
+struct InstanceScan {
+    /// 判定出的运行中 dsh 实例 PID（排序）。单通道降级时仅含该通道证据。
+    running: Vec<u32>,
+    /// 两通道均失败/超时 = 无法判定。调用方必须直接拒绝启动（宁拦勿放）。
+    indeterminate: bool,
+}
+
+/// 运行命令并等待完成（带显式超时）。超时后强杀子进程并返回 Err——
+/// 检测通道超时按失败处理，由 detect_running_dsh_instances 降级判定
+/// （fail-closed，R-01）。并发排空 stdout/stderr，防止子进程写满管道
+/// 缓冲阻塞 try_wait。
+fn run_command_with_timeout(
+    cmd: &mut std::process::Command,
+    timeout: std::time::Duration,
+) -> std::io::Result<std::process::Output> {
+    use std::io::Read;
+
+    let mut child = cmd
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()?;
+    let mut stdout = child.stdout.take().ok_or_else(|| {
+        std::io::Error::other("stdout pipe missing")
+    })?;
+    let mut stderr = child.stderr.take().ok_or_else(|| {
+        std::io::Error::other("stderr pipe missing")
+    })?;
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let mut out = Vec::new();
+        let mut err = Vec::new();
+        let _ = stdout.read_to_end(&mut out);
+        let _ = stderr.read_to_end(&mut err);
+        let _ = tx.send((out, err));
+    });
+
+    let start = std::time::Instant::now();
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(status)) => break status,
+            Ok(None) => {
+                if start.elapsed() > timeout {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::TimedOut,
+                        format!("command timed out after {}ms", timeout.as_millis()),
+                    ));
+                }
+                std::thread::sleep(std::time::Duration::from_millis(50));
+            }
+            Err(e) => return Err(e),
+        }
+    };
+    let (out, err) = rx.recv().unwrap_or_default();
+    Ok(std::process::Output { status, stdout: out, stderr: err })
+}
+
 /// T4.2 双通道多实例检测：枚举 TCP 监听端口的 PID，并与命令行匹配
 /// `dsh.*web` 的 node.exe / dsh-hub.exe / dsh-hub-guard.exe 进程求交。
-/// 任一命中即认为已有 dsh web 实例在运行（宁可误拦不可漏拦，SOP §5.4-1）。
-/// @returns 命中进程 PID（排序），空 = 无运行实例。
-fn detect_running_dsh_instances() -> Vec<u32> {
+///
+/// fail-closed 语义（R-01 修复，取代原「交集空集即放行」的 fail-open 设计）：
+///   - 两通道均成功 → 取交集（与旧语义一致，命中即拦）；
+///   - 单通道失败/超时 → warn! + 按另一通道结果判定（宁拦勿放）；
+///   - 两通道均失败 → indeterminate=true，调用方直接拒绝启动。
+///
+/// 两个子进程均带 ~5s 显式超时（同步阻塞 setup 线程期间不无限等待，
+/// AV/组策略环境 PowerShell 启动慢也不会挂死启动流程）。
+fn detect_running_dsh_instances() -> InstanceScan {
+    const DETECT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
+
     // 通道 1：监听端口 → PID（netstat）。
     let mut listener_pids: std::collections::HashSet<u32> = std::collections::HashSet::new();
     let mut netstat = std::process::Command::new("netstat");
@@ -107,24 +176,39 @@ fn detect_running_dsh_instances() -> Vec<u32> {
         use std::os::windows::process::CommandExt;
         netstat.creation_flags(0x08000000);
     }
-    if let Ok(out) = netstat.output() {
-        let text = String::from_utf8_lossy(&out.stdout);
-        for line in text.lines() {
-            let cols: Vec<&str> = line.split_whitespace().collect();
-            if cols.len() >= 5 && cols[0] == "TCP" && cols[3] == "LISTENING" {
-                if let Ok(pid) = cols[4].parse::<u32>() {
-                    listener_pids.insert(pid);
+    let netstat_ok = match run_command_with_timeout(&mut netstat, DETECT_TIMEOUT) {
+        Ok(out) if out.status.success() => {
+            let text = String::from_utf8_lossy(&out.stdout);
+            for line in text.lines() {
+                let cols: Vec<&str> = line.split_whitespace().collect();
+                if cols.len() >= 5 && cols[0] == "TCP" && cols[3] == "LISTENING" {
+                    if let Ok(pid) = cols[4].parse::<u32>() {
+                        listener_pids.insert(pid);
+                    }
                 }
             }
+            true
         }
-    }
+        Ok(out) => {
+            warn!(
+                "m4: netstat channel exited {:?} — treating as channel failure (fail-closed)",
+                out.status.code()
+            );
+            false
+        }
+        Err(e) => {
+            warn!("m4: netstat channel failed: {e} (fail-closed)");
+            false
+        }
+    };
+
     // 通道 2：进程命令行匹配（PowerShell CIM；括号化 OR 规避本机 WQL -or 解析失败，
     // 见 2026-08-19 实测：`Name='x' -or Name='y'` 报 0x80041017 无效查询）。
     let filter = "(Name='node.exe') OR (Name='dsh-hub.exe') OR (Name='dsh-hub-guard.exe')";
     let script = format!(
         "Get-CimInstance Win32_Process -Filter \"{filter}\" | Where-Object {{ $_.CommandLine -match 'dsh.*web' }} | Select-Object -ExpandProperty ProcessId"
     );
-    let mut matched = Vec::new();
+    let mut cim_pids: Vec<u32> = Vec::new();
     let mut ps = std::process::Command::new("powershell.exe");
     ps.args(["-NoProfile", "-NonInteractive", "-Command", &script]);
     // CREATE_NO_WINDOW：powershell 是 console 程序，不隐藏会闪命令行窗口。
@@ -133,17 +217,58 @@ fn detect_running_dsh_instances() -> Vec<u32> {
         use std::os::windows::process::CommandExt;
         ps.creation_flags(0x08000000);
     }
-    if let Ok(out) = ps.output() {
-        for pid in String::from_utf8_lossy(&out.stdout).lines() {
-            if let Ok(n) = pid.trim().parse::<u32>() {
-                if listener_pids.contains(&n) {
-                    matched.push(n);
+    let cim_ok = match run_command_with_timeout(&mut ps, DETECT_TIMEOUT) {
+        Ok(out) if out.status.success() => {
+            for pid in String::from_utf8_lossy(&out.stdout).lines() {
+                if let Ok(n) = pid.trim().parse::<u32>() {
+                    cim_pids.push(n);
                 }
             }
+            true
+        }
+        Ok(out) => {
+            warn!(
+                "m4: CIM channel exited {:?} — treating as channel failure (fail-closed)",
+                out.status.code()
+            );
+            false
+        }
+        Err(e) => {
+            warn!("m4: CIM channel failed: {e} (fail-closed)");
+            false
+        }
+    };
+
+    // fail-closed 判定（宁拦勿放）。
+    match (netstat_ok, cim_ok) {
+        (true, true) => {
+            // 两通道均正常：取交集（与旧语义一致）。
+            let mut matched: Vec<u32> = cim_pids
+                .into_iter()
+                .filter(|n| listener_pids.contains(n))
+                .collect();
+            matched.sort_unstable();
+            InstanceScan { running: matched, indeterminate: false }
+        }
+        (true, false) => {
+            // CIM 通道失败：按 netstat LISTENING 结果判定（宁拦勿放）。
+            warn!("m4: CIM channel failed — judging by netstat LISTENING pids only (fail-closed)");
+            let mut running: Vec<u32> = listener_pids.into_iter().collect();
+            running.sort_unstable();
+            InstanceScan { running, indeterminate: false }
+        }
+        (false, true) => {
+            // netstat 通道失败：按 CIM `dsh.*web` 进程结果判定（宁拦勿放）。
+            warn!("m4: netstat channel failed — judging by CIM dsh.*web processes only (fail-closed)");
+            cim_pids.sort_unstable();
+            InstanceScan { running: cim_pids, indeterminate: false }
+        }
+        (false, false) => {
+            // 两通道均失败：无法判定 → 拒绝启动（宁拦勿放）。
+            warn!("m4: both detection channels failed — refusing to start (fail-closed)");
+            InstanceScan { running: Vec::new(), indeterminate: true }
         }
     }
-    matched.sort_unstable();
-    matched
 }
 
 /// T4.2 多实例门禁：检测到运行中的 dsh web 实例时，
@@ -159,14 +284,29 @@ fn enforce_multi_instance(app: &tauri::App) -> bool {
         return true;
     }
 
-    let running = detect_running_dsh_instances();
+    use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind, MessageDialogResult};
+
+    let scan = detect_running_dsh_instances();
+    // 两通道均失败/超时：无法判定运行状态 → 直接拒绝启动（宁拦勿放，
+    // 仅 OK 按钮、无逃生口——检测失效时宁可误拦不可漏拦）。
+    if scan.indeterminate {
+        let msg = "⚠ 无法检测是否已有 dsh 实例在运行（多实例检测通道全部失败）。\n\n为保护会话数据，桌面壳将拒绝启动。\n请先关闭已运行的 dsh 窗口，再启动桌面壳。";
+        let _resp = app
+            .dialog()
+            .message(msg)
+            .title("dsh-hub")
+            .kind(MessageDialogKind::Warning)
+            .buttons(MessageDialogButtons::Ok)
+            .blocking_show();
+        info!("m4: blocked by multi-instance gate (both detection channels failed)");
+        return false;
+    }
+    let running = scan.running;
     if running.is_empty() {
         return true;
     }
     let detail = running.iter().map(|pid| format!("  · PID {pid}")).collect::<Vec<_>>().join("\n");
     warn!("m4: detected {} running dsh instance(s):\n{}", running.len(), detail);
-
-    use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind, MessageDialogResult};
 
     if !read_allow_multiple_instances() {
         // 默认：拒绝。仅 OK 按钮，无"继续"逃生口（SOP：宁可误拦不可漏拦）。
@@ -421,6 +561,9 @@ pub fn run() {
             notify::notify_task_complete,
         ])
         .setup(|app| {
+            // IconManager 尽早托管（任何 set_desktop_icon / apply_page_theme /
+            // 启动应用路径都可能访问它——迟托管会在 sidecar 启动失败等路径 panic）。
+            app.manage(icon::IconManager::default());
             // ── M4 流程（T4.4 SOP §5.4 步骤 4，先建窗 → 后台准备 → READY 后 navigate）──
             // 0. 先建窗（占位页立即显示，不再等 READY）：WebviewUrl::default() =
             //    frontendDist ../dev/index.html（M3 临时页）；build_main_window 注入
@@ -435,21 +578,23 @@ pub fn run() {
             // S6: 启动即应用已保存的桌面图标（设置卡选择；'default' = 主题翻转
             // 鲸鱼，未知 id 回退白鲸）。页面加载后 apply_page_theme 会按实际
             // 明暗重新应用（'default' 翻转 / 鲸鱼娘固定），此处保证占位页
-            // 期间图标即正确。
+            // 期间图标即正确。统一走 icon::IconManager（面级幂等编排）。
             let desktop_icon = state::read_shell_config_str("desktopIcon", "default");
-            theme::apply_desktop_icon(&win, &desktop_icon);
+            let dark = win.theme().unwrap_or(tauri::Theme::Dark) == tauri::Theme::Dark;
+            app.state::<icon::IconManager>().apply(app.handle(), &desktop_icon, dark);
 
             // Q4：toast 显示所需 AUMID 注册（Windows 未打包应用，幂等）。
             // 移后台线程：多次 reg.exe spawn + COM 快捷方式保存曾排在建窗前的
             // 关键路径上（拖慢首绘 ~0.5s）。注册建好 .lnk 后强制补一次壳图标源
-            // 同步——apply_desktop_icon 与本线程有竞态窗口（当时 .lnk 可能还没
-            // 建好，IconLocation 更新被跳过），sync_shell_icon_sources 绕过去重。
+            // 同步——apply 与本线程有竞态窗口（当时 .lnk 可能还没建好，
+            // IconLocation 更新被跳过），sync_after_shortcuts 强制重跑壳源面。
             #[cfg(target_os = "windows")]
             {
+                let app_handle = app.handle().clone();
                 let icon_id = desktop_icon.clone();
                 std::thread::spawn(move || {
                     register_toast_aumid();
-                    theme::sync_shell_icon_sources(&icon_id);
+                    app_handle.state::<icon::IconManager>().sync_after_shortcuts(&app_handle, &icon_id);
                 });
             }
 
@@ -540,7 +685,14 @@ pub fn run() {
 
             // 2. 托盘（图标随用户桌面图标选择 / 主题翻转，S6）。
             let _tray = tray::setup_tray(app)?;
-            tray::set_tray_icon(app.handle(), &state::read_shell_config_str("desktopIcon", "default"));
+            // 托盘图标面走 IconManager（dark 按当前窗口主题；面级幂等，窗口面
+            // 已应用则跳过）。
+            let icon_id = state::read_shell_config_str("desktopIcon", "default");
+            let dark = app
+                .get_webview_window("main")
+                .map(|w| w.theme().unwrap_or(tauri::Theme::Dark) == tauri::Theme::Dark)
+                .unwrap_or(true);
+            app.state::<icon::IconManager>().apply(app.handle(), &icon_id, dark);
 
             // 3. 启动 Node sidecar（T4.1）。
             let node_state = std::sync::Arc::new(node::NodeState::new());
@@ -618,7 +770,7 @@ pub fn run() {
 
             // Tray "Open workspace" 路径回传：client 经 invoke('open_workspace_path')
             // 上行（D-2：事件系统在 remote origin 不可用，页面→Rust 走命令）。
-            // 平台打开命令在 commands::open_workspace_path 实现。
+            // 平台打开命令在 window_ops::open_workspace_path 实现（commands 为薄胶水）。
 
             // E2E 验证钩子（仅 debug 构建，DSH_HUB_E2E=1 启用；见 e2e.rs）。
             #[cfg(debug_assertions)]

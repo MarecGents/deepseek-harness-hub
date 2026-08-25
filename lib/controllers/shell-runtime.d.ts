@@ -4,9 +4,14 @@
  * This module owns the remaining executable business logic that used to live
  * in src/index.ts:
  *   - resolve the effective startup config from persisted settings;
- *   - write the intentional-quit marker and exit the process;
  *   - send `DSH_CMD` uplink frames to the shell;
- *   - run tray "Open workspace" / "New task" semantics.
+ *   - run tray "New task" semantics.
+ *
+ * Note: process-exit semantics belong to the Rust shell (helpers/quit.rs);
+ * the host never exits the process itself. The tray "Open workspace" path is
+ * handled by tray-pipe (`dispatch_page_event` → client `open_workspace_path`
+ * invoke); the old host-side `openWorkspaceDir` chain was dead code and has
+ * been removed.
  *
  * Keeping these in a controller makes `src/index.ts` a pure composition root
  * (SPT Controller/Service separation) while preserving the exact rc.14
@@ -15,7 +20,6 @@
  * @module dsh-hub/controllers/shell-runtime
  * @category Controller（业务编排层）
  */
-import type { Context } from '@deepseek-ai/cordis';
 import type { DshCmdPayload } from '../models/pipe.js';
 import type { PluginConfig } from '../models/plugin-config.js';
 /** Marker the launcher checks so an intentional tray quit is never auto-restarted. */
@@ -26,19 +30,13 @@ export declare function getActiveCwd(): string | undefined;
 export declare function setActiveCwd(cwd: string | undefined): void;
 /**
  * 双向管道上行：向壳写一条 `DSH_CMD <json>`（stdout，node.rs 解析执行）。
- * rc.14 tray-helper 反向通道：host → 壳（打开目录 / 派发页面事件等）。
+ * 与 `managers/tauri-shell.ts` 的 invoke 是**同一条通道**——两者都委托
+ * `helpers/pipe-io.ts` 的 `writeDshCmd` 写 stdout（SPT 分层禁止 manager 依赖
+ * controller，故保留两个薄包装、共享一个底层 writer）。本函数供控制器层
+ * （tray-pipe 经 index.ts 注入）与托盘 open-workspace 语义使用。
  * @param payload - { cmd, ...args } 命令帧。
  */
 export declare function sendDshCmd(payload: DshCmdPayload): void;
-/**
- * Tray "Open workspace": ask the page for the current session's workspace
- * path, then reveal it through the Tauri shell (DSH_CMD `open_workspace_path`
- * up-link → Rust opens Explorer). Falls back to activeCwd/process.cwd.
- * @param ctx - Cordis context (unused in the current implementation).
- * @param getCurrentPath - page callback that resolves the current path.
- * Host fallback cwd is read from this controller's activeCwd state.
- */
-export declare function openWorkspaceDir(ctx: Context, getCurrentPath: (cb: (path: string | null) => void) => void): Promise<void>;
 /**
  * Tray "New task": dispatch the command into the web page. The browser half
  * runs the OFFICIAL client-side flow (`ctx.workspaces.startSession` — the

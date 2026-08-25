@@ -7,12 +7,17 @@
 
 | 文件 | 模块类别 | 职责 | Tauri 迁移 |
 |---|---|---|---|
-| `config-api.ts` | **Server + Services** | 配置读写 `/api/dsh-hub/config`（GET/POST）、`ShellConfig` 持久化、旧名迁移 `migrateLegacyPaths` | 保留 |
-| `workspace-api.ts` | **Server + Services** | 工作区 `/api/dsh-hub/workspace/{list,git}`（文件树 + Git 检测） | 保留 |
+| `config-api.ts` | **Server（薄路由）** | 配置读写 `/api/dsh-hub/config`（GET/POST），持久化委托 `../services/config-store.ts`（readShellConfig / writeShellConfig / migrateLegacyPaths 单一实现） | 保留 |
+| `workspace-api.ts` | **Server + Services** | 工作区 `/api/dsh-hub/workspace/{list,git,open}`（文件树 + Git 检测 + OS 打开；open 带 host+origin+token 三重守卫） | 保留 |
 | `pins-api.ts` | **Server + Services** | 置顶会话 `/api/dsh-hub/pins`（GET/PUT）、pins.json 原子写（renameSync） | 保留 |
 | `backgrounds-api.ts` | **Server + Services** | 背景图静态路由 `/api/dsh-hub/backgrounds/*`（正则白名单防穿越，服务 assets/backgrounds） | 保留 |
 | `sounds-api.ts` | **Server + Services** | 提示音静态路由 `/api/dsh-hub/sounds/*` | 保留 |
-| `bridge-server.ts` | **Server** | 桥路由（WebView2 IPC ↔ HTTP） | **废弃**（Tauri invoke 替代） |
+| `icons-api.ts` | **Server + Services** | 图标静态路由 `/api/dsh-hub/icons/*`（正则白名单防穿越，default.png 别名） | 保留 |
+| `session-paths-api.ts` | **Server + Services** | 会话路径 `/api/dsh-hub/session-paths/paths`（segment 白名单防穿越） | 保留 |
+| `terminal-pty-api.ts` | **Server** | 终端 PTY `/api/dsh-hub/pty/{create,write,resize,close,list,stream}`（node-pty 会话的 HTTP 面；SSE JSON 信封 + 15s 心跳；host+origin+token 三重守卫；错误 sanitize 为固定码） | 保留 |
+| `token.ts` | **Helper** | 进程级会话 token：`getToken` / `verifyToken`（Bearer / `?token=`，timingSafeEqual 常量时间比较）；注入由 `src/index.ts` 经 index-inject 写 global `__DSH_HUB_TOKEN__`（`injectTokenToHtml` / meta 路径为死代码，勿引用） | 保留 |
+| `host-guard.ts` | **Helper** | `isHostAllowed` / `rejectIfBadHost`（DNS-rebinding）+ `isOriginAllowed` / `rejectIfBadOrigin`（S0：POST/PUT 状态变更 Origin 白名单 loopback/`tauri:`，缺失 Origin 拒绝；GET/HEAD 跳过），路由工厂共享 | 保留 |
+| `bridge-server.ts` | **Server** | 桥路由（WebView2 IPC ↔ HTTP） | **已删除**（Tauri invoke 替代） |
 
 ## Server 层规范
 
@@ -23,3 +28,5 @@
 5. **单向依赖**：Server 只调 `../helpers/*` 与纯库；**禁止** import `../index.ts`、`../managers/*`。
 6. **错误处理**：空 catch 必须注释吞掉什么、为何无碍；错误返回 `{ ok: false, error }` 而非抛到进程。
 7. **Build 前推演**：改完先推演（路由唯一、配置三处一致、catch 覆盖、白名单防穿越），再 `npm run build`。
+8. **host 防护共享（S0）**：路由工厂共享 `host-guard.ts`——`rejectIfBadHost`（DNS-rebinding）+ `rejectIfBadOrigin`（POST/PUT 状态变更 Origin 白名单，缺失 Origin 拒绝）——**新增路由必须接**（漏接 = 任意 Host/Origin 可访问路由）。
+9. **token 鉴权（M4）**：状态变更路由（pty/*、workspace/open）还必须接 `token.ts` 的 `verifyToken`（`Authorization: Bearer` 或 `?token=`，常量时间比较）；SSE 流用 `?token=`（EventSource 无法带自定义头）；token 由 `src/index.ts` index-inject 注入全局 `__DSH_HUB_TOKEN__`，客户端从该全局读取（**不是** meta/tapIndex——那是死代码路径）。

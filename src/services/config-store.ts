@@ -71,15 +71,25 @@ export function hasStoredWindowSize(): boolean {
   }
 }
 
+/** Result of {@link writeShellConfig}: the merged value on success, or a
+ * surfaced write error on failure. The API maps `ok: false` to an error
+ * response so the client is never optimistically confirmed with a value that
+ * did not reach the disk. */
+export type ConfigWriteResult =
+  | { ok: true; value: ShellConfig }
+  | { ok: false; error: string }
+
 /**
- * Persist the config (best-effort, atomic write). Merges over the RAW stored
- * document — never over DEFAULT_SHELL_CONFIG — so a partial save (e.g. skin
- * only) cannot seed default width/height into the file, which would flip
+ * Persist the config (atomic write). Merges over the RAW stored document —
+ * never over DEFAULT_SHELL_CONFIG — so a partial save (e.g. skin only) cannot
+ * seed default width/height into the file, which would flip
  * hasStoredWindowSize() and pin the window to the defaults (A4).
  * @param patch - the narrowed fields from the POST body.
- * @returns the full effective config (defaults merged) for the response.
+ * @returns the full effective config (defaults merged) on success, or
+ *   `{ ok: false, error }` when the write threw (the caller responds with an
+ *   error instead of confirming the value).
  */
-export function writeShellConfig(patch: Partial<ShellConfig>): ShellConfig {
+export function writeShellConfig(patch: Partial<ShellConfig>): ConfigWriteResult {
   const file = configFile()
   const dir = join(dshHome(), 'dsh-hub')
   let raw: Partial<ShellConfig> = {}
@@ -97,10 +107,19 @@ export function writeShellConfig(patch: Partial<ShellConfig>): ShellConfig {
     // mid-write crash (which would silently drop every setting via the read
     // fallback).
     renameSync(tmp, file)
-  } catch {
-    // Persisting must not crash the request.
+  } catch (error) {
+    // A failed write must NOT confirm a value that never hit the disk — the
+    // API maps this to an error response instead of the old 200 + new value.
+    // Remove the tmp residue so no half-written file is left behind.
+    try {
+      rmSync(`${file}.tmp`, { force: true })
+    } catch {
+      // Best-effort cleanup; the tmp file is inert and gets overwritten on the
+      // next successful save.
+    }
+    return { ok: false, error: error instanceof Error ? error.message : String(error) }
   }
-  return { ...DEFAULT_SHELL_CONFIG, ...next }
+  return { ok: true, value: { ...DEFAULT_SHELL_CONFIG, ...next } }
 }
 
 /**

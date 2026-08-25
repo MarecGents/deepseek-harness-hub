@@ -14,8 +14,14 @@
  * **Tauri command contracts** (Rust side, T4.8):
  *  - `set_window_theme`   – apply title-bar theme ('system' | 'light' | 'dark')
  *  - `set_window_size`    – resize window (width, height in logical pixels)
- *  - `get_workspace_path` – stub returning null (D4: page-initiated report)
  *  - `notify_task_complete` – show native notification (body, sessionId?)
+ *
+ * Note: `get_workspace_path` exists as a Rust `#[tauri::command]` for the
+ * page→Rust direct invoke channel (D4), but it is NOT a DSH_CMD dispatch arm
+ * and is NOT sent through this up-link (the old host-side send was dead code
+ * — the only caller was the removed `openWorkspace` tray callback; tray
+ * "open workspace" now goes through tray-pipe `dispatch_page_event` → client
+ * `invoke('open_workspace_path')`).
  *
  * **Activation** (in src/index.ts, not changed here):
  * ```
@@ -33,6 +39,8 @@
  */
 
 import type { TaskSoundKind } from '../models/sound.js'
+import type { DshCmdPayload } from '../models/pipe.js'
+import { writeDshCmd } from '../helpers/pipe-io.js'
 
 // ─── Tauri invoke bridge ────────────────────────────────────────────────────
 
@@ -44,20 +52,21 @@ import type { TaskSoundKind } from '../models/sound.js'
  * `DSH_CMD <json>`，Rust 壳的 node.rs 后台线程解析并执行窗口操作
  * （applyTheme/applySize/notify/dispatch_page_event）。
  *
- * @param cmd   - 命令名（set_window_theme | set_window_size | notify_task_complete |
- *                play_sound | dispatch_page_event）
+ * 与 `controllers/shell-runtime.ts` 的 `sendDshCmd` 是**同一条通道、同一个
+ * 线格式**：两者都委托 `helpers/pipe-io.ts` 的 `writeDshCmd` 写 stdout（SPT
+ * 分层禁止 manager 依赖 controller，故保留两个薄包装、共享一个底层 writer）。
+ * 职责边界：本 invoke 供壳 facade（TauriShellHandle）内部操作使用；
+ * sendDshCmd 供控制器层（tray-pipe 经 index.ts 注入）使用。
+ *
+ * @param cmd   - 命令名（set_window_theme | set_window_size | set_desktop_icon |
+ *                notify_task_complete | play_sound | dispatch_page_event）
  * @param args  - 命令参数（JSON 序列化）
  * @returns     - 恒为 null（stdio 上行是单向的，无返回值）
  */
 async function invoke<T = unknown>(cmd: string, args?: Record<string, unknown>): Promise<T | null> {
-  try {
-    const payload = { cmd, ...(args ?? {}) }
-    process.stdout.write(`DSH_CMD ${JSON.stringify(payload)}\n`)
-    return null
-  } catch (error) {
-    console.warn(`[dsh-hub] DSH_CMD write failed:`, error)
-    return null
-  }
+  const payload: DshCmdPayload = { cmd, ...(args ?? {}) }
+  writeDshCmd(payload)
+  return null
 }
 
 // ─── Constants ──────────────────────────────────────────────────────────────
@@ -80,8 +89,6 @@ export interface TauriShellOptions {
   height: number | undefined
   /** Title-bar theme: 'system' | 'light' | 'dark'. */
   theme: 'system' | 'light' | 'dark'
-  /** Open the current workspace directory (tray "Open workspace"). */
-  openWorkspace: () => void
   /** Start a new task in the web UI (tray "New task"). */
   newTask: () => void
   /** Live tray behavior read at every decision point. */
@@ -116,14 +123,6 @@ export interface TauriShellHandle {
    * to the white whale on the Rust side. Idempotent.
    */
   setDesktopIcon(id: string): void
-
-  /**
-   * Request the current session's workspace path from the shell.
-   * In Tauri mode the page itself reports the path (D4), so this is a stub
-   * that invokes `get_workspace_path` (T4.8) and returns null unless the
-   * Rust side provides a cached value.
-   */
-  getCurrentWorkspacePath(cb: (path: string | null) => void): void
 
   /**
    * Dispatch a custom event to the web page (tray → client-plugin bridge).
@@ -224,31 +223,6 @@ export function openDesktopShellTauri(
     setDesktopIcon: (id: string) => {
       if (guard()) return
       void invoke('set_desktop_icon', { iconId: id })
-    },
-
-    getCurrentWorkspacePath: (cb: (path: string | null) => void) => {
-      if (guard()) {
-        cb(null)
-        return
-      }
-      // D4: In Tauri mode the page itself reports the workspace path via
-      // the client-plugin bridge. The Rust-side `get_workspace_path` command
-      // is a stub that returns null unless a page-initiated report has
-      // cached the value. Fire-and-forget with a timeout fallback.
-      let settled = false
-      const timeout = setTimeout(() => {
-        if (!settled) {
-          settled = true
-          cb(null)
-        }
-      }, 2000)
-
-      void invoke<string>('get_workspace_path').then((result) => {
-        if (settled) return
-        settled = true
-        clearTimeout(timeout)
-        cb(result ?? null)
-      })
     },
 
     dispatchEvent: (name: string, detail?: Record<string, unknown>) => {

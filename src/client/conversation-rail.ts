@@ -56,10 +56,22 @@ interface SessionsListLike {
 }
 interface ConversationNodeLike {
   kind?: string
+  /** 'user' messages carry ContentBlock[] (type:'text'). */
+  content?: unknown
+  /** 'assistant' messages carry AssistantBlock[] (kind:'text'). */
+  blocks?: unknown
+  /** Node timestamp (ms) — used with turnTimings time windows (PR #40 scheme). */
+  time?: number
+  /** Turn index (assistant nodes) — direct alignment with turnTimings. */
+  turn?: number
+  /** Command nodes expose name/args; compaction nodes expose summary. */
+  name?: string
+  args?: string
+  summary?: string
 }
 interface ConversationSnapshotLike {
   nodes?: readonly ConversationNodeLike[]
-  turnTimings?: { size?: number }
+  turnTimings?: ReadonlyMap<number, { startTime?: number; endTime?: number }>
   blank?: boolean
 }
 interface ClientCtxLike {
@@ -85,6 +97,8 @@ export function installConversationRail(ctx: unknown): () => void {
   // ── State ────────────────────────────────────────────────────────────────
   let currentSessionId: string | undefined
   let segmentCount = 0
+  let previews: string[] = []
+  let tooltip: HTMLElement | null = null
   let rail: HTMLElement | null = null
   let scrollContainer: HTMLElement | null = null
   let slot: HTMLElement | null = null
@@ -297,6 +311,93 @@ export function installConversationRail(ctx: unknown): () => void {
   }
 
   // ── Rendering ────────────────────────────────────────────────────────────
+  // Per-turn opening text (hover preview). Data source uses REAL node kinds —
+  // the snapshot has no 'turn'/'text' kinds (and no 'turn-tail' node either:
+  // legacy projection drops it). PR #40 scheme: extractNodeText (user/steering/
+  // context/assistant/command/compaction) + extractTurnSummaries (aligns each
+  // turn with turnTimings time windows [startTime, endTime) and node.turn).
+  // Command turns (no user node) fall back to the assistant reply; empty slots
+  // keep the tooltip on "第 N 段对话".
+  function extractNodeText(node: ConversationNodeLike | undefined): string {
+    if (node === undefined) return ''
+    if (node.kind === 'assistant') {
+      return (node.blocks as Array<{ kind?: string; text?: string }> | undefined ?? [])
+        .filter((b) => b.kind === 'text' && typeof b.text === 'string')
+        .map((b) => b.text ?? '')
+        .join(' ')
+    }
+    if (node.kind === 'user' || node.kind === 'steering' || node.kind === 'context') {
+      return (node.content as Array<{ type?: string; text?: string }> | undefined ?? [])
+        .map((blk) => (typeof blk.text === 'string' ? blk.text : ''))
+        .join(' ')
+    }
+    if (node.kind === 'command') {
+      return `/${node.name ?? ''} ${node.args ?? ''}`.trim()
+    }
+    if (node.kind === 'compaction') return node.summary ?? ''
+    return ''
+  }
+  function extractTurnSummaries(snapshot: ConversationSnapshotLike | undefined): string[] {
+    const count = deriveSegmentCount(snapshot)
+    if (count <= 0) return []
+    const nodes = snapshot?.nodes ?? []
+    const entries = snapshot?.turnTimings ? Array.from(snapshot.turnTimings.entries()) : []
+    const out: string[] = []
+    for (let t = 0; t < count; t += 1) {
+      const range = entries[t]?.[1]
+      const lo = range?.startTime ?? -Infinity
+      const hi = range?.endTime ?? Infinity
+      let userText = ''
+      let fallback = ''
+      for (const node of nodes) {
+        if (node === undefined) continue
+        if (node.kind === 'assistant') {
+          if (node.turn === t) fallback += extractNodeText(node) + ' '
+          continue
+        }
+        if (node.time === undefined) continue
+        if (node.time >= lo && node.time < hi) {
+          const txt = extractNodeText(node)
+          if (node.kind === 'user' || node.kind === 'steering') userText += txt + ' '
+          else fallback += txt + ' '
+        }
+      }
+      // Prefer the user's own message as the preview; fall back to the reply
+      // only when this turn had no human message.
+      out.push((userText || fallback).trim())
+    }
+    return out
+  }
+
+  // Hover tooltip (body portal, token colors — no hardcoded hex).
+  function ensureTooltip(): HTMLElement | null {
+    if (tooltip !== null && tooltip.isConnected) return tooltip
+    const tip = document.createElement('div')
+    tip.id = 'dsh-hub-conversation-rail-tip'
+    tip.style.cssText =
+      'position:fixed;z-index:2147483000;display:none;pointer-events:none;max-width:260px;' +
+      'padding:6px 10px;border-radius:6px;font-size:12px;line-height:1.5;' +
+      'background:var(--dsw-alias-tooltip-bg, #1f1f23);' +
+      'color:var(--dsw-alias-label-primary, #e8e8ea);' +
+      'border:1px solid var(--dsw-alias-border-l2, rgba(0,0,0,.25));' +
+      'box-shadow:var(--dsw-shadow-lv2, 0 4px 12px rgba(0,0,0,.25))'
+    document.body.appendChild(tip)
+    tooltip = tip
+    return tip
+  }
+  function showTooltip(i: number, anchor: HTMLElement): void {
+    const tip = ensureTooltip()
+    if (tip === null) return
+    tip.textContent = previews[i] ? `第 ${i + 1} 段 · ${previews[i]}` : `第 ${i + 1} 段对话`
+    const a = anchor.getBoundingClientRect()
+    tip.style.display = 'block'
+    tip.style.left = `${Math.max(4, a.right + 8)}px`
+    tip.style.top = `${Math.max(4, a.top - 6)}px`
+  }
+  function hideTooltip(): void {
+    if (tooltip !== null) tooltip.style.display = 'none'
+  }
+
   function deriveSegmentCount(snapshot: ConversationSnapshotLike | undefined): number {
     const turns = snapshot?.turnTimings?.size ?? 0
     if (turns > 0) return turns
@@ -335,8 +436,11 @@ export function installConversationRail(ctx: unknown): () => void {
       tick.className = c.tick
       tick.dataset.mgCrIndex = String(i)
       tick.setAttribute('aria-label', `跳转到第 ${i + 1} 段对话`)
-      tick.title = `第 ${i + 1} 段对话`
       tick.addEventListener('click', () => scrollToSegment(i))
+      // Hover preview (PR #35): show the turn's opening text in a body-portal
+      // tooltip (native title removed to avoid double popups).
+      tick.addEventListener('mouseenter', () => showTooltip(i, tick))
+      tick.addEventListener('mouseleave', hideTooltip)
       root.appendChild(tick)
     }
     root.hidden = false
@@ -397,10 +501,12 @@ export function installConversationRail(ctx: unknown): () => void {
     unsubCurrentSession = session.subscribe?.(() => {
       const snap = session.getSnapshot?.()
       segmentCount = deriveSegmentCount(snap)
+      previews = extractTurnSummaries(snap)
       syncGeometry()
     }) ?? (() => {})
     const snap = session.getSnapshot?.()
     segmentCount = deriveSegmentCount(snap)
+    previews = extractTurnSummaries(snap)
     syncGeometry()
   }
 
@@ -452,5 +558,7 @@ export function installConversationRail(ctx: unknown): () => void {
     document.removeEventListener('scroll', onScroll, true)
     rail?.remove()
     rail = null
+    tooltip?.remove()
+    tooltip = null
   }
 }
