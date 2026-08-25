@@ -37,16 +37,33 @@
 import { spawn } from 'node-pty'
 import type { IPty } from 'node-pty'
 import { randomUUID } from 'node:crypto'
-import { execFile } from 'node:child_process'
+import { execFile, execFileSync } from 'node:child_process'
+import { existsSync } from 'node:fs'
+import { join } from 'node:path'
 
 /** One terminal tab as exposed to the client. */
 export interface PtyTab {
   id: string
-  shell: 'PowerShell'
+  /** Display name of the running shell (e.g. "PowerShell 5.1", "Bash"). */
+  shell: string
+  /** Shell kind for client-side retarget commands (cd semantics differ). */
+  shellId: ShellId
   cwd: string
   title: string
   createdAt: number
   alive: boolean
+}
+
+/** Shell choices for a PTY tab. Availability is PROBED, not assumed — the
+ * client lists only shells that exist on this machine. */
+export type ShellId = 'powershell' | 'pwsh' | 'cmd' | 'bash'
+
+/** A detected shell candidate. */
+export interface ShellInfo {
+  id: ShellId
+  name: string
+  available: boolean
+  path?: string
 }
 
 /** Internal per-session state (tab + live pty + output ring buffer). */
@@ -65,8 +82,79 @@ const sessions = new Map<string, Session>()
 /** Output ring-buffer ceiling (characters kept for new-subscriber replay). */
 const MAX_BUFFER = 200_000
 
-/** Shell launched for every tab (Windows-only host). */
-const SHELL_EXE = 'powershell.exe'
+/** System PowerShell 5.1 (always present on Windows). */
+const POWERSHELL_5 = join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe')
+/** System cmd.exe (always present on Windows). */
+const CMD_EXE = join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'cmd.exe')
+
+/** Resolve an executable by name on PATH (Windows `where`, POSIX `which`). */
+function findOnPath(name: string): string | null {
+  try {
+    const cmd = process.platform === 'win32' ? 'where' : 'which'
+    const out = execFileSync(cmd, [name], { encoding: 'utf8', windowsHide: true, timeout: 5000 })
+    const first = out.split(/\r?\n/).map((l) => l.trim()).find((l) => l !== '')
+    return first !== undefined && existsSync(first) ? first : null
+  } catch {
+    return null
+  }
+}
+
+/** Shell candidates in display order, each with an availability probe. */
+const SHELL_PROBES: Array<{ id: ShellId; name: string; probe: () => string | null }> = [
+  { id: 'powershell', name: 'PowerShell 5.1', probe: () => (existsSync(POWERSHELL_5) ? POWERSHELL_5 : findOnPath('powershell.exe')) },
+  { id: 'pwsh', name: 'PowerShell 7 (pwsh)', probe: () => findOnPath('pwsh.exe') },
+  { id: 'cmd', name: '命令提示符 (cmd)', probe: () => (existsSync(CMD_EXE) ? CMD_EXE : findOnPath('cmd.exe')) },
+  { id: 'bash', name: 'Bash (Git Bash / WSL)', probe: () => findOnPath('bash.exe') },
+]
+
+/** Availability probe result, cached per process (PATH does not change mid-run). */
+let shellsCache: ShellInfo[] | null = null
+
+/**
+ * Detect the shells available on this machine (the client lists ONLY these —
+ * absent shells are never offered). Probes are cheap (`where`/`which` + known
+ * system paths) and cached.
+ * @returns the four candidates in display order with their availability.
+ */
+export function detectShells(): ShellInfo[] {
+  if (shellsCache !== null) return shellsCache
+  shellsCache = SHELL_PROBES.map((s) => {
+    let path: string | null = null
+    try { path = s.probe() } catch { path = null }
+    return { id: s.id, name: s.name, available: path !== null, path: path ?? undefined }
+  })
+  return shellsCache
+}
+
+/**
+ * Resolve a shell id to a spawn spec (exe + argv for the given cwd). Throws
+ * when the id is unknown or the shell was not detected as available — the
+ * client may only request shells the probe reported.
+ * @param id - the shell id from {@link detectShells}.
+ * @param cwd - the working directory the shell starts in (already validated).
+ */
+function shellSpec(id: string, cwd: string): { exe: string; args: string[] } {
+  const info = detectShells().find((s) => s.id === id)
+  if (info === undefined || !info.available || info.path === undefined) {
+    throw new Error(`shell unavailable: ${id}`)
+  }
+  switch (id) {
+    case 'powershell':
+    case 'pwsh':
+      // Single-quoted with embedded quotes doubled — the path is passed
+      // literally and cannot be re-parsed by the PS parser.
+      return { exe: info.path, args: ['-NoLogo', '-NoExit', '-Command', "Set-Location -LiteralPath '" + cwd.replace(/'/g, "''") + "'"] }
+    case 'cmd':
+      // /K keeps the prompt open after cd; the path is quoted for spaces.
+      return { exe: info.path, args: ['/K', 'cd /d "' + cwd.replace(/"/g, '""') + '"'] }
+    case 'bash':
+      // Git Bash / WSL bash inherit the PTY cwd (node-pty sets the process
+      // working directory); no startup command needed for an interactive shell.
+      return { exe: info.path, args: [] }
+    default:
+      throw new Error(`unknown shell: ${id}`)
+  }
+}
 
 /**
  * Hard cap on concurrent PTY sessions. A token holder could otherwise spawn an
@@ -166,28 +254,29 @@ function killPty(s: Session): void {
 }
 
 /**
- * Create a persistent PowerShell PTY tab rooted at `cwd`.
- *
- * The `Set-Location` command single-quotes the cwd with embedded quotes
- * doubled (`'` → `''`), so the path is passed literally and cannot be
- * re-parsed by PowerShell.
+ * Create a persistent PTY tab rooted at `cwd` running the requested shell.
  *
  * @param cwd - absolute directory the shell starts in (caller validates).
  * @param cols - initial terminal columns (default 100).
  * @param rows - initial terminal rows (default 28).
+ * @param shell - shell id from {@link detectShells} (default 'powershell').
  * @returns the new tab descriptor.
  * @throws {@link PtyLimitReachedError} when the session quota is full.
- * @throws when the PTY cannot be spawned (caller maps this to a 500).
+ * @throws when the PTY cannot be spawned or the shell is unavailable
+ *   (caller maps this to a 500 / shell-unavailable).
  */
-export function createPty(cwd: string, cols = 100, rows = 28): PtyTab {
+export function createPty(cwd: string, cols = 100, rows = 28, shell: ShellId = 'powershell'): PtyTab {
   if (sessions.size >= SESSION_LIMIT) {
     console.warn(`[dsh-hub] pty create rejected: session limit ${SESSION_LIMIT} reached`)
     throw new PtyLimitReachedError()
   }
+  const shellInfo = detectShells().find((s) => s.id === shell)
+  const spec = shellSpec(shell, cwd)
   const id = 'pty-' + randomUUID().slice(0, 8)
-  const tab: PtyTab = { id, shell: 'PowerShell', cwd, title: titleFor(cwd), createdAt: Date.now(), alive: true }
-  const setLocation = "Set-Location -LiteralPath '" + cwd.replace(/'/g, "''") + "'"
-  const pty = spawn(SHELL_EXE, ['-NoLogo', '-NoExit', '-Command', setLocation], {
+  const tab: PtyTab = {
+    id, shell: shellInfo?.name ?? shell, shellId: shell, cwd, title: titleFor(cwd), createdAt: Date.now(), alive: true,
+  }
+  const pty = spawn(spec.exe, spec.args, {
     name: 'xterm-256color',
     cols,
     rows,

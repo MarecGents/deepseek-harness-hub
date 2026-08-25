@@ -29,14 +29,22 @@
  * cwd, and dead helpers from the PR removed.
  */
 import { useSyncExternalStore } from 'react'
+import { getPrefs, setShell } from './terminal-prefs.ts'
 
-export interface PtyTab { id: string; shell: string; cwd: string; title: string; alive: boolean }
+export type ShellId = 'powershell' | 'pwsh' | 'cmd' | 'bash'
+
+/** One detected shell candidate (mirror of the host's detectShells output). */
+export interface ShellInfo { id: ShellId; name: string; available: boolean; path?: string }
+
+export interface PtyTab { id: string; shell: string; shellId: ShellId; cwd: string; title: string; alive: boolean }
 
 interface State {
   visible: boolean
   tabs: PtyTab[]
   activeId: string | null
   outputs: Record<string, string>
+  /** Detected shells (only available ones are offered in the settings). */
+  shells: ShellInfo[]
   /** Transient user-facing hint (e.g. a failed close), rendered by the dock. */
   notice: string | null
 }
@@ -47,7 +55,7 @@ const RING_LIMIT = 512 * 1024
 /** Write-flush batching window (ms): keystrokes collected, then one POST. */
 const WRITE_FLUSH_MS = 40
 
-let state: State = { visible: false, tabs: [], activeId: null, outputs: {}, notice: null }
+let state: State = { visible: false, tabs: [], activeId: null, outputs: {}, shells: [], notice: null }
 const listeners = new Set<() => void>()
 const streams = new Map<string, EventSource>()
 const dataSubs = new Map<string, Set<(chunk: string) => void>>()
@@ -118,6 +126,7 @@ interface HttpResult {
   ok?: boolean
   tab?: PtyTab
   tabs?: PtyTab[]
+  shells?: ShellInfo[]
   error?: string
 }
 
@@ -132,6 +141,36 @@ async function httpPost(path: string, body: unknown): Promise<HttpResult> {
   } catch {
     // Network or JSON failure: report !ok so callers keep their local state.
     return { ok: false }
+  }
+}
+
+/** GET JSON from a plugin route, carrying the Bearer token when present. */
+async function httpGet(path: string): Promise<HttpResult> {
+  try {
+    const token = getToken()
+    const headers: Record<string, string> = {}
+    if (token !== '') headers['Authorization'] = 'Bearer ' + token
+    const res = await fetch(path, { method: 'GET', headers })
+    return (await res.json()) as HttpResult
+  } catch {
+    return { ok: false }
+  }
+}
+
+/**
+ * Fetch the shells available on this machine and reconcile the persisted
+ * default against them (an unavailable default falls back to the first
+ * available shell). Idempotent; called once at assembly.
+ */
+export async function fetchShells(): Promise<void> {
+  const res = await httpGet('/api/dsh-hub/pty/shells')
+  const shells = Array.isArray(res.shells) ? res.shells.filter((s): s is ShellInfo => typeof s?.id === 'string') : []
+  if (shells.length === 0) return
+  set({ shells })
+  const pref = getPrefs().shell
+  if (!shells.some((s) => s.id === pref && s.available)) {
+    const first = shells.find((s) => s.available)
+    if (first !== undefined && first.id !== pref) setShell(first.id)
   }
 }
 
@@ -267,7 +306,7 @@ export async function ptyOpen(cwd?: string): Promise<void> {
  */
 export async function createTab(cwd?: string): Promise<void> {
   const target = cwd ?? resolveEntryCwd()
-  const res = await httpPost('/api/dsh-hub/pty/create', { cwd: target })
+  const res = await httpPost('/api/dsh-hub/pty/create', { cwd: target, shell: getPrefs().shell })
   if (res.ok === true && res.tab !== undefined) {
     set({
       tabs: [...state.tabs, res.tab],
@@ -278,7 +317,7 @@ export async function createTab(cwd?: string): Promise<void> {
     subscribeStream(res.tab.id)
     return
   }
-  set({ notice: '创建终端失败' })
+  set({ notice: res.error === 'shell-unavailable' ? '所选终端不可用' : '创建终端失败' })
 }
 
 /**
@@ -351,13 +390,20 @@ export function ptySubscribeData(id: string, cb: (chunk: string) => void): () =>
 
 /**
  * Retarget the active tab's working directory when the workspace switches:
- * update the tab label and run Set-Location in the live shell session
- * (single-quoted with '' escaping).
+ * update the tab label and run the shell-appropriate cd command in the live
+ * session (each shell has its own syntax: PowerShell Set-Location, cmd /d,
+ * bash plain cd — all handle the Windows path).
  */
 export async function ptyRetarget(cwd: string): Promise<void> {
   const id = state.activeId
   if (id === null || cwd === '') return
+  const tab = state.tabs.find((t) => t.id === id)
   set({ tabs: state.tabs.map((t) => (t.id === id ? { ...t, cwd } : t)) })
   const escaped = cwd.replace(/'/g, "''")
-  pushWrite(id, "Set-Location -LiteralPath '" + escaped + "'\r")
+  const cmd = tab?.shellId === 'cmd'
+    ? 'cd /d "' + cwd.replace(/"/g, '""') + '"\r'
+    : tab?.shellId === 'bash'
+      ? "cd '" + escaped + "'\r"
+      : "Set-Location -LiteralPath '" + escaped + "'\r"
+  pushWrite(id, cmd)
 }

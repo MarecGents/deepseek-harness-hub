@@ -1,12 +1,32 @@
 /** One terminal tab as exposed to the client. */
 export interface PtyTab {
     id: string;
-    shell: 'PowerShell';
+    /** Display name of the running shell (e.g. "PowerShell 5.1", "Bash"). */
+    shell: string;
+    /** Shell kind for client-side retarget commands (cd semantics differ). */
+    shellId: ShellId;
     cwd: string;
     title: string;
     createdAt: number;
     alive: boolean;
 }
+/** Shell choices for a PTY tab. Availability is PROBED, not assumed — the
+ * client lists only shells that exist on this machine. */
+export type ShellId = 'powershell' | 'pwsh' | 'cmd' | 'bash';
+/** A detected shell candidate. */
+export interface ShellInfo {
+    id: ShellId;
+    name: string;
+    available: boolean;
+    path?: string;
+}
+/**
+ * Detect the shells available on this machine (the client lists ONLY these —
+ * absent shells are never offered). Probes are cheap (`where`/`which` + known
+ * system paths) and cached.
+ * @returns the four candidates in display order with their availability.
+ */
+export declare function detectShells(): ShellInfo[];
 /**
  * Hard cap on concurrent PTY sessions. A token holder could otherwise spawn an
  * unbounded number of PowerShell processes (resource DoS); createPty throws
@@ -19,20 +39,18 @@ export declare class PtyLimitReachedError extends Error {
     constructor();
 }
 /**
- * Create a persistent PowerShell PTY tab rooted at `cwd`.
- *
- * The `Set-Location` command single-quotes the cwd with embedded quotes
- * doubled (`'` → `''`), so the path is passed literally and cannot be
- * re-parsed by PowerShell.
+ * Create a persistent PTY tab rooted at `cwd` running the requested shell.
  *
  * @param cwd - absolute directory the shell starts in (caller validates).
  * @param cols - initial terminal columns (default 100).
  * @param rows - initial terminal rows (default 28).
+ * @param shell - shell id from {@link detectShells} (default 'powershell').
  * @returns the new tab descriptor.
  * @throws {@link PtyLimitReachedError} when the session quota is full.
- * @throws when the PTY cannot be spawned (caller maps this to a 500).
+ * @throws when the PTY cannot be spawned or the shell is unavailable
+ *   (caller maps this to a 500 / shell-unavailable).
  */
-export declare function createPty(cwd: string, cols?: number, rows?: number): PtyTab;
+export declare function createPty(cwd: string, cols?: number, rows?: number, shell?: ShellId): PtyTab;
 /**
  * All live tabs (for the list route). The returned tab objects are live
  * references — the client should re-fetch after a close.

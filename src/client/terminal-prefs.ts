@@ -1,16 +1,22 @@
 /**
- * Terminal preferences — font size + color theme for the PTY dock, persisted
- * to localStorage under `dsh-hub:terminal-prefs`. Survives reloads; lives in
- * its own module so the dock and any future settings surface share one store.
+ * Terminal preferences — font size, color theme and default shell for the PTY
+ * dock, persisted to localStorage under `dsh-hub:terminal-prefs`. Survives
+ * reloads; lives in its own module so the dock and any future settings surface
+ * share one store.
  *
  * Client plugin module (settings store). Public API:
  *   subscribePrefs / getPrefs / usePrefs — external-store access
  *   setFontSize(n)  — clamp 9..24, persist, notify
  *   toggleTheme()   — flip dark/light, persist, notify
+ *   setShell(id)    — default shell for new PTY tabs, persist, notify
  */
 import { useSyncExternalStore } from 'react'
 
-export interface TerminalPrefs { fontSize: number; dark: boolean }
+/** Client-side mirror of the host ShellId union (the client bundle cannot
+ * import the host service module). */
+export type ShellId = 'powershell' | 'pwsh' | 'cmd' | 'bash'
+
+export interface TerminalPrefs { fontSize: number; dark: boolean; shell: ShellId }
 
 const KEY = 'dsh-hub:terminal-prefs'
 /** Legacy dot-separated key — migrated to KEY once (idempotent). */
@@ -41,14 +47,14 @@ function readStored(): string | null {
 /** Load persisted prefs; corrupt or unreadable storage falls back to defaults. */
 function load(): TerminalPrefs {
   const raw = readStored()
-  if (raw === null) return { fontSize: 13, dark: true }
+  if (raw === null) return { fontSize: 13, dark: true, shell: 'powershell' }
   try {
     const p = JSON.parse(raw) as Partial<TerminalPrefs>
-    return { fontSize: p.fontSize ?? 13, dark: p.dark ?? true }
+    return { fontSize: p.fontSize ?? 13, dark: p.dark ?? true, shell: p.shell ?? 'powershell' }
   } catch {
     // Corrupt JSON or storage blocked — defaults are fine.
   }
-  return { fontSize: 13, dark: true }
+  return { fontSize: 13, dark: true, shell: 'powershell' }
 }
 
 let prefs: TerminalPrefs = load()
@@ -84,6 +90,19 @@ export function setFontSize(n: number): void {
 /** Toggle the terminal color theme (dark/light) and persist it. */
 export function toggleTheme(): void {
   prefs = { ...prefs, dark: !prefs.dark }
+  save()
+  emit()
+}
+
+/**
+ * Set the default shell for NEW PTY tabs and persist it. The host validates
+ * availability on create; the caller (dock settings) only offers shells the
+ * availability probe reported.
+ * @param id - one of the detected shell ids.
+ */
+export function setShell(id: ShellId): void {
+  if (prefs.shell === id) return
+  prefs = { ...prefs, shell: id }
   save()
   emit()
 }

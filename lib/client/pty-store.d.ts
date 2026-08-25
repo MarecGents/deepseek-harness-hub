@@ -1,6 +1,15 @@
+export type ShellId = 'powershell' | 'pwsh' | 'cmd' | 'bash';
+/** One detected shell candidate (mirror of the host's detectShells output). */
+export interface ShellInfo {
+    id: ShellId;
+    name: string;
+    available: boolean;
+    path?: string;
+}
 export interface PtyTab {
     id: string;
     shell: string;
+    shellId: ShellId;
     cwd: string;
     title: string;
     alive: boolean;
@@ -10,6 +19,8 @@ interface State {
     tabs: PtyTab[];
     activeId: string | null;
     outputs: Record<string, string>;
+    /** Detected shells (only available ones are offered in the settings). */
+    shells: ShellInfo[];
     /** Transient user-facing hint (e.g. a failed close), rendered by the dock. */
     notice: string | null;
 }
@@ -23,6 +34,12 @@ export declare function subscribePty(cb: () => void): () => void;
  * @param sel - selector over the store state.
  */
 export declare function usePty<T>(sel: (s: State) => T): T;
+/**
+ * Fetch the shells available on this machine and reconcile the persisted
+ * default against them (an unavailable default falls back to the first
+ * available shell). Idempotent; called once at assembly.
+ */
+export declare function fetchShells(): Promise<void>;
 /**
  * Bind the dsh client runtime so entry-cwd resolution can read the current
  * session's summary cwd (richest source). Call once from the assembly with
@@ -77,8 +94,9 @@ export declare function ptyResizeClient(id: string, cols: number, rows: number):
 export declare function ptySubscribeData(id: string, cb: (chunk: string) => void): () => void;
 /**
  * Retarget the active tab's working directory when the workspace switches:
- * update the tab label and run Set-Location in the live shell session
- * (single-quoted with '' escaping).
+ * update the tab label and run the shell-appropriate cd command in the live
+ * session (each shell has its own syntax: PowerShell Set-Location, cmd /d,
+ * bash plain cd — all handle the Windows path).
  */
 export declare function ptyRetarget(cwd: string): Promise<void>;
 export {};

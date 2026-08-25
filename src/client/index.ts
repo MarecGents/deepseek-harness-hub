@@ -36,7 +36,7 @@ import { installPinnedConversations } from './pin-conversations.ts'
 import { installConversationRail, refreshConversationRailPalette } from './conversation-rail.ts'
 import { installModelSelect } from './model-select.tsx'
 import { SessionTabs } from './SessionTabs.tsx'
-import { bindPtyRuntime, ptyToggle } from './pty-store.ts'
+import { bindPtyRuntime, fetchShells, ptyToggle } from './pty-store.ts'
 import { TerminalPage } from './terminal-dock.tsx'
 
 /**
@@ -355,6 +355,13 @@ export function apply(ctx: ClientContext): void {
     bindPtyRuntime(ctx)
   } catch (error) {
     console.warn('[dsh-hub] pty runtime bind failed:', error)
+  }
+  // Detect the shells available on this machine so the terminal settings only
+  // list shells that actually exist (absent shells are never offered).
+  try {
+    void fetchShells()
+  } catch (error) {
+    console.warn('[dsh-hub] pty shells fetch failed:', error)
   }
   const onTerminalKey = (event: KeyboardEvent): void => {
     if (!((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'j')) return

@@ -33,7 +33,7 @@ import { isAbsolute } from 'node:path'
 import { readJsonBody } from '../helpers/read-json-body.js'
 import { rejectIfBadHost, rejectIfBadOriginPresent } from './host-guard.ts'
 import { verifyToken } from './token.ts'
-import { createPty, getTab, listTabs, ptyClose, ptyResize, ptySubscribe, ptyWrite, PtyLimitReachedError } from '../services/pty-manager.ts'
+import { createPty, detectShells, getTab, listTabs, ptyClose, ptyResize, ptySubscribe, ptyWrite, PtyLimitReachedError, type ShellId } from '../services/pty-manager.ts'
 
 const P = '/api/dsh-hub/pty'
 const HEARTBEAT_MS = 15_000
@@ -115,16 +115,24 @@ export function makePtyRoutes(): WebRoute[] {
         if (rejectIfBadOriginPresent(req, res)) return Promise.resolve()
         if (rejectWrongMethod(req, res, 'POST')) return Promise.resolve()
         return readJsonBody(req).then((body) => {
-          const record = (body ?? {}) as { cwd?: unknown; cols?: unknown; rows?: unknown }
+          const record = (body ?? {}) as { cwd?: unknown; cols?: unknown; rows?: unknown; shell?: unknown }
           const cwd = resolveCwd(record.cwd)
           if (cwd === null) {
             json(res, 400, { ok: false, error: 'invalid-request' })
             return
           }
+          // The requested shell must be one the availability probe reported —
+          // the client may only spawn shells that exist on this machine.
+          const requested = typeof record.shell === 'string' && record.shell !== '' ? record.shell as ShellId : 'powershell'
+          const available = detectShells().some((s) => s.id === requested && s.available)
+          if (!available) {
+            json(res, 400, { ok: false, error: 'shell-unavailable' })
+            return
+          }
           const cols = clampInt(record.cols, 100, 2, 1000)
           const rows = clampInt(record.rows, 28, 2, 500)
           try {
-            const tab = createPty(cwd, cols, rows)
+            const tab = createPty(cwd, cols, rows, requested)
             json(res, 200, { ok: true, tab })
           } catch (error) {
             if (error instanceof PtyLimitReachedError) {
@@ -209,6 +217,19 @@ export function makePtyRoutes(): WebRoute[] {
           }
           json(res, 200, { ok: true })
         }, () => json(res, 400, { ok: false, error: 'invalid-request' }))
+      },
+    },
+    {
+      kind: 'exact',
+      path: P + '/shells',
+      handler: (req: IncomingMessage, res: ServerResponse): Promise<void> => {
+        if (rejectIfBadHost(req, res)) return Promise.resolve()
+        if (rejectUnauthorized(req, res)) return Promise.resolve()
+        if (rejectWrongMethod(req, res, 'GET')) return Promise.resolve()
+        // The client lists ONLY detected shells (absent shells are never
+        // offered) — availability is probed, not assumed.
+        json(res, 200, { ok: true, shells: detectShells() })
+        return Promise.resolve()
       },
     },
     {

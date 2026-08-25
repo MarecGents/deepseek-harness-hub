@@ -31,7 +31,7 @@ import {
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import { Terminal } from '@xterm/xterm'
 import { XTERM_CSS } from './xterm-css.ts'
-import { setFontSize, toggleTheme, usePrefs } from './terminal-prefs.ts'
+import { setFontSize, setShell, toggleTheme, usePrefs } from './terminal-prefs.ts'
 import {
   closeTab, createTab, ptyClosePanel, ptyResizeClient, ptySendRaw, ptySubscribeData, setActiveTab, usePty,
 } from './pty-store.ts'
@@ -280,6 +280,7 @@ export function TerminalPage(): ReactNode {
   const tabs = usePty((s) => s.tabs)
   const activeId = usePty((s) => s.activeId)
   const notice = usePty((s) => s.notice)
+  const shells = usePty((s) => s.shells)
   const active = tabs.find((t) => t.id === activeId)
   const prefs = usePrefs()
   const [settingsOpen, setSettingsOpen] = useState(false)
@@ -437,10 +438,27 @@ export function TerminalPage(): ReactNode {
               {prefs.dark ? '浅色主题' : '深色主题'}
             </span>
           </button>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <span style={{ fontSize: 12, color: 'var(--dsw-alias-label-tertiary, #999)' }}>默认终端</span>
+            {/* Only DETECTED shells are offered — absent shells are never listed. */}
+            {shells.filter((s) => s.available).map((s) => (
+              <button
+                key={s.id}
+                type="button"
+                style={{ ...BTN, justifyContent: 'flex-start', textAlign: 'left', ...(s.id === prefs.shell ? { borderColor: 'var(--dsw-alias-state-business-primary, #3964fe)' } : {}) }}
+                onClick={() => setShell(s.id)}
+              >
+                {s.id === prefs.shell ? '✓ ' : ''}{s.name}
+              </button>
+            ))}
+            {shells.filter((s) => s.available).length === 0 && (
+              <span style={{ fontSize: 11, color: 'var(--dsw-alias-label-tertiary, #999)' }}>未检测到可用终端</span>
+            )}
+          </div>
         </div>
       )}
       <div style={STATUS}>
-        <span>PowerShell</span>
+        <span>{active?.shell ?? 'Shell'}</span>
         <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{active?.cwd || '未设置工作目录'}</span>
         {notice !== null ? (
           <span role="status" style={{ color: 'var(--dsw-alias-state-error-primary, #dc2626)', animation: 'mg-term-notice-in .18s ease' }}>
