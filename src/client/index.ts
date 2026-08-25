@@ -285,6 +285,10 @@ export function apply(ctx: ClientContext): void {
     refreshConversationRailPalette() // backdrop restored after boot — re-derive rail colors
   })
 
+  // Note (C8 误报澄清，2026-08-25)：slots.inject 内部自带 ctx.effect 生命周期
+  // 管理（dsh-client-runtime slots.ts:176 `ctx.effect(callback, 'slots.inject(...)')`，
+  // 返回 disposer，fiber unload 自动回收）——无需外部再包 ctx.effect（外部包裹会导致
+  // 回调返回 void 的 TS 类型错误，且生命周期重复管理）。保持官方用法原样。
   try {
     slots.inject('settings.plugin.item', function* () {
       yield slots.register({

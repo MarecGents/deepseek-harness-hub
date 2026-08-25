@@ -136,7 +136,8 @@ fn handle_menu_event(app: &tauri::AppHandle, event: MenuEvent) {
     match event.id().as_ref() {
         MENU_TOGGLE => {
             // 显示/隐藏主界面（由 window_toggle_visible 按当前可见性判断）。
-            let _ = crate::commands::window_toggle_visible(app.clone());
+            // 经 window_ops（managers 层唯一实现），避免 managers→commands 反向依赖。
+            let _ = crate::window_ops::window_toggle_visible(app);
         }
         MENU_OPEN_WORKSPACE | MENU_NEW_TASK => {
             // rc.14 tray-helper 模式：托盘命令经独立进程管道（dsh web stdin）下行

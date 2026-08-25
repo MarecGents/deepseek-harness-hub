@@ -14,5 +14,11 @@
  * (existing absolute path; the path-guard keeps cwd/path out of the shell).
  */
 import type { WebRoute } from '@deepseek-ai/dsh-host-webserver';
-/** Build the workspace API routes (list + git + open). */
-export declare function makeWorkspaceRoutes(): WebRoute[];
+/**
+ * Build the workspace API routes (list + git + open).
+ * @param resolveWorkspaceRoot - optional getter for the session workspace root
+ *   (host-tracked active cwd). The `open` route refuses any target outside
+ *   this root — macOS `open` / Linux `xdg-open` can execute arbitrary files,
+ *   so a compromised same-origin page must not drive them past the workspace.
+ */
+export declare function makeWorkspaceRoutes(resolveWorkspaceRoot?: () => string | undefined): WebRoute[];

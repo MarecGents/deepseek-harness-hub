@@ -47,7 +47,8 @@ src-tauri/src/
 6. **D-2 通道（remote origin 事实）**：页面无 `window.__TAURI_INTERNALS__.event`——页面→Rust 走 invoke（ACL allow-*）；Rust→页面走 `win.eval`。
 7. **ACL 三处一致**：新增 invoke 命令必须同步 ① `lib.rs` invoke_handler ② `build.rs` 命令列表 ③ `capabilities/default.json` allow-*（漏一处 = 页面 invoke 被拒）。
 8. **日志**：关键路径必须留日志（`info!`/`warn!`，前缀 `t4.x`/`m4`/`notify:`/`tray`/`pipe`/`shortcut`），经 tauri-plugin-log 三目标进 dsh.log——失效排查第一手证据。
-9. **E2E**：`helpers/e2e.rs` 仅 debug_assertions + `DSH_HUB_E2E=1` 启用，**必须**用隔离 DSH_HOME（临时目录），**禁止**碰真实 ~/.dsh。
+9. **E2E**：`helpers/e2e.rs` 仅 debug_assertions + `DSH_HUB_E2E=1` 启用，**必须**用隔离 DSH_HOME（临时目录/E: 盘），**禁止**碰真实 ~/.dsh。
+10. **数据安全（铁律 8）**：**禁止**删除/清空 `C:\Users\*`、`~`、真实 `~/.dsh` 下任何文件；任何 `rm`/`Remove-Item`/`RMDir`/`remove_dir_all` 的目标路径不得含 `~`、`$HOME`、`USERPROFILE`、`C:\Users`；复现/测试一律隔离 DSH_HOME，永不删真实 `~/.dsh`；删除前先打印目标绝对路径。
 10. **clippy 零告警**：`cargo clippy --all-targets` 必须干净（`let _ =` 无意义丢弃、借用表达式 `&format!(...)`、`true.into()` 等按 clippy 修正）。
 11. **窗口事件**：Tauri 无 Minimized 事件 → Resized + `is_minimized()` 检测最小化到托盘；`prevent_close` 必须 `on_window_event(CloseRequested{api})`（仅 JS listener 不满足）。
 12. **sidecar 防残留**：spawn 成功路径必须 `assign_sidecar_to_kill_job`（KILL_ON_JOB_CLOSE 单例；HANDLE 非 Send/Sync → `SyncHandle` 包装）。

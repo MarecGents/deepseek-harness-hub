@@ -1,6 +1,6 @@
 /**
  * Terminal preferences — font size + color theme for the PTY dock, persisted
- * to localStorage under `dsh-hub.terminal.prefs`. Survives reloads; lives in
+ * to localStorage under `dsh-hub:terminal-prefs`. Survives reloads; lives in
  * its own module so the dock and any future settings surface share one store.
  *
  * Client plugin module (settings store). Public API:
@@ -12,17 +12,39 @@ import { useSyncExternalStore } from 'react'
 
 export interface TerminalPrefs { fontSize: number; dark: boolean }
 
-const KEY = 'dsh-hub.terminal.prefs'
+const KEY = 'dsh-hub:terminal-prefs'
+/** Legacy dot-separated key — migrated to KEY once (idempotent). */
+const LEGACY_KEY = 'dsh-hub.terminal.prefs'
 const listeners = new Set<() => void>()
+
+/** Read the persisted prefs, migrating the legacy key on first load. */
+function readStored(): string | null {
+  try {
+    const current = localStorage.getItem(KEY)
+    if (current !== null) return current
+    const legacy = localStorage.getItem(LEGACY_KEY)
+    if (legacy === null) return null
+    // One-time migration: copy the legacy value to the canonical key, then
+    // drop the old key. Any failure leaves it in place for the next load.
+    try {
+      localStorage.setItem(KEY, legacy)
+      localStorage.removeItem(LEGACY_KEY)
+    } catch {
+      // Storage blocked — best-effort; the legacy value still reads back.
+    }
+    return legacy
+  } catch {
+    return null
+  }
+}
 
 /** Load persisted prefs; corrupt or unreadable storage falls back to defaults. */
 function load(): TerminalPrefs {
+  const raw = readStored()
+  if (raw === null) return { fontSize: 13, dark: true }
   try {
-    const raw = localStorage.getItem(KEY)
-    if (raw !== null) {
-      const p = JSON.parse(raw) as Partial<TerminalPrefs>
-      return { fontSize: p.fontSize ?? 13, dark: p.dark ?? true }
-    }
+    const p = JSON.parse(raw) as Partial<TerminalPrefs>
+    return { fontSize: p.fontSize ?? 13, dark: p.dark ?? true }
   } catch {
     // Corrupt JSON or storage blocked — defaults are fine.
   }

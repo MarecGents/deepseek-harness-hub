@@ -32,7 +32,13 @@ export class TrayCommandRegistry {
   dispatch(command: string, ctx: Context, payload: Record<string, unknown>): boolean {
     const handler = this.handlers.get(command)
     if (handler === undefined) return false
-    void handler(ctx, payload)
+    // Resolve through a Promise so an async handler's rejection is explicitly
+    // caught here instead of becoming an unhandledRejection (Node's default
+    // would crash the sidecar). Keeps the synchronous boolean return so the
+    // caller's unknown-command branch stays intact.
+    Promise.resolve(handler(ctx, payload)).catch((error) => {
+      console.error('[dsh-hub] registry handler failed:', error)
+    })
     return true
   }
 

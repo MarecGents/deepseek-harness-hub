@@ -20,6 +20,12 @@
 5. **settings 命名空间约束**：`settingsNamespace('dsh-hub')` 强制小写 kebab-case；带 scope 的包名（`@marecgents/dsh-hub`）不能用作 settings ns 或 API 前缀。第三方配置 UI 一律走插件自有 HTTP 路由 `/api/dsh-hub/*`。
 6. **发布前检查不可跳过**：每次 `npm publish` 之前**必须**运行 `node scripts/verify-release.mjs` 且**全部 PASS**（含「干净安装 → 首启装配」冒烟），FAIL 立即停止排查，**禁止发布**。发布流程与检查细则见 §5（rc.10–rc.13 曾因跳过"全新环境安装验证"连发 4 版首启即崩的包，见 [docs/关键踩坑记录.md#33](docs/关键踩坑记录.md)）。
 7. **开发流程必须遵循 PROCESS_QUALITY**：任何开发任务（迁移、功能、修复、文档、发布）**必须严格遵循 [PROCESS_QUALITY.md](PROCESS_QUALITY.md) 的 SOP（标准作业程序）与质量管理规范**——含阶段输入/输出/门禁（Gate）逐项核查、验收表、回归基线、DMAIC 改进循环。**禁止跳过阶段门禁**；与本文件铁律冲突时，以本文件（AGENTS.md）为准。
+8. **数据安全红线：绝不触碰 home / C 盘**（历史血泪：`~/` 与 C 盘曾被删除导致配置全丢、系统重装，2026-08-25 复现）。**任何 agent / 脚本 / 手工操作都必须遵守**：
+   - **禁止**删除/移动/清空 `C:\Users\*` 下任何文件（尤其 `~`、`$HOME`、`USERPROFILE`、真实 `~/.dsh`、`.ssh`、`.gitconfig` 等配置文件）；任何 `rm` / `Remove-Item` / `RMDir` / `unlinkSync` / `rmSync` 的目标路径**不得含** `~`、`$HOME`、`USERPROFILE`、`C:\Users`、`homedir()`。
+   - **测试 / 复现 / 安装 / 卸载一律用隔离环境**：`DSH_HOME` 指向 E:/D: 盘或 `%TEMP%` 下的独立目录（如 `$env:TEMP\dsh-hub-repro`），**禁止**指向真实 `~/.dsh`；「清干净重来」只对隔离目录执行，**永不删除真实 `~/.dsh`**（dsh 会自动重建空 profile，配置/会话/凭据不可恢复）。
+   - **删除纪律**：执行任何删除前，先打印/回显目标绝对路径并确认不是 home 子树；`rm -rf` / `Remove-Item -Recurse -Force` 必须写完整绝对路径，禁止裸 `~`、禁止环境变量缩写、禁止 `$INSTDIR` 未经展开即递归删除。
+   - **权限纪律**：破坏性操作（删目录、卸载、覆盖配置）不得在 `never` 审批模式下静默执行；执行前必须自检目标路径是否属于 home 子树。
+   - **排查初始化/装配问题**：先换「新的隔离 DSH_HOME」复现，再查日志；把「删掉用户真实配置」列为最后手段且需用户明示同意。
 
 ---
 
@@ -34,7 +40,7 @@ dsh-hub 是**双 half** 结构，且**套壳代码与插件代码必须严格模
 │   src/core/             Core：命令注册表 / 生命周期（registry）  │
 │   src/managers/         壳 Manager：tauri-shell（唯一壳 Manager）│
 │   src/server/           Server：HTTP 路由工厂（/api/dsh-hub/*） │
-│   src/services/         Services：纯领域业务（config/pins-store）│
+│   src/services/         Services：纯领域业务（config-store / pty-manager）│
 │   src/helpers/          Helper：无状态工具（state-store）          │
 │   src/controllers/     Controller：业务编排（session-runtime/tray-pipe）│
 │   src/models/          Model：共享类型/常量（pipe 帧、ShellConfig）     │
@@ -78,7 +84,7 @@ dsh-hub 是**双 half** 结构，且**套壳代码与插件代码必须严格模
 - **单向依赖**：上层可依赖下层，下层**禁止**依赖上层。层级：`index.ts → controllers → core → managers/server/services → helpers → models/utils`（host half）；`lib.rs → commands → managers/services → helpers`（Rust 壳 half）。
 - 跨层引用违规 = 审查必纠项；新增文件先归类（Core/Controller/Manager/Services/Server/Helper/Model/Utils），命名清晰表达职能。
 - **命令分发**：托盘/管道命令一律走 `core/registry.ts` 注册表（新增命令 = `trayCommands.register(...)`），禁止在 index.ts 散落 if/else 分发链。
-- **双向管道协议同步**：壳→host 走 stdin `MG_TRAY`；host→壳走 stdout `DSH_CMD`。帧格式与命令名变更必须同步 `src-tauri/src/managers/node.rs` 分发表 ↔ `src/managers/tauri-shell.ts`（sendDshCmd）↔ `src/index.ts`（MG_TRAY 读取）。
+- **双向管道协议同步**：壳→host 走 stdin `MG_TRAY`；host→壳走 stdout `DSH_CMD`。帧格式与命令名变更必须同步 `src-tauri/src/managers/node.rs` 分发表 ↔ `src/managers/tauri-shell.ts`（sendDshCmd）↔ `src/controllers/tray-pipe.ts`（MG_TRAY 读取）。
 
 ### 1.1 新功能分发策略（2026-08-23 确立，铁律 8）
 
@@ -142,7 +148,7 @@ dsh-hub 是**双 half** 结构，且**套壳代码与插件代码必须严格模
    - 是否引入未处理错误路径（catch 是否吞错、Promise 是否遗漏）；
    - 是否符合本 AGENTS.md 约束（身份一致性、门控、多实例、UI token）。
    - 推演通过后再构建；**禁止**"先 build 报错再回改"的返工式开发。
-4. **错误处理**：空 `catch` 必须注释吞掉什么、为何无碍；`try` 保持单一语句；进程退出用 `quit.marker` + `process.exit(0)`（webviewjs teardown 崩溃规避），不用 `app.exit()`。
+4. **错误处理**：空 `catch` 必须注释吞掉什么、为何无碍；`try` 保持单一语句。**进程退出语义归 Rust 壳**（`src-tauri/src/helpers/quit.rs`：写 `quit.marker` + `process::exit(0)`，supervisor 据此区分主动退出/崩溃重启）；host 侧**不**自行 `process.exit()`（WebView2 时代的 `exitProcess()` 已删除，勿复活），不用 `app.exit()`。
 5. **类型**：`strict: true`；`any` 必须解释为何无法收窄；ESM（`"type": "module"`）；相对导入用 `.ts` 后缀（host）或构建约定。
 6. **文档同步**：行为/配置/接口变更必须同步更新 `README.md`、`FUNCTIONS.md`（功能状态事实源）、`docs/关键踩坑记录.md`（新坑补录）或本项目任务日志。
 
@@ -244,7 +250,7 @@ git checkout dev-v2 && git merge main --ff-only && git push origin dev-v2
 | `src/core/` | [src/core/AGENTS.md](src/core/AGENTS.md) | Core 层：命令注册表、生命周期、无业务 |
 | `src/managers/` | [src/managers/AGENTS.md](src/managers/AGENTS.md) | 壳 Manager 红线、壳/插件隔离、命令上行通道 |
 | `src/server/` | [src/server/AGENTS.md](src/server/AGENTS.md) | Server 路由规范、配置三处一致、请求体校验 |
-| `src/services/` | [src/services/AGENTS.md](src/services/AGENTS.md) | Services 层（config-store / pins-store）规范 |
+| `src/services/` | [src/services/AGENTS.md](src/services/AGENTS.md) | Services 层（config-store / pty-manager）规范 |
 | `src/helpers/` | [src/helpers/AGENTS.md](src/helpers/AGENTS.md) | Helper 纯函数规范、零依赖、Windows 专属标记 |
 | `src/client/` | [src/client/AGENTS.md](src/client/AGENTS.md) | UI 风格强制、client 注册规范、body portal 约束 |
 | `src-tauri/src/` | [src-tauri/src/AGENTS.md](src-tauri/src/AGENTS.md) | Rust 壳红线：双向管道协议、ACL 三处一致、退出语义、E2E |

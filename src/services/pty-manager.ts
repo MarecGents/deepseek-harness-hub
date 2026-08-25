@@ -10,7 +10,16 @@
  *
  * External API:
  *  - createPty / ptyWrite / ptyResize / ptyClose / ptySubscribe /
- *    listTabs / getTab / disposeAll
+ *    listTabs / getTab / disposeAll / PtyLimitReachedError / SESSION_LIMIT
+ *
+ * Resource guardrails:
+ *  - SESSION_LIMIT (16) concurrent sessions; createPty throws
+ *    PtyLimitReachedError when full, which the HTTP route maps to the fixed
+ *    `pty-limit-reached` code.
+ *  - Idle timeout: a session with no input or output for 30 minutes is
+ *    closed and reclaimed by a lazy unref'd sweeper; explicit ptyClose
+ *    semantics are unchanged. Disconnected SSE streams leave the session
+ *    alive (tab semantics), but an abandoned tab idles out and is reaped.
  *
  * Security notes:
  *  - The cwd handed to PowerShell is single-quoted with embedded quotes
@@ -46,6 +55,8 @@ interface Session {
   pty: IPty
   buffer: string
   subscribers: Set<(chunk: string) => void>
+  /** Last input/output activity timestamp — drives the idle-timeout reaper. */
+  lastActivity: number
 }
 
 /** All live sessions, keyed by tab id. */
@@ -56,6 +67,48 @@ const MAX_BUFFER = 200_000
 
 /** Shell launched for every tab (Windows-only host). */
 const SHELL_EXE = 'powershell.exe'
+
+/**
+ * Hard cap on concurrent PTY sessions. A token holder could otherwise spawn an
+ * unbounded number of PowerShell processes (resource DoS); createPty throws
+ * {@link PtyLimitReachedError} once the cap is hit and the HTTP route maps it
+ * to the fixed `pty-limit-reached` code.
+ */
+export const SESSION_LIMIT = 16
+
+/** Idle timeout: a session with no input or output for this long is closed
+ * and reclaimed (explicit close semantics are unaffected). */
+const IDLE_TIMEOUT_MS = 30 * 60 * 1000
+
+/** How often the idle reaper sweeps the session map. */
+const IDLE_SWEEP_MS = 60 * 1000
+
+/** Module-level lazy idle reaper (unref'd so it never holds the process open). */
+let idleSweeper: ReturnType<typeof setInterval> | null = null
+
+/** Thrown by {@link createPty} when the session quota is full. */
+export class PtyLimitReachedError extends Error {
+  constructor() {
+    super(`pty session limit reached (max ${SESSION_LIMIT})`)
+    this.name = 'PtyLimitReachedError'
+  }
+}
+
+/** Start the idle-timeout reaper once (lazy, idempotent). */
+function ensureIdleSweeper(): void {
+  if (idleSweeper !== null) return
+  idleSweeper = setInterval(() => {
+    const now = Date.now()
+    for (const id of Array.from(sessions.keys())) {
+      const s = sessions.get(id)
+      if (s !== undefined && now - s.lastActivity >= IDLE_TIMEOUT_MS) {
+        console.log(`[dsh-hub] pty idle timeout: closing ${id} (${Math.floor((now - s.lastActivity) / 1000)}s idle)`)
+        ptyClose(id)
+      }
+    }
+  }, IDLE_SWEEP_MS)
+  idleSweeper.unref?.()
+}
 
 function baseName(p: string): string {
   const n = p.replace(/\\/g, '/').replace(/\/+$/, '').split('/').pop() || p
@@ -123,9 +176,14 @@ function killPty(s: Session): void {
  * @param cols - initial terminal columns (default 100).
  * @param rows - initial terminal rows (default 28).
  * @returns the new tab descriptor.
+ * @throws {@link PtyLimitReachedError} when the session quota is full.
  * @throws when the PTY cannot be spawned (caller maps this to a 500).
  */
 export function createPty(cwd: string, cols = 100, rows = 28): PtyTab {
+  if (sessions.size >= SESSION_LIMIT) {
+    console.warn(`[dsh-hub] pty create rejected: session limit ${SESSION_LIMIT} reached`)
+    throw new PtyLimitReachedError()
+  }
   const id = 'pty-' + randomUUID().slice(0, 8)
   const tab: PtyTab = { id, shell: 'PowerShell', cwd, title: titleFor(cwd), createdAt: Date.now(), alive: true }
   const setLocation = "Set-Location -LiteralPath '" + cwd.replace(/'/g, "''") + "'"
@@ -136,8 +194,9 @@ export function createPty(cwd: string, cols = 100, rows = 28): PtyTab {
     cwd,
     env: { ...process.env, TERM: 'xterm-256color', DSH_TERMINAL: '1' },
   })
-  const session: Session = { tab, pty, buffer: '', subscribers: new Set() }
+  const session: Session = { tab, pty, buffer: '', subscribers: new Set(), lastActivity: Date.now() }
   pty.onData((data) => {
+    session.lastActivity = Date.now()
     session.buffer = trimBuffer(session.buffer + data)
     for (const cb of session.subscribers) cb(data)
   })
@@ -150,6 +209,7 @@ export function createPty(cwd: string, cols = 100, rows = 28): PtyTab {
     sessions.delete(id)
   })
   sessions.set(id, session)
+  ensureIdleSweeper()
   console.log(`[dsh-hub] pty created: ${id} cwd=${cwd}`)
   return tab
 }
@@ -232,6 +292,7 @@ export function ptyWrite(id: string, data: string): boolean {
   }
   try {
     s.pty.write(data)
+    s.lastActivity = Date.now()
     return true
   } catch {
     return false
@@ -250,6 +311,7 @@ export function ptyResize(id: string, cols: number, rows: number): boolean {
   if (!s || !s.tab.alive) return false
   try {
     s.pty.resize(cols, rows)
+    s.lastActivity = Date.now()
     return true
   } catch {
     return false
@@ -291,10 +353,14 @@ export function ptySubscribe(id: string, cb: (chunk: string) => void): () => voi
 
 /**
  * Close every live session — used by hot reload / plugin teardown so no
- * PowerShell process tree outlives the plugin.
+ * PowerShell process tree outlives the plugin. Also stops the idle reaper.
  */
 export function disposeAll(): void {
   for (const id of Array.from(sessions.keys())) {
     ptyClose(id)
+  }
+  if (idleSweeper !== null) {
+    clearInterval(idleSweeper)
+    idleSweeper = null
   }
 }

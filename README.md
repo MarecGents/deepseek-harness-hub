@@ -2,7 +2,7 @@
 
 > **`@marecgents/dsh-hub`** —— DeepSeek Harness（`dsh`）的桌面端框架：以原生 Tauri 2.x 窗口运行 dsh Web UI，提供托盘、主题同步、窗口记忆、右侧栏与系统通知。
 >
-> **版本状态（2026-08-24）**：`dev-v2`（Tauri 2.x 壳）M5 打包闭环已真机验证（rc.3 起），当前 **`0.0.2-rc.7`**——NSIS 安装器**安装即用**（安装期自动下载私有 Node + dsh + 插件到安装目录，无需系统预装 Node），首启自动进 dsh UI；卸载走**快速通道**（PREUNINSTALL Get-Process + Defender 排除提速）。M1-M4 功能已落地：**会话标签栏、交互终端、通知跳会话、rail 数据源修复、S0 Origin 校验、工作区 open**（见 [FUNCTIONS.md](FUNCTIONS.md) §13）。`0.0.1-rc.14` 是 WebView2 壳最终 rc（`dev-v1` 分支已冻结）。正式版将在体验达标后发布（多端支持 / 自定义壳 UI，见 [外部档案 docs/dsh桌面端技术路线-2026-08-16.md](../docs/dsh桌面端技术路线-2026-08-16.md)）。
+> **版本状态（2026-08-24）**：`dev-v2`（Tauri 2.x 壳）M5 打包闭环已真机验证（rc.3 起），当前 **`0.0.2-rc.8`**（rc.8 = dev-v2 打包分发版，仅分发不发 npm；registry latest 仍为 `0.0.2-rc.7`）——NSIS 安装器**安装即用**（安装期自动下载私有 Node + dsh + 插件到安装目录，无需系统预装 Node），首启自动进 dsh UI；卸载走**快速通道**（PREUNINSTALL Get-Process + Defender 排除提速）。M1-M4 功能已落地：**会话标签栏、交互终端、通知跳会话、rail 数据源修复、S0 Origin 校验、工作区 open**（见 [FUNCTIONS.md](FUNCTIONS.md) §13）。`0.0.1-rc.14` 是 WebView2 壳最终 rc（`dev-v1` 分支已冻结）。正式版将在体验达标后发布（多端支持 / 自定义壳 UI，见 [外部档案 docs/dsh桌面端技术路线-2026-08-16.md](../docs/dsh桌面端技术路线-2026-08-16.md)）。
 
 [![npm version](https://img.shields.io/npm/v/@marecgents/dsh-hub)](https://www.npmjs.com/package/@marecgents/dsh-hub)
 [![npm rc](https://img.shields.io/npm/v/@marecgents/dsh-hub/rc)](https://www.npmjs.com/package/@marecgents/dsh-hub)
@@ -17,9 +17,9 @@
 
 | 分支 | 状态 | 说明 |
 |---|---|---|
-| `main` | 发布分支（**唯一合并目标**） | 当前 = `0.0.2-rc.7`（Tauri 版当前 rc；rc.4–rc.7 已发布） |
+| `main` | 发布分支（**唯一合并目标**） | 当前 = `0.0.2-rc.7`（registry 已发布版；rc.4–rc.7 已发布） |
 | `dev-v1` | **永久冻结**（WebView2 时代存档） | 不再接收任何更新/同步；历史收尾 = `0.0.1-rc.13/rc.14`（WebView2 最终版） |
-| `dev-v2` | **唯一开发分支**（Tauri 2.x 壳） | 所有更新在此开发，merge 只到 main |
+| `dev-v2` | **唯一开发分支**（Tauri 2.x 壳） | 所有更新在此开发，merge 只到 main；当前 = `0.0.2-rc.8`（打包分发版，未发 npm） |
 
 ---
 
@@ -37,10 +37,14 @@
 - **桌面图标（S6，PR #25 + 08-23 重构）**：设置卡可选 5 张鲸鱼娘图标（sad/happy/duo/maid/blue）或默认主题翻转鲸鱼；切换即时生效于**任务栏按钮（WM_SETICON ICON_BIG，PostMessageW 异步）+ 标题栏/Alt-Tab（ICON_SMALL）+ 托盘 + 开始菜单/桌面快捷方式（.lnk IconLocation）+ AUMID IconUri + 自绘标题栏图标（与任务栏/托盘同源真实 PNG `/api/dsh-hub/icons/*.png`）**——六面统一编排（`managers/icon.rs` IconManager：面级幂等 + 全局串行锁 + 单 worker/pending 合并，快速连续切换不卡死）；持久化于 `config.json` 的 `desktopIcon`；`.ico` 多尺寸资产由 `scripts/generate-desktop-icons.py` 生成并随 resources 打包到 `$INSTDIR\icons\`。
 - **模型选择（composer 嵌套菜单，PR #33）**：composer 模型 seat 替换为「provider → model」两级嵌套菜单 + 独立 thinking-effort 触发器——官方 `conversation.input.model` slot priority −1 遮蔽内置（复用官方 `modelDirectories` 服务，与 /model 命令状态一致；服务缺失自动降级内置 seat，不阻塞）。
 - **会话标签栏（M2）**：标题栏内浏览器式会话多页标签（`SessionTabs.tsx` createPortal 渲染进 `#dsh-hub-titlebar .tb-title`）——点击切换、`+` 新建、`×` 关闭；**状态点**（等待琥珀 / 后台完成绿 / 运行蓝 + 脉冲动画）；右键菜单复用 `session-menu`（分叉/归档/复制路径/资源管理器）+ **内联重命名**（IME 组合输入不误提交）；**拖拽排序**（`session-tabs.ts` localStorage `dsh-hub.session-tabs` 持久化）；激活标签自动滚动入视；归档/删除会话自动移除标签（空快照不剪枝门控 + blank「新会话」占位）。
-- **交互终端（M4）**：底部 dock 真实交互终端（xterm.js 6.0.0 + node-pty **PowerShell**）——`Ctrl+J` 开关；每 tab 一个独立 PowerShell 会话（cwd = 打开时所在工作区）；多 tab + 懒挂载（切换重放 ring buffer）；**危险命令拦截**（`rm` / `Remove-Item` / `format` 等 UX 护栏，非安全边界）；输出走 SSE **JSON 信封**（`data: JSON.stringify(chunk)` + 15s 心跳）+ **进程级 token 鉴权**（`Authorization: Bearer` / EventSource `?token=`）；关闭 `taskkill /T /F` 杀整棵进程树防残留；工作区切换自动 `Set-Location` 重定向（`ptyRetarget`）。（host：`src/services/pty-manager.ts` + `src/server/terminal-pty-api.ts` + `src/server/token.ts`；client：`pty-store.ts` / `terminal-dock.tsx` / `terminal-prefs.ts` / `xterm-css.ts`）
+- **交互终端（M4）**：底部 dock 真实交互终端（xterm.js 6.0.0 + node-pty **PowerShell**）——`Ctrl+J` 开关；每 tab 一个独立 PowerShell 会话（cwd = 打开时所在工作区）；多 tab + 懒挂载（切换重放 ring buffer）；**危险命令拦截**（`rm` / `Remove-Item` / `format` 等 UX 护栏，非安全边界）；输出走 SSE **JSON 信封**（`data: JSON.stringify(chunk)` + 15s 心跳）+ **进程级 token 鉴权**（`Authorization: Bearer` / EventSource `?token=`；token 经 `webserver/index-inject` 以 global `__DSH_HUB_TOKEN__` 注入页面，见 `src/index.ts`）；关闭 `taskkill /T /F` 杀整棵进程树防残留；工作区切换自动 `Set-Location` 重定向（`ptyRetarget`）。（host：`src/services/pty-manager.ts` + `src/server/terminal-pty-api.ts` + `src/server/token.ts`；client：`pty-store.ts` / `terminal-dock.tsx` / `terminal-prefs.ts` / `xterm-css.ts`）
 - **S0 安全（M3）**：**Origin 白名单校验**——POST/PUT 等状态变更请求校验 `Origin`（loopback / `tauri:`），缺失 Origin 拒绝；GET/HEAD 跳过（DNS-rebinding 已由 Host 校验覆盖）（`server/host-guard.ts`，路由工厂共享）。
 - **工作区打开（M4）**：`POST /api/dsh-hub/workspace/open` 用 OS 默认方式打开文件/文件夹（host+origin+token 三重守卫，Windows `explorer.exe`）；壳 capability 放行 `dialog:allow-open`（M2，`src-tauri/capabilities/default.json`）。
-- **findings-ledger 插件（PR #38）**：独立 dsh 插件（`plugins/dsh-findings-ledger/`）——baseline 快照 + 变更对账 + 覆盖度报告（双轨分发见 [BUILD.md §7](BUILD.md)）。
+- **findings-ledger 插件（PR #38）**：独立 dsh 插件（`plugins/dsh-findings-ledger/`）——baseline 快照 + 变更对账 + 覆盖度报告。
+- **permission-guard 插件（PR #37）**：独立 dsh 插件（`plugins/dsh-permission-guard/`）——逐命令权限白名单 + 四级能力拦截（auto / give-command / confirm / never）。
+- **project-memory 插件（PR #36）**：独立 dsh 插件（`plugins/dsh-project-memory/`）——每项目持久记忆（FACT.md + JOURNAL.jsonl，自动注入 systemPrompt.context + `memory_read`/`memory_log`/`memory_fact` 工具）。
+- **usage-stats 插件（PR #34）**：独立 dsh 插件（`plugins/dsh-usage-stats/`）——全会话 token 用量统计（按 provider/model 聚合 + 设置页可视化 + HTTP API）。
+  以上 4 个独立插件**双轨分发**（随 hub resources + 独立 npm 轨，package.json 均已 `private:false` 就绪），见 [BUILD.md §7](BUILD.md) 与 AGENTS.md §1.1。
 - **设置卡片**：dsh 设置 → 插件页提供桌面壳配置（窗口尺寸 / 主题 / 托盘行为 / 会话完成通知 / 提示音 / 多实例开关 / 界面皮肤 / 背景图 / 桌面图标）。
 - **多实例保护**：启动时检测已有 dsh 实例（任意端口），默认拒绝共存以防会话数据损坏；确需共存可在设置中显式开启（附危险警告）。
 - **右侧栏**：概览（Token 统计）、文件树、Git 变更三页；收起后保留窄栏快捷按钮。
@@ -186,6 +190,7 @@ dsh-hub/
 │   ├── build-installer.mjs  # 一键打包（工具链检测 + 完整性预检 + tauri:build + 产物校验）
 │   ├── postinstall.mjs      # 检测 dsh/pnpm（不再建快捷方式）
 │   ├── postuninstall.mjs    # 依赖检查清理
+│   ├── dsh-deps-install.ps1 # 安装期引导（私有 Node/dsh/插件下载 + Defender 排除）
 │   ├── synthesize-sounds.mjs # 四段提示音合成
 │   ├── check-tauri-conf.mjs  # M1 字段核对断言
 │   ├── ipc-smoke.mjs         # M1 窗口 IPC 冒烟
@@ -195,14 +200,17 @@ dsh-hub/
 │   └── generate-desktop-icons.py    # 桌面图标 .ico 多尺寸生成（whale-girl*/whale）
 ├── assets/                 # dsh favicon（SVG）+ backgrounds/（背景图）+ sounds/（提示音）
 ├── plugins/                # 独立 dsh 插件（双轨分发：独立 npm + 随 hub，见 BUILD.md §7）
-│   └── dsh-findings-ledger/ # findings-ledger（PR #38）
+│   ├── dsh-findings-ledger/ # findings-ledger（PR #38）
+│   ├── dsh-permission-guard/ # permission-guard（PR #37）
+│   ├── dsh-project-memory/  # project-memory（PR #36）
+│   └── dsh-usage-stats/     # usage-stats（PR #34）
 ├── src-tauri/              # Tauri 2.x 壳（Rust，lib.rs 入口 + NSIS 打包）
 │   └── nsis/installer-hooks.nsi # NSIS 钩子（PREUNINSTALL 快速通道/Job Object 协同）
 ├── src/
 │   ├── index.ts            # host 插件入口（Controller 装配）
 │   ├── core/              # 命令注册表 / 生命周期（registry）
 │   ├── controllers/       # 业务编排（session-runtime / tray-pipe / shell-runtime）
-│   ├── services/           # 领域服务（config-store / pins-store / pty-manager 终端会话）
+│   ├── services/           # 领域服务（config-store / pty-manager 终端会话）
 │   ├── server/             # HTTP 路由工厂（/api/dsh-hub/*：config/workspace/pins/pty/backgrounds/sounds/icons/session-paths）
 │   ├── managers/           # 壳 Manager（tauri-shell）
 │   ├── helpers/            # 无状态工具（state-store）

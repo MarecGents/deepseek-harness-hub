@@ -22,7 +22,7 @@
 | button-primary-fill / hover / dimmed | `#3b6fe0` / `#2f5cc4` / `#dbe4fa` | 按钮蓝系 |
 | interactive-bg-hover / active | `#dce4f2` / `#cfd9ec` | 悬停/按下蓝灰 |
 | markdown-code-block / inline-code | `#e2e8f4` / `#dde5f2` | 代码块浅蓝 |
-| scrollbar-bg / hover | `#d5dceb` / `#c0cbe0` | 滚动条 |
+| scrollbar-bg-l1 / hover-l1 | `#d5dceb` / `#c0cbe0` | 滚动条 |
 | tooltip-bg / toast-bg | `#1c2333` | 深蓝黑浮层 |
 | bg-module-platform | `#d3dcec` | 卡片徽章/模块底（= bg-layer-3） |
 
@@ -49,7 +49,7 @@
 | button-primary-fill / hover / dimmed | `#3b6fe0` / `#4c7ceb` / `#1d3050` |
 | interactive-bg-hover / active | `#182742` / `#1f3150` |
 | markdown-code-block / inline-code | `#0d1830` / `#14223c` |
-| scrollbar-bg / hover | `#1c2b4a` / `#2b4068` |
+| scrollbar-bg-l1 / hover-l1 | `#1c2b4a` / `#2b4068` |
 | tooltip-bg / toast-bg | `#1c2333` |
 | bg-module-platform | `#192a48` |
 

@@ -3,7 +3,8 @@
  *
  * Server + Services（与 config-api 同型，Tauri 迁移=保留）。对外接口：
  * `makePinsRoutes(): WebRoute[]`（GET/PUT /api/dsh-hub/pins）、
- * `readPinnedSessions(): string[]`、`writePinnedSessions(input): string[]`。
+ * `readPinnedSessions(): string[]`、
+ * `writePinnedSessions(input): PinsWriteResult`（失败不再回传乐观列表）。
  *
  * The client half (src/client/pin-conversations.ts) pins sidebar conversation
  * rows to a "置顶" section at the top of the session list. The pinned session
@@ -22,6 +23,7 @@ import type { WebRoute } from '@deepseek-ai/dsh-host-webserver'
 import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { dshHome } from '../helpers/state-store.js'
+import { readJsonBody } from '../helpers/read-json-body.js'
 import { rejectIfBadHost, rejectIfBadOrigin } from './host-guard.ts'
 
 
@@ -61,56 +63,43 @@ export function readPinnedSessions(): string[] {
   }
 }
 
-/** Persist the pinned session ids (best-effort, atomic via rename). */
-export function writePinnedSessions(input: unknown): string[] {
+/** Result of {@link writePinnedSessions}: the clean id list on success, or a
+ * surfaced write error on failure. */
+export type PinsWriteResult = { ok: true; ids: string[] } | { ok: false; error: string }
+
+/** Persist the pinned session ids (atomic via rename; failure is surfaced). */
+export function writePinnedSessions(input: unknown): PinsWriteResult {
   const ids = sanitizeIds(input)
+  const file = pinsFile()
+  const tmp = `${file}.tmp`
   try {
     const dir = join(dshHome(), 'dsh-hub')
     mkdirSync(dir, { recursive: true })
-    const file = pinsFile()
-    const tmp = `${file}.tmp`
     const body = JSON.stringify({ ids }, null, 2)
     writeFileSync(tmp, body, 'utf8')
     // Same-volume rename is atomic on Windows: the document is either the old
     // or the new list, never a torn write.
     renameSync(tmp, file)
     rmSync(tmp, { force: true })
-  } catch {
-    // Persisting must not crash the request; the response still returns the
-    // sanitized list so the client's optimistic state matches.
+  } catch (error) {
+    // A failed write must NOT confirm a value that never hit the disk — the
+    // API responds with an error instead of echoing the sanitized list.
+    // Remove the tmp residue so no half-written file is left behind.
+    try {
+      rmSync(tmp, { force: true })
+    } catch {
+      // Best-effort cleanup; the tmp file is inert and overwritten on the next
+      // successful save.
+    }
+    return { ok: false, error: error instanceof Error ? error.message : String(error) }
   }
-  return ids
+  return { ok: true, ids }
 }
 
 /** Write one JSON response. */
 function json(res: ServerResponse, status: number, body: unknown): void {
   res.writeHead(status, { 'content-type': 'application/json; charset=utf-8' })
   res.end(JSON.stringify(body))
-}
-
-/** Read a JSON request body (bounded). */
-function readJsonBody(req: IncomingMessage): Promise<unknown> {
-  return new Promise((resolve, reject) => {
-    let size = 0
-    const chunks: Buffer[] = []
-    req.on('data', (chunk: Buffer) => {
-      size += chunk.length
-      if (size > 64 * 1024) {
-        reject(new Error('body-too-large'))
-        queueMicrotask(() => req.destroy())
-        return
-      }
-      chunks.push(chunk)
-    })
-    req.on('end', () => {
-      try {
-        resolve(chunks.length === 0 ? {} : JSON.parse(Buffer.concat(chunks).toString('utf8')))
-      } catch {
-        reject(new Error('invalid-json'))
-      }
-    })
-    req.on('error', reject)
-  })
 }
 
 /** Build the pins route: GET reads, PUT replaces (both return the clean list). */
@@ -130,7 +119,15 @@ export function makePinsRoutes(): WebRoute[] {
           return readJsonBody(req).then(
             (body) => {
               const record = (typeof body === 'object' && body !== null) ? body as Record<string, unknown> : {}
-              json(res, 200, { ok: true, ids: writePinnedSessions(record.ids) })
+              const result = writePinnedSessions(record.ids)
+              if (!result.ok) {
+                // Persistence failed: respond with an error and do NOT echo a
+                // sanitized list — the client must not be optimistically
+                // confirmed for a document that never changed on disk.
+                json(res, 500, { ok: false, error: 'pins-write-failed' })
+                return
+              }
+              json(res, 200, { ok: true, ids: result.ids })
             },
             (error) => json(res, 400, { ok: false, error: error instanceof Error ? error.message : String(error) }),
           )

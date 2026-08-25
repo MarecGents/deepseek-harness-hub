@@ -51,7 +51,7 @@ import { getToken } from './server/token.js'
 import { disposeAll as disposeAllPty } from './services/pty-manager.js'
 import { getFocusedSessionState, setupSessionRuntime, type SessionShellLike } from './controllers/session-runtime.ts'
 import { setupTrayPipe } from './controllers/tray-pipe.ts'
-import { effectiveConfig, getActiveCwd, newTaskInWeb, openWorkspaceDir, sendDshCmd, setActiveCwd } from './controllers/shell-runtime.ts'
+import { effectiveConfig, getActiveCwd, newTaskInWeb, sendDshCmd, setActiveCwd } from './controllers/shell-runtime.ts'
 
 /** Stable Cordis plugin name (referenced by cordis.patch.yml's insert row). */
 export const name = '@marecgents/dsh-hub'
@@ -181,7 +181,7 @@ export function apply(ctx: Context, config: Config): void {
         // was unavailable (dev-server / non-Tauri embed); idempotent.
         shell?.setDesktopIcon(saved.desktopIcon)
       }),
-      ...makeWorkspaceRoutes(),
+      ...makeWorkspaceRoutes(() => getActiveCwd()),
       ...makePinsRoutes(),
       ...makeSessionPathsRoutes(),
       ...makeBackgroundsRoutes(),
@@ -218,9 +218,6 @@ export function apply(ctx: Context, config: Config): void {
       width: effective.width,
       height: effective.height,
       theme: effective.theme,
-      openWorkspace: () => {
-        void openWorkspaceDir(ctx, (cb) => { shell?.getCurrentWorkspacePath(cb) ?? cb(null) })
-      },
       newTask: () => { newTaskInWeb((name, detail) => shell?.dispatchEvent(name, detail)) },
       getTrayBehavior: () => {
         const stored = readShellConfig()

@@ -1,6 +1,6 @@
 # AGENTS.md — src/services/（Services 层）开发约束
 
-> 本目录是 dsh-hub host half 的 **Services（纯领域业务）层**。本目录为 `config-store.ts` / `pins-store.ts` 两个持久化服务 + `pty-manager.ts`（M4 交互终端 PTY 会话管理；theme-sync 已随 WebView2 壳删除）；HTTP 路由 → `../server/`，纯工具 → `../helpers/`，壳生命周期 → `../managers/`。
+> 本目录是 dsh-hub host half 的 **Services（纯领域业务）层**。本目录为 `config-store.ts` 持久化服务 + `pty-manager.ts`（M4 交互终端 PTY 会话管理；theme-sync 已随 WebView2 壳删除；pins 持久化内联于 `../server/pins-api.ts`，本目录无 pins-store.ts）；HTTP 路由 → `../server/`，纯工具 → `../helpers/`，壳生命周期 → `../managers/`。
 > 改动本目录任何文件前，**必须**先读根 [../../AGENTS.md](../../AGENTS.md) 与 [../AGENTS.md](../AGENTS.md) 与本文件。
 
 ## 文件归类
@@ -9,7 +9,6 @@
 |---|---|---|---|
 | `theme-sync.ts` | **Services** | 页面主题 → IPC 桥转发（配合壳层主题应用） | **已删除**（WebView2 壳，dev-v2 Tauri-only） |
 | `config-store.ts` | **Services** | 壳配置持久化（config.json 读写/迁移/单字段读） | 保留（数据兼容） |
-| `pins-store.ts` | **Services** | 置顶会话持久化（pins.json 读写/原子写） | 保留（数据兼容） |
 | `pty-manager.ts` | **Services** | 交互终端 PTY 会话管理（M4，node-pty PowerShell）：createPty / ptyWrite / ptyResize / ptyClose / ptySubscribe / listTabs / getTab / disposeAll；危险命令 UX 护栏（BLOCKED_CMDS，非安全边界）；taskkill /T /F 进程树清理；ring buffer（200KB，行边界裁剪）重放 | 保留 |
 
 ## Services 层规范

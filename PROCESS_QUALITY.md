@@ -67,7 +67,7 @@ SOP 把"经验/口头流程"固化为**标准作业书**，让任何执行者（
 | **C 控制** | Control | 固化防回退 | 门禁自动化（verify-*）、回归基线、缺陷登记入库、文档同步 |
 
 ### 3.2 软件项目度量体系
-- **CTQ 示例**：功能可用性（验收表通过率）、行为一致性（与 dev-v2 当前 rc（如 0.0.2-rc.7）对齐率）、缺陷（缺陷密度/剩余缺陷数）、门禁合规（全绿/FAIL 数）
+- **CTQ 示例**：功能可用性（验收表通过率）、行为一致性（与 dev-v2 当前 rc（如 0.0.2-rc.8）对齐率）、缺陷（缺陷密度/剩余缺陷数）、门禁合规（全绿/FAIL 数）
 - **3.4 ppm 的软件化**：不机械套用制造缺陷率；对应为"每阶段发布时**阻断级缺陷 = 0**、遗留低危缺陷显式登记并排期"——零阻断缺陷是硬门禁
 - **指标须 SMART**：具体（Specific）、可测（Measurable）、可达（Achievable）、相关（Relevant）、有时限（Time-bound）
 
@@ -105,7 +105,7 @@ SOP 把"经验/口头流程"固化为**标准作业书**，让任何执行者（
 | **身份门禁** | 插件身份四重相等（AGENTS.md 铁律 2） | 修复至一致，禁止继续 |
 | **构建门禁** | `npm run build && build:client`（或 `cargo build --release` + clippy + test）exit 0 | 修复 |
 | **发布门禁** | `node scripts/verify-release.mjs`（插件层）全部 PASS | 禁止 publish（铁律 6） |
-| **迁移门禁** | 壳层 `cargo check` + `clippy` + `test` 零告警 + `verify-m4-multi-instance.mjs`（多实例硬验收）；`verify-tauri-release.mjs`（P1–P9）**M5 落地后启用** | 禁止发布 |
+| **迁移门禁** | 壳层 `cargo check` + `clippy` + `test` 零告警 + `verify-m4-multi-instance.mjs`（多实例硬验收）+ `node scripts/verify-tauri-release.mjs`（P1–P9 真实断言：tauri.conf 身份与版本一致 / `bundle.resources` 双轨+运行时闭包覆盖 / 通配目录非空 / NSIS 产物存在且带当前版本 / single-instance 接线 / `--assemble-only` 支持）+ `npm run build:installer` 完整性预检 | 禁止发布 |
 | **验收门禁** | 阶段验收表全过（状态列"通过"） | 补齐后重跑 |
 | **回归门禁** | 回归基线（dev-v2 当前 rc 行为/上一阶段）无回归 | 修复回归项 |
 
@@ -143,7 +143,7 @@ SOP 把"经验/口头流程"固化为**标准作业书**，让任何执行者（
 - 根因对策必须**固化进流程/门禁**，而非一次性修复（对照 docs/关键踩坑记录.md 的"正确做法"）
 
 ### 6.3 回归基线
-- dev-v2 当前 rc（如 0.0.2-rc.7）行为 = 回归基线；rc.14 仅作 WebView2 历史对照；每阶段验收表增量覆盖
+- dev-v2 当前 rc（如 0.0.2-rc.8）行为 = 回归基线；rc.14 仅作 WebView2 历史对照；每阶段验收表增量覆盖
 - 每次发布/里程碑前跑回归，发现回归即阻断
 
 ### 6.4 评审
@@ -159,7 +159,7 @@ SOP 把"经验/口头流程"固化为**标准作业书**，让任何执行者（
 | `AGENTS.md`（总纲 + 分层 harness） | **铁律优先**；本规范不得削弱铁律（门控/多实例/身份一致/发布门禁/隔离） |
 | `docs/关键踩坑记录.md` | 缺陷根因与"正确做法"的来源库；新坑必补录 |
 | `scripts/verify-release.mjs` | 发布门禁的自动化实现（P1-P5） |
-| 三份迁移报告（docs/tauri-migration/） | 《迁移项目执行SOP》的任务/验收事实源 |
+| 三份迁移报告（外部档案仓库 `../docs/tauri-migration/`，未随仓库分发） | 《迁移项目执行SOP》的任务/验收事实源 |
 | 分支策略（AGENTS.md §5.1） | dev-v2 开发 → PR → main；dev-v1 冻结 |
 
 ---

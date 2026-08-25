@@ -8,6 +8,17 @@ export interface PtyTab {
     alive: boolean;
 }
 /**
+ * Hard cap on concurrent PTY sessions. A token holder could otherwise spawn an
+ * unbounded number of PowerShell processes (resource DoS); createPty throws
+ * {@link PtyLimitReachedError} once the cap is hit and the HTTP route maps it
+ * to the fixed `pty-limit-reached` code.
+ */
+export declare const SESSION_LIMIT = 16;
+/** Thrown by {@link createPty} when the session quota is full. */
+export declare class PtyLimitReachedError extends Error {
+    constructor();
+}
+/**
  * Create a persistent PowerShell PTY tab rooted at `cwd`.
  *
  * The `Set-Location` command single-quotes the cwd with embedded quotes
@@ -18,6 +29,7 @@ export interface PtyTab {
  * @param cols - initial terminal columns (default 100).
  * @param rows - initial terminal rows (default 28).
  * @returns the new tab descriptor.
+ * @throws {@link PtyLimitReachedError} when the session quota is full.
  * @throws when the PTY cannot be spawned (caller maps this to a 500).
  */
 export declare function createPty(cwd: string, cols?: number, rows?: number): PtyTab;
@@ -68,6 +80,6 @@ export declare function ptyClose(id: string): boolean;
 export declare function ptySubscribe(id: string, cb: (chunk: string) => void): () => void;
 /**
  * Close every live session — used by hot reload / plugin teardown so no
- * PowerShell process tree outlives the plugin.
+ * PowerShell process tree outlives the plugin. Also stops the idle reaper.
  */
 export declare function disposeAll(): void;

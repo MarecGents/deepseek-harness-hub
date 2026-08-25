@@ -70,17 +70,17 @@ fn dispatch_dsh_cmd(app: &tauri::AppHandle, cmd_json: &str) {
         // tauri-shell.ts 经 invoke() 发出的命令名（= Rust #[tauri::command] 名）。
         "set_window_theme" => {
             if let Some(theme) = value.get("theme").and_then(|t| t.as_str()) {
-                // 统一走命令：DWM + 外壳 chrome 覆盖属性（Q2）。
-                let _ = crate::commands::set_window_theme(app.clone(), theme.to_string());
+                // 统一走窗口操作唯一实现（window_ops）：DWM + 外壳 chrome 覆盖属性（Q2）。
+                let _ = crate::window_ops::set_window_theme(app, theme.to_string());
             }
         }
         "set_window_size" => {
             let w = value.get("width").and_then(|v| v.as_f64());
             let h = value.get("height").and_then(|v| v.as_f64());
             if let (Some(w), Some(h)) = (w, h) {
-                if let Some(win) = app.get_webview_window("main") {
-                    let _ = win.set_size(tauri::Size::Logical(tauri::LogicalSize::new(w, h)));
-                }
+                // 与页面 invoke 路径同一实现（window_ops）：最大化状态下先
+                // unmaximize 再 set_size（R2-3 发现 2 修复，双路径行为一致）。
+                let _ = crate::window_ops::set_window_size(app, w, h);
             }
         }
         // S6：设置桌面图标（tauri-shell.ts setDesktopIcon 上行）。设置卡页面
@@ -88,7 +88,7 @@ fn dispatch_dsh_cmd(app: &tauri::AppHandle, cmd_json: &str) {
         // 侧 config onChange 重放（DSH_CMD）也生效，二者幂等。
         "set_desktop_icon" => {
             if let Some(icon_id) = value.get("iconId").and_then(|v| v.as_str()) {
-                let _ = crate::commands::set_desktop_icon(app.clone(), icon_id.to_string());
+                let _ = crate::window_ops::set_desktop_icon(app, icon_id.to_string());
             }
         }
         "notify_task_complete" => {
@@ -109,14 +109,14 @@ fn dispatch_dsh_cmd(app: &tauri::AppHandle, cmd_json: &str) {
         // Q4：提示音 — Node 进程无 Audio，经 eval 到浏览器 HTMLAudio 播放。
         "play_sound" => {
             if let Some(kind) = value.get("kind").and_then(|k| k.as_str()) {
-                let _ = crate::commands::play_sound(app.clone(), kind.to_string());
+                let _ = crate::window_ops::play_sound(app, kind.to_string());
             }
         }
         // 双向管道上行：host 解析聚焦会话工作区后回传 → Rust 打开目录（Q6 打开工作区）。
         "open_workspace_path" => {
             let path = value.get("path").and_then(|v| v.as_str()).unwrap_or("").to_string();
             info!("node: DSH_CMD open_workspace_path from host: '{}'", path);
-            let _ = crate::commands::open_workspace_path(path);
+            let _ = crate::window_ops::open_workspace_path(path);
         }
         // 双向管道上行：host 请求壳把页面事件派发到浏览器（D-2 win.eval 可靠通道）。
         // 替代坏掉的 Node 侧 dispatchPageEvent（globalThis.__mgShellReady 不存在）。

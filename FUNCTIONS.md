@@ -108,11 +108,24 @@
 | # | 功能 | 说明（rc.14 行为） | 当前状态 |
 |---|---|---|---|
 | 37 | 会话标签栏（M2，C41） | 标题栏多页切换：状态点（等待琥珀 / 后台完成绿 / 运行蓝 + 脉冲）、右键菜单（复用 session-menu）、拖拽排序、内联重命名、自动滚动、归档自动移除 | ✅ `client/SessionTabs.tsx`（createPortal 渲染进 `#dsh-hub-titlebar .tb-title`）+ `client/session-tabs.ts`（localStorage `dsh-hub.session-tabs` 持久化）；F1-F8 修复（空快照不剪枝 / blank「新会话」占位 / 拖拽中断 blur 兜底 / IME 组合输入不误提交重命名） |
-| 38 | 交互终端（M4，D 切片） | Ctrl+J 开关底部 dock；每 tab 一个真实 node-pty PowerShell 会话；多 tab；危险命令拦截（UX 护栏，非安全边界）；SSE JSON 信封 + 进程 token 鉴权 | ✅ host：`services/pty-manager.ts` + `server/terminal-pty-api.ts`（POST create/write/resize/close + GET list/stream，host+origin+token 三重守卫）+ `server/token.ts`（Bearer / `?token=`，常量时间比较）；client：`pty-store.ts` + `terminal-dock.tsx`（xterm.js 6.0.0，懒挂载 / 指针捕获拖拽 / composer 列压缩）+ `terminal-prefs.ts` + `xterm-css.ts` |
+| 38 | 交互终端（M4，D 切片） | Ctrl+J 开关底部 dock；每 tab 一个真实 node-pty PowerShell 会话；多 tab；危险命令拦截（UX 护栏，非安全边界）；SSE JSON 信封 + 进程 token 鉴权 | ✅ host：`services/pty-manager.ts` + `server/terminal-pty-api.ts`（POST create/write/resize/close + GET list/stream，host+origin+token 三重守卫）+ `server/token.ts`（Bearer / `?token=`，常量时间比较；token 经 `webserver/index-inject` 以 global `__DSH_HUB_TOKEN__` 注入 src/index.ts）；client：`pty-store.ts` + `terminal-dock.tsx`（xterm.js 6.0.0，懒挂载 / 指针捕获拖拽 / composer 列压缩）+ `terminal-prefs.ts` + `xterm-css.ts` |
 | 39 | 通知点击跳会话（M1） | toast 点击回窗口并跳到对应会话 | ✅ `src-tauri/src/services/notify.rs`：wait_for_action 点击 → unminimize/show/set_focus + `mg:shell-command` focus-session 事件（`__mgShellReady` 300ms×20 重试，与 node.rs dispatch_page_event 一致） |
 | 40 | rail 数据源修复（M1，修 #35） | 时间窗真实 kind 预览：hover 按 turnTimings 时间窗 [startTime, endTime) + node.turn 对齐真实节点 kind（user/steering/context/assistant/command/compaction）提取开场文本，替换 turn-tail 死代码 | ✅ `client/conversation-rail.ts`：extractNodeText + extractTurnSummaries（命令轮次回退助手回复；空槽 tooltip 保留「第 N 段对话」） |
 | 41 | S0 安全（M3） | Origin 白名单校验：POST/PUT 等状态变更请求校验 Origin（loopback / `tauri:`），缺失 Origin 拒绝；GET/HEAD 跳过（DNS-rebinding 已由 Host 校验覆盖） | ✅ `server/host-guard.ts`：`isOriginAllowed` / `rejectIfBadOrigin`，路由工厂共享（pty / workspace/open 等状态变更路由已接） |
 | 42 | 工作区（M2+M4） | 壳 capability 放行 `dialog:allow-open`（M2）+ `POST /api/dsh-hub/workspace/open`（M4：文件/文件夹 OS 默认打开，Windows explorer.exe） | ✅ `src-tauri/capabilities/default.json` + `server/workspace-api.ts`（open 路由带 host+origin+token 三重守卫，路径校验同 list/git） |
+
+---
+
+## 14. 独立插件（plugins/，双轨分发）
+
+| # | 插件（PR） | 职责 | 分发 |
+|---|---|---|---|
+| 43 | dsh-findings-ledger（PR #38） | baseline 快照 + 改动对账 + 覆盖度报告（turn/end 自动出报告） | 双轨：随 hub resources + 独立 npm（`@dsh-external/dsh-findings-ledger`） |
+| 44 | dsh-permission-guard（PR #37） | 逐命令权限白名单 + 四级能力拦截（auto / give-command / confirm / never） | 双轨：`@dsh-external/dsh-permission-guard` |
+| 45 | dsh-project-memory（PR #36） | 每项目持久记忆（FACT.md + JOURNAL.jsonl 自动注入 systemPrompt.context + `memory_read`/`memory_log`/`memory_fact` 工具） | 双轨：`@dsh-external/dsh-project-memory` |
+| 46 | dsh-usage-stats（PR #34） | 全会话 token 用量统计（按 provider/model 聚合 + 设置页可视化 + HTTP API） | 双轨：`@dsh-external/dsh-usage-stats` |
+
+> 双轨分发 = 独立 npm（package.json `private:false` + `publishConfig.access:public`）+ 随 hub NSIS resources（tauri.conf.json `bundle.resources` 含 `../plugins/**/*`，assemble-profile 装配进 profile），见 BUILD.md §7 与 AGENTS.md §1.1 铁律 8。各插件说明见 `plugins/<name>/README.md`。
 
 ---
 
@@ -129,7 +142,7 @@
 ### 已修复（2026-08-23 更新）
 - sidecar 崩溃自动重启循环（supervisor 线程 ≤3 次 + READY 后 re-navigate）
 - cmd-shim 兜底孤儿 node（resolve 硬化 + taskkill /T /F）+ **Job Object KILL_ON_JOB_CLOSE 根治 sidecar 残留**（`assign_sidecar_to_kill_job` + SyncHandle）
-- 插件 fiber 拆除硬杀进程（dispose 不再调 exitProcess）
+- 插件 fiber 拆除硬杀进程（dispose 不再退出宿主进程；退出语义归 Rust 壳 `helpers/quit.rs`）
 - peerDependencies 区间（^0.0.1-rc.1 → ^0.1.0-rc.6，当前 dsh 0.1.1-rc.2）
 - config 写入非原子（renameSync）、settings 永久 dirty、皮肤/背景失败回滚、workspace 双 decode
 - 提示音双响、closeToTray 首启默认不一致
@@ -139,7 +152,7 @@
 - **图标快速切换卡死**（worker + pending 合并，快速切换只保留最新）
 - **卸载提速**（PREUNINSTALL Get-Process + Defender 排除 Add-MpPreference）
 - **build:installer 完整性预检**（assertSourceCompleteness/assertLibClean）
-- **NSIS 安装器闭环**（rc.3 起真机验证，当前 rc.7；卸载快速通道 rc.5-rc.7）
+- **NSIS 安装器闭环**（rc.3 起真机验证，当前 rc.8；卸载快速通道 rc.5-rc.8）
 
 ### 已实现（2026-08-24 · M1-M4 同步）
 - 会话标签栏（M2，C41 移植 + F1-F8 修复：标题栏多页 / 状态点 / 右键菜单 / 拖拽排序 / 内联重命名 / 自动滚动 / 归档移除）
@@ -158,4 +171,4 @@
 - 窗口尺寸管理：最大化先退再套用、退出最大化恢复保存尺寸、光标所在屏 3/4（去上限）
 
 ### 仍待收口（M5）
-1. **NSIS 安装器 / 卸载清理 / 自动更新**（M5 范围，本轮不打包不发布）
+1. **自动更新**（M5 仅剩项：NSIS 安装器 / 卸载快速通道 / Job Object 防残留已随 rc.3–rc.8 闭环，见打包记录）

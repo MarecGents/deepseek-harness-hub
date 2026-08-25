@@ -14,8 +14,14 @@
  * **Tauri command contracts** (Rust side, T4.8):
  *  - `set_window_theme`   – apply title-bar theme ('system' | 'light' | 'dark')
  *  - `set_window_size`    – resize window (width, height in logical pixels)
- *  - `get_workspace_path` – stub returning null (D4: page-initiated report)
  *  - `notify_task_complete` – show native notification (body, sessionId?)
+ *
+ * Note: `get_workspace_path` exists as a Rust `#[tauri::command]` for the
+ * page→Rust direct invoke channel (D4), but it is NOT a DSH_CMD dispatch arm
+ * and is NOT sent through this up-link (the old host-side send was dead code
+ * — the only caller was the removed `openWorkspace` tray callback; tray
+ * "open workspace" now goes through tray-pipe `dispatch_page_event` → client
+ * `invoke('open_workspace_path')`).
  *
  * **Activation** (in src/index.ts, not changed here):
  * ```
@@ -45,8 +51,6 @@ export interface TauriShellOptions {
     height: number | undefined;
     /** Title-bar theme: 'system' | 'light' | 'dark'. */
     theme: 'system' | 'light' | 'dark';
-    /** Open the current workspace directory (tray "Open workspace"). */
-    openWorkspace: () => void;
     /** Start a new task in the web UI (tray "New task"). */
     newTask: () => void;
     /** Live tray behavior read at every decision point. */
@@ -81,13 +85,6 @@ export interface TauriShellHandle {
      * to the white whale on the Rust side. Idempotent.
      */
     setDesktopIcon(id: string): void;
-    /**
-     * Request the current session's workspace path from the shell.
-     * In Tauri mode the page itself reports the path (D4), so this is a stub
-     * that invokes `get_workspace_path` (T4.8) and returns null unless the
-     * Rust side provides a cached value.
-     */
-    getCurrentWorkspacePath(cb: (path: string | null) => void): void;
     /**
      * Dispatch a custom event to the web page (tray → client-plugin bridge).
      * Uses `window.dispatchEvent(new CustomEvent(...))` — identical to

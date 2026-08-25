@@ -95,7 +95,7 @@ cmd /c "call "<vcvars64.bat>" >nul 2>&1 && npm run tauri:build"
 npm run tauri:build
 
 :: ⑤ 产物复制 + SHA256 校验（踩坑 #56：复制可能静默失败，必须校验 hash）
-set VERSION=0.0.2-rc.7
+set VERSION=0.0.2-rc.8
 mkdir build\%VERSION% 2>nul
 copy "src-tauri\target\release\bundle\nsis\DeepSeek Harness Hub_%VERSION%_x64-setup.exe" "build\%VERSION%\" && ^
 certutil -hashfile "src-tauri\target\release\bundle\nsis\DeepSeek Harness Hub_%VERSION%_x64-setup.exe" SHA256 && ^
@@ -103,7 +103,7 @@ certutil -hashfile "build\%VERSION%\DeepSeek Harness Hub_%VERSION%_x64-setup.exe
 :: 两个 hash 必须一致；不一致 → 删掉 build 里的目标再复制一次
 ```
 
-> 版本号约定：`package.json` version（当前 `0.0.2-rc.7`）与 `src-tauri/tauri.conf.json` version **必须一致**——NSIS 产物名和 `build/<version>/` 目录都以它命名；`src-tauri/Cargo.toml` 恒为 `0.0.0`（Tauri 模板约定，勿改）。
+> 版本号约定：`package.json` version（当前 `0.0.2-rc.8`）与 `src-tauri/tauri.conf.json` version **必须一致**——NSIS 产物名和 `build/<version>/` 目录都以它命名；`src-tauri/Cargo.toml` 恒为 `0.0.0`（Tauri 模板约定，勿改）。
 
 ---
 
@@ -199,17 +199,30 @@ npm run build:installer -- --dry-run  :: 只检测工具链并打印执行计划
 ```sh
 cd plugins/<name>
 # 前置：package.json private:false + peerDeps @deepseek-ai/cordis + 装配链就绪
-node ../../scripts/verify-release.mjs        # 门禁（插件身份/语法/装配冒烟）
+# 门禁：插件专用轻量门禁（verify-release.mjs 只对 hub 包有效，插件目录跑它必然 FAIL）。
+#   P1 lib/ 语法（node --check） · P2 patch 身份（insert.id == insert.name == 包名）
+#   P3 files 含 lib + cordis.patch.yml · P4 scoped @dsh-external/* 名
+#   P5 npm pack --dry-run 清单核对（tarball 必须含 cordis.patch.yml 与全部 lib/ 文件）
+node ../../scripts/verify-plugin.mjs             # 全部 PASS 才能发布（铁律 6）
 npm publish --access public --tag rc --registry=https://registry.npmjs.org/
 npm dist-tag add <pkg>@<ver> latest --registry=https://registry.npmjs.org/
 # 校验（registry 直查，勿用 npm view）：
 (Invoke-RestMethod 'https://registry.npmjs.org/-/package/<pkg>/dist-tags').latest
+# 双轨验收（§7.3）：隔离环境 npm i -g <pkg> → 加入 profile bundles → 装载冒烟
 ```
 
+**发布流程说明（插件 npm 轨，双轨之一）**：
+1. **装配链就绪**：`cordis.patch.yml` 声明 `dsh.bundle.patch`（package.json），patch 内 `insert.id == insert.name == package.json name`（铁律 2 身份一致）。
+2. **files 白名单**：`files` 必须同时含 `"lib"` 与 `"cordis.patch.yml"`——缺 patch 时 tarball 装上即崩（dsh `loadOverlayPatches` 对声明但缺失的 patch 直接 throw，R1-4 F2 / 踩坑教训）。
+3. **门禁**：`node ../../scripts/verify-plugin.mjs`（仓库根跑 `node scripts/verify-plugin.mjs` 同样生效，自动发现全部 4 个插件；可传插件目录只验单个）。**任一 FAIL 禁止 publish**（铁律 6）。
+4. **发布**：`npm publish --access public --tag rc --registry=https://registry.npmjs.org/`（显式官方 registry，铁律 5.2-5）→ `npm dist-tag add <pkg>@<ver> latest`。
+5. **发布后校验 + 双轨验收**：registry 直查 dist-tags；按 §7.3 逐插件「pack → 隔离安装 → 加入 profile → 装载冒烟」。
+6. **hub 轨**（本插件同时随 NSIS 分发）走 §7.2，两条轨缺一 = 未完成（铁律 8）。
+
 ### 7.2 随 hub 分发（NSIS 自带）
-1. `src-tauri/tauri.conf.json` `bundle.resources` 加 `../plugins/<name>/**/*`
-2. `scripts/assemble-profile.mjs` 装配：插件进 profile（复制/junction 到 profile node_modules）
-3. `cordis.patch.yml` 加挂载行：`plugins: [{ id: <name>, name: <name> }]`（与包 name 一致）
+1. `src-tauri/tauri.conf.json` `bundle.resources` 加 `../plugins/<name>/**/*`（Tauri 2 约定解包到 `$INSTDIR\_up_\plugins\<name>`，见踩坑 #50）
+2. `scripts/assemble-profile.mjs` 装配：插件随壳启动自动进入 profile——junction 到 profile `node_modules/@dsh-external/<name>` + 以 scoped 名注册进 `dsh.profile.bundles`（步骤 6；失败不阻断 hub 装配）
+3. 插件自带 `cordis.patch.yml`（`package.json` 声明 `dsh.bundle.patch`）经 bundle 层生效；**根 `cordis.patch.yml` 不加插件挂载行**（插件 patch 必须是顶层 YAML 数组，`plugins:` 映射形式 dsh 解析失败，见各插件 README「挂载」节）
 4. `npm run build:installer` → 安装后插件随壳进入 profile 自动装配
 
 ### 7.3 双轨验收

@@ -20,13 +20,13 @@ import { readdir } from 'node:fs/promises'
 import { isAbsolute, join } from 'node:path'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { WebRoute } from '@deepseek-ai/dsh-host-webserver'
+import { readJsonBody } from '../helpers/read-json-body.js'
 import { rejectIfBadHost, rejectIfBadOriginPresent } from './host-guard.ts'
 import { verifyToken } from './token.ts'
 
 const API_PREFIX = '/api/dsh-hub/workspace'
 const MAX_ENTRIES = 1000
 const GIT_TIMEOUT_MS = 3000
-const MAX_BODY = 64 * 1024
 
 interface DirectoryRow {
   name: string
@@ -52,35 +52,6 @@ interface GitInfo {
 function json(res: ServerResponse, status: number, body: unknown): void {
   res.writeHead(status, { 'content-type': 'application/json; charset=utf-8' })
   res.end(JSON.stringify(body))
-}
-
-/**
- * Read a JSON request body bounded to 64KB. Oversized bodies reject with
- * 'body-too-large' and destroy the request; malformed JSON rejects with
- * 'invalid-json'. The caller maps both to sanitized 400 responses.
- */
-function readJsonBody(req: IncomingMessage): Promise<unknown> {
-  return new Promise((resolve, reject) => {
-    let size = 0
-    const chunks: Buffer[] = []
-    req.on('data', (chunk: Buffer) => {
-      size += chunk.length
-      if (size > MAX_BODY) {
-        reject(new Error('body-too-large'))
-        queueMicrotask(() => req.destroy())
-        return
-      }
-      chunks.push(chunk)
-    })
-    req.on('end', () => {
-      try {
-        resolve(chunks.length === 0 ? {} : JSON.parse(Buffer.concat(chunks).toString('utf8')))
-      } catch {
-        reject(new Error('invalid-json'))
-      }
-    })
-    req.on('error', reject)
-  })
 }
 
 function queryPath(req: IncomingMessage): string | null {
@@ -113,6 +84,25 @@ function validPath(value: unknown, directoryOnly: boolean): string | null {
     return null
   }
   return value
+}
+
+/**
+ * True when `target` is `root` itself or a descendant of `root`, bounded by a
+ * path separator (so `C:\work2` is NOT inside root `C:\work`). Both paths are
+ * normalized to forward slashes; comparison is case-insensitive on Windows,
+ * where paths are case-insensitive.
+ * @param root - the allowed base directory (session workspace root).
+ * @param target - the path to test (already validated as absolute + existing).
+ */
+function isWithinRoot(root: string, target: string): boolean {
+  const norm = (p: string): string => p.replace(/\\/g, '/').replace(/\/+$/, '')
+  const r = norm(root)
+  const t = norm(target)
+  const ci = process.platform === 'win32'
+  const eq = (a: string, b: string): boolean => (ci ? a.toLowerCase() === b.toLowerCase() : a === b)
+  if (eq(r, t)) return true
+  const prefix = (ci ? r.toLowerCase() : r) + '/'
+  return (ci ? t.toLowerCase() : t).startsWith(prefix)
 }
 
 /** List one directory level, directories first, then files. */
@@ -196,8 +186,14 @@ function openInOs(path: string): Promise<{ ok: boolean }> {
   })
 }
 
-/** Build the workspace API routes (list + git + open). */
-export function makeWorkspaceRoutes(): WebRoute[] {
+/**
+ * Build the workspace API routes (list + git + open).
+ * @param resolveWorkspaceRoot - optional getter for the session workspace root
+ *   (host-tracked active cwd). The `open` route refuses any target outside
+ *   this root — macOS `open` / Linux `xdg-open` can execute arbitrary files,
+ *   so a compromised same-origin page must not drive them past the workspace.
+ */
+export function makeWorkspaceRoutes(resolveWorkspaceRoot?: () => string | undefined): WebRoute[] {
   return [
     {
       kind: 'exact',
@@ -258,6 +254,16 @@ export function makeWorkspaceRoutes(): WebRoute[] {
           const target = validPath(record.path, false)
           if (target === null) {
             json(res, 400, { ok: false, error: 'invalid-request' })
+            return
+          }
+          // Open targets are restricted to the session workspace root: the
+          // host-tracked active cwd is the only trusted root (the body path is
+          // attacker-influenced, so the client must not be able to widen it).
+          // Windows explorer.exe opens without executing, but the same rule is
+          // enforced there for uniform semantics.
+          const root = resolveWorkspaceRoot?.()
+          if (root === undefined || root === '' || !isWithinRoot(root, target)) {
+            json(res, 403, { ok: false, error: 'outside workspace' })
             return
           }
           const result = await openInOs(target)
