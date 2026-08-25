@@ -110,11 +110,16 @@ impl IconManager {
     }
 
     /// worker 内执行全部面（串行 + 面级幂等）。
+    /// 顺序：shell 面（AUMID IconUri + .lnk + Explorer 通知）**先于**窗口面——
+    /// 任务栏按钮按 AppUserModelId 关联取图标（见 update_shell_icon_sources
+    /// 注释），若窗口图标先换而 AUMID 仍指向旧 .ico，任务栏要等慢速的
+    /// SHCNE_ASSOCCHANGED 落地才跟随（Bug-3 延迟根因）；先注册新 IconUri
+    /// 再重绘窗口图标，任务栏按钮在窗口重绘时即取到新图标。
     fn apply_all(&self, app: &AppHandle, icon_id: &str, dark: bool) {
         let _guard = self.apply_lock.lock().unwrap();
+        self.apply_shell_face(app, icon_id);
         self.apply_window_face(app, icon_id, dark);
         self.apply_tray_face(app, icon_id, dark);
-        self.apply_shell_face(app, icon_id);
         self.apply_titlebar_face(app, icon_id);
     }
 
@@ -234,7 +239,9 @@ fn update_shell_icon_sources(_app: &AppHandle, icon_id: &str) {
         CoCreateInstance, CoInitializeEx, CoUninitialize, IPersistFile, CLSCTX_INPROC_SERVER,
         COINIT_APARTMENTTHREADED, STGM_READWRITE,
     };
-    use windows::Win32::UI::Shell::{IShellLinkW, ShellLink, SHChangeNotify, SHCNE_ASSOCCHANGED, SHCNF_IDLIST};
+    use windows::Win32::UI::Shell::{
+        IShellLinkW, ShellLink, SHChangeNotify, SHCNE_ASSOCCHANGED, SHCNE_UPDATEITEM, SHCNF_IDLIST, SHCNF_PATHW,
+    };
 
     let Some(ico) = desktop_icon_ico_path(icon_id) else {
         log::warn!("icon: no .ico for '{}' (taskbar icon source not updated)", icon_id);
@@ -304,6 +311,11 @@ fn update_shell_icon_sources(_app: &AppHandle, icon_id: &str) {
 
     // 广播变更让 Explorer 重读（任务栏/快捷方式图标刷新）。
     unsafe {
+        // 定向快路径：让 Explorer 重读新 .ico 文件自身的图标缓存（轻量，
+        // 毫秒级），随后 ASSOCCHANGED 兜底刷新 AUMID 关联（较重，秒级——
+        // 顺序上窗口面已在 shell 面之后，任务栏重绘即取到新 IconUri）。
+        let wide_ico0: Vec<u16> = ico.to_string_lossy().encode_utf16().chain(std::iter::once(0)).collect();
+        SHChangeNotify(SHCNE_UPDATEITEM, SHCNF_PATHW, Some(wide_ico0.as_ptr() as *const _), None);
         SHChangeNotify(SHCNE_ASSOCCHANGED, SHCNF_IDLIST, None, None);
     }
 }

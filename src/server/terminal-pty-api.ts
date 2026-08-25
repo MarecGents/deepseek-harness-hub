@@ -28,6 +28,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { WebRoute } from '@deepseek-ai/dsh-host-webserver'
 import { existsSync, statSync } from 'node:fs'
+import { homedir } from 'node:os'
 import { isAbsolute } from 'node:path'
 import { readJsonBody } from '../helpers/read-json-body.js'
 import { rejectIfBadHost, rejectIfBadOriginPresent } from './host-guard.ts'
@@ -59,20 +60,30 @@ function clampInt(value: unknown, fallback: number, min: number, max: number): n
 }
 
 /**
- * Validate a cwd from the request body: must be an existing ABSOLUTE
- * directory.
+ * Resolve the cwd for a new PTY session: the caller's absolute existing
+ * directory when valid, otherwise the user's home directory (Bug-1 fix: the
+ * terminal must open a working shell even when no session/workspace cwd is
+ * resolvable — an empty cwd previously produced a 400 and a blank dock).
  * @param value - the raw body field.
- * @returns the validated path, or null when unusable.
+ * @returns the validated directory, or null when even the fallback fails.
  */
-function validCwd(value: unknown): string | null {
-  if (typeof value !== 'string' || value === '') return null
-  if (!isAbsolute(value)) return null
-  try {
-    if (!existsSync(value) || !statSync(value).isDirectory()) return null
-  } catch {
-    return null
+function resolveCwd(value: unknown): string | null {
+  if (typeof value === 'string' && value !== '' && isAbsolute(value)) {
+    try {
+      if (existsSync(value) && statSync(value).isDirectory()) return value
+    } catch {
+      // Fall through to the home-directory default.
+    }
   }
-  return value
+  const home = homedir()
+  if (home !== '' && isAbsolute(home)) {
+    try {
+      if (existsSync(home) && statSync(home).isDirectory()) return home
+    } catch {
+      // Fall through to the fixed 400 below.
+    }
+  }
+  return null
 }
 
 /** Answer 405 unless the method matches; returns true when it responded. */
@@ -105,7 +116,7 @@ export function makePtyRoutes(): WebRoute[] {
         if (rejectWrongMethod(req, res, 'POST')) return Promise.resolve()
         return readJsonBody(req).then((body) => {
           const record = (body ?? {}) as { cwd?: unknown; cols?: unknown; rows?: unknown }
-          const cwd = validCwd(record.cwd)
+          const cwd = resolveCwd(record.cwd)
           if (cwd === null) {
             json(res, 400, { ok: false, error: 'invalid-request' })
             return

@@ -243,9 +243,10 @@ async function openFolderAsWorkspace(ctx: unknown): Promise<void> {
  * Insert a file/folder reference into the composer's draft. The dsh client
  * runtime in this assembly exposes no `conversation.input.shell().setDraft`
  * service, so this writes through the DOM (PR #40's fallback): focus the
- * composer textarea (`[data-composer-seat]`, then the first textarea on the
- * page), append the reference, and dispatch an `input` event so the React
- * draft state synchronizes. When no textarea exists, degrade to the clipboard.
+ * composer textarea inside `[data-composer-seat]` ONLY (a page-wide textarea
+ * fallback can hit a hidden/other textarea and render white-on-white — Bug-2),
+ * append the reference, and dispatch an `input` event so the React draft state
+ * synchronizes. When no composer textarea exists, degrade to the clipboard.
  */
 function insertReferenceIntoComposer(text: string): void {
   if (insertReferenceIntoComposerDom(text)) return
@@ -255,12 +256,21 @@ function insertReferenceIntoComposer(text: string): void {
 function insertReferenceIntoComposerDom(text: string): boolean {
   try {
     const seat = document.querySelector('[data-composer-seat]')
-    const ta = seat?.querySelector('textarea') || document.querySelector('textarea')
+    const ta = seat?.querySelector('textarea') ?? null
     if (ta === null) return false
     ta.focus()
     const cur = ta.value
-    ta.value = cur.trim() === '' ? text : cur + ' ' + text
-    ta.dispatchEvent(new Event('input', { bubbles: true }))
+    const next = cur.trim() === '' ? text : cur + ' ' + text
+    // React-controlled textarea: assign through the prototype setter (a direct
+    // `ta.value =` write is intercepted by React's value tracker and can be
+    // clobbered by the next render), then fire an InputEvent so onChange reads
+    // the new value — the exact same path real typing takes, which is what
+    // makes the draft (and its mirror layer) render the text in the normal
+    // color instead of the transparent-textarea ghost.
+    const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')?.set
+    if (setter === undefined) return false
+    setter.call(ta, next)
+    ta.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: text }))
     return true
   } catch {
     // Malformed DOM — treat as a failure so the caller falls back to clipboard.

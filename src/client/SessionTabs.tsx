@@ -57,15 +57,20 @@ function useWorkspacesSnap(ctx: any): WorkspacesSnap {
 
 const ROOT = {
   display: 'flex', alignItems: 'center', gap: 2, flex: '1', minWidth: 0,
-  overflowX: 'auto', height: '100%', boxSizing: 'border-box', paddingLeft: 6,
+  // Browser-like tab strip: tabs hold a fixed preferred width and SHRINK to
+  // fit when the bar overflows (Bug-4); no horizontal scroll.
+  overflow: 'hidden', height: '100%', boxSizing: 'border-box', paddingLeft: 6,
   fontFamily: 'var(--dsw-font-family, system-ui)', fontSize: 12,
   WebkitAppRegion: 'no-drag',
 } as CSSProperties
 const TAB: CSSProperties = {
   display: 'inline-flex', alignItems: 'center', gap: 5, padding: '3px 8px', borderRadius: 6, cursor: 'pointer',
-  background: 'transparent', border: 'none', color: 'var(--dsw-alias-label-tertiary, #9aa7bd)', whiteSpace: 'nowrap', maxWidth: 190,
+  background: 'transparent', border: 'none', color: 'var(--dsw-alias-label-tertiary, #9aa7bd)', whiteSpace: 'nowrap',
+  // Fixed preferred width 180px; flex-shrink compresses it (down to minWidth
+  // 60px) when many tabs overflow — the browser tab-strip behavior.
+  flex: '0 1 180px', minWidth: 60,
   transition: 'background .12s ease, color .12s ease',
-  userSelect: 'none', flex: 'none',
+  userSelect: 'none',
 }
 const TAB_ACTIVE: CSSProperties = { ...TAB, background: 'var(--dsw-alias-interactive-bg-hover, rgba(128,128,128,.16))', color: 'var(--dsw-alias-label-primary, #fff)' }
 const TAB_DRAGGING: CSSProperties = { ...TAB, opacity: 0.4 }
@@ -286,7 +291,7 @@ export function SessionTabs({ ctx }: SessionTabsProps): ReactNode {
                 style={{ ...INLINE_INPUT, width: Math.max(80, draft.length * (draft.length && /[\u4e00-\u9fff]/.test(draft) ? 12 : 7) + 22) }}
               />
             ) : (
-              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{titleOf(id)}</span>
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>{titleOf(id)}</span>
             )}
             <span
               role="button"
