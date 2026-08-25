@@ -326,30 +326,41 @@ export function TerminalPage(): ReactNode {
           dock.style.right = Math.max(0, window.innerWidth - rect.right) + 'px'
         }
       }
-      // Explicit compression target: the composer column — the first
-      // flex-column ancestor of the composer seat. Padding-bottom there lifts
-      // the composer and the message list above the dock.
+      // Compression target: the conversation scroll container. dsh's composer
+      // seat is `position: sticky; bottom: 0` (ConversationRoot.module.css
+      // .root[data-phase='active'] .composerSeat) — it pins to the SCROLLPORT
+      // bottom, so padding-bottom on an ancestor cannot lift it (Bug-5:
+      // the terminal dock covered the composer / last message line in long
+      // chats). Shrinking the scroll container itself with margin-bottom moves
+      // the scrollport bottom — and with it the sticky composer — above the
+      // dock. `[data-conversation-scroll]` is dsh's own scrollBody marker;
+      // the flex-column ancestor walk is the fallback.
       let target: HTMLElement | null = null
       if (seat !== null) {
-        let el: HTMLElement | null = seat.parentElement
-        while (el !== null && el !== document.body) {
-          const cs = getComputedStyle(el)
-          if (cs.display === 'flex' && cs.flexDirection === 'column' && el.getBoundingClientRect().width > 200) {
-            target = el
-            break
+        const scroll = document.querySelector<HTMLElement>('[data-conversation-scroll]')
+        if (scroll !== null && scroll.contains(seat)) {
+          target = scroll
+        } else {
+          let el: HTMLElement | null = seat.parentElement
+          while (el !== null && el !== document.body) {
+            const cs = getComputedStyle(el)
+            if (cs.display === 'flex' && cs.flexDirection === 'column' && el.getBoundingClientRect().width > 200) {
+              target = el
+              break
+            }
+            el = el.parentElement
           }
-          el = el.parentElement
         }
       }
-      if (compressElRef.current !== null && compressElRef.current !== target) compressElRef.current.style.paddingBottom = ''
+      if (compressElRef.current !== null && compressElRef.current !== target) compressElRef.current.style.marginBottom = ''
       compressElRef.current = target
-      if (target !== null) target.style.paddingBottom = visible ? (height + 6) + 'px' : ''
+      if (target !== null) target.style.marginBottom = visible ? (height + 6) + 'px' : ''
     }
     apply()
     window.addEventListener('resize', apply)
     return () => {
       window.removeEventListener('resize', apply)
-      if (compressElRef.current !== null) { compressElRef.current.style.paddingBottom = ''; compressElRef.current = null }
+      if (compressElRef.current !== null) { compressElRef.current.style.marginBottom = ''; compressElRef.current = null }
     }
   }, [visible, height])
 
