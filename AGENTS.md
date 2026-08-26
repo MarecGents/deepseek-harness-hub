@@ -151,6 +151,7 @@ dsh-hub 是**双 half** 结构，且**套壳代码与插件代码必须严格模
 4. **错误处理**：空 `catch` 必须注释吞掉什么、为何无碍；`try` 保持单一语句。**进程退出语义归 Rust 壳**（`src-tauri/src/helpers/quit.rs`：写 `quit.marker` + `process::exit(0)`，supervisor 据此区分主动退出/崩溃重启）；host 侧**不**自行 `process.exit()`（WebView2 时代的 `exitProcess()` 已删除，勿复活），不用 `app.exit()`。
 5. **类型**：`strict: true`；`any` 必须解释为何无法收窄；ESM（`"type": "module"`）；相对导入用 `.ts` 后缀（host）或构建约定。
 6. **文档同步**：行为/配置/接口变更必须同步更新 `README.md`、`FUNCTIONS.md`（功能状态事实源）、`docs/关键踩坑记录.md`（新坑补录）或本项目任务日志。
+7. **Rust 壳遵循 rust-skills 规范**（2026-08-27 评审固化，细则见 `src-tauri/src/AGENTS.md` 红线 15-20）：① `unsafe` 必须 `// SAFETY:` 注释；② 纯函数/关键判定补 `#[cfg(test)]` 单测（`cargo test` 为发布门禁）；③ `[profile.release]` 保持 `lto="thin"` + `codegen-units=1` + `strip="symbols"`；④ 关键路径禁止静默吞错（`let _ =` 需注释或 `warn!`）；⑤ COM 初始化/反初始化配对（RAII）；⑥ 新增注释用英文。发布前 `cargo fmt --check` + `clippy --all-targets -D warnings` + `cargo test` 全绿（CI 强制）。
 
 ## 5. 构建 / 发布 / 分支 / 发包前强制检查
 

@@ -10,8 +10,8 @@
 //   2. launcher 看到 marker → 视为用户主动退出 → 不自动重启
 //   3. 无 marker 的非 0 退出 → launcher 自动重启（M4 sidecar 崩溃重启 ≤3 次）
 
-use std::path::PathBuf;
 use log::info;
+use std::path::PathBuf;
 
 /// quit.marker 路径：$DSH_HOME/dsh-hub/quit.marker（与 rc.14 一致）。
 fn marker_path() -> PathBuf {
@@ -43,4 +43,13 @@ pub fn clear_quit_marker() {
 /// 不重启；无 marker 的非 0 退出 = 崩溃，进入重启循环）。
 pub fn has_quit_marker() -> bool {
     marker_path().exists()
+}
+
+/// 统一的「用户主动退出」收口：写 quit.marker 后 `process::exit(0)`。
+/// 托盘退出 / 菜单退出 / --smoke 收尾共用——marker 必须先于 exit 写入，
+/// supervisor 才能把这次退出判为「主动」而非崩溃。`process::exit` 刻意跳过
+/// 析构（GUI 进程退出语义；单一退出点便于审查）。
+pub fn quit_and_exit() -> ! {
+    write_quit_marker();
+    std::process::exit(0);
 }

@@ -105,7 +105,7 @@ SOP 把"经验/口头流程"固化为**标准作业书**，让任何执行者（
 | **身份门禁** | 插件身份四重相等（AGENTS.md 铁律 2） | 修复至一致，禁止继续 |
 | **构建门禁** | `npm run build && build:client`（或 `cargo build --release` + clippy + test）exit 0 | 修复 |
 | **发布门禁** | `node scripts/verify-release.mjs`（插件层）全部 PASS | 禁止 publish（铁律 6） |
-| **迁移门禁** | 壳层 `cargo check` + `clippy` + `test` 零告警 + `verify-m4-multi-instance.mjs`（多实例硬验收）+ `node scripts/verify-tauri-release.mjs`（P1–P9 真实断言：tauri.conf 身份与版本一致 / `bundle.resources` 双轨+运行时闭包覆盖 / 通配目录非空 / NSIS 产物存在且带当前版本 / single-instance 接线 / `--assemble-only` 支持）+ `npm run build:installer` 完整性预检 | 禁止发布 |
+| **迁移门禁** | 壳层 `cargo fmt --check` + `clippy --all-targets -D warnings` + `cargo test` 全绿（rust-skills 规范，AGENTS.md 红线 15-20）+ `verify-m4-multi-instance.mjs`（多实例硬验收）+ `node scripts/verify-tauri-release.mjs`（P1–P9 真实断言：tauri.conf 身份与版本一致 / `bundle.resources` 双轨+运行时闭包覆盖 / 通配目录非空 / NSIS 产物存在且带当前版本 / single-instance 接线 / `--assemble-only` 支持）+ `npm run build:installer` 完整性预检 | 禁止发布 |
 | **验收门禁** | 阶段验收表全过（状态列"通过"） | 补齐后重跑 |
 | **回归门禁** | 回归基线（dev-v2 当前 rc 行为/上一阶段）无回归 | 修复回归项 |
 

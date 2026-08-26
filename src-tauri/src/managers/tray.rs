@@ -13,13 +13,13 @@
 // 外部接口：setup_tray(app)；set_tray_icon(app, icon_id)；
 //           sync_toggle_label(app)（窗口可见性变化时刷新菜单 label）。
 
+use log::info;
 use std::sync::Mutex;
 use tauri::{
-    App, Manager, WebviewWindow,
-    menu::{Menu, MenuItem, MenuEvent},
+    menu::{Menu, MenuEvent, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent},
+    App, Manager, WebviewWindow,
 };
-use log::info;
 
 /// 菜单项 ID 常量。
 const MENU_TOGGLE: &str = "toggle";
@@ -42,7 +42,9 @@ pub fn setup_tray(app: &App) -> Result<TrayIcon, Box<dyn std::error::Error>> {
     let new_task = MenuItem::with_id(app, MENU_NEW_TASK, "新建会话", true, None::<&str>)?;
     let quit_item = MenuItem::with_id(app, MENU_QUIT, "退出", true, None::<&str>)?;
     let menu = Menu::with_items(app, &[&toggle_item, &open_ws, &new_task, &quit_item])?;
-    app.manage(Mutex::new(TrayMenuHandles { toggle: toggle_item }));
+    app.manage(Mutex::new(TrayMenuHandles {
+        toggle: toggle_item,
+    }));
 
     // 内嵌 PNG 图标（tauri `image` feature 解码 PNG）。
     // include_bytes! 编译期内嵌：打包态不存在 CARGO_MANIFEST_DIR/icons/32x32.png
@@ -66,7 +68,12 @@ pub fn setup_tray(app: &App) -> Result<TrayIcon, Box<dyn std::error::Error>> {
             }
 
             // 左键单击 → 显示窗口并置顶到最前端（Q7：左键可打开界面）。
-            if let TrayIconEvent::Click { button: MouseButton::Left, button_state: MouseButtonState::Up, .. } = event {
+            if let TrayIconEvent::Click {
+                button: MouseButton::Left,
+                button_state: MouseButtonState::Up,
+                ..
+            } = event
+            {
                 if let Some(win) = app_handle.get_webview_window("main") {
                     restore(&win);
                     let _ = win.set_always_on_top(true);
@@ -122,7 +129,9 @@ pub fn set_tray_icon(app: &tauri::AppHandle, icon_id: &str, dark: bool) {
 /// 否则（含任务栏最小化/最小化到托盘/关闭到托盘）→「显示主界面」。
 pub fn sync_toggle_label(app: &tauri::AppHandle) {
     let text = match app.get_webview_window("main") {
-        Some(win) if win.is_visible().unwrap_or(false) && !win.is_minimized().unwrap_or(true) => "隐藏主界面",
+        Some(win) if win.is_visible().unwrap_or(false) && !win.is_minimized().unwrap_or(true) => {
+            "隐藏主界面"
+        }
         _ => "显示主界面",
     };
     if let Some(st) = app.try_state::<Mutex<TrayMenuHandles>>() {
@@ -143,7 +152,11 @@ fn handle_menu_event(app: &tauri::AppHandle, event: MenuEvent) {
             // rc.14 tray-helper 模式：托盘命令经独立进程管道（dsh web stdin）下行
             // → host 插件 → 页面 dispatchPageEvent（__mgShellReady 重试，页面未就绪
             // 不丢命令）。比 win.eval 更可靠（Q2 用户指定）。
-            let command = if event.id().as_ref() == MENU_OPEN_WORKSPACE { "open-workspace" } else { "new-task" };
+            let command = if event.id().as_ref() == MENU_OPEN_WORKSPACE {
+                "open-workspace"
+            } else {
+                "new-task"
+            };
             crate::node::send_tray_command(app, command);
             info!("tray: menu '{}' → sent via stdin pipe", command);
         }
@@ -153,8 +166,7 @@ fn handle_menu_event(app: &tauri::AppHandle, event: MenuEvent) {
             if let Some(state) = app.try_state::<std::sync::Arc<crate::node::NodeState>>() {
                 crate::node::stop_dsh(&state);
             }
-            crate::quit::write_quit_marker();
-            std::process::exit(0);
+            crate::quit::quit_and_exit();
         }
         _ => {}
     }

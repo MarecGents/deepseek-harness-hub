@@ -54,6 +54,12 @@ src-tauri/src/
 12. **sidecar 防残留**：spawn 成功路径必须 `assign_sidecar_to_kill_job`（KILL_ON_JOB_CLOSE 单例；HANDLE 非 Send/Sync → `SyncHandle` 包装）。
 13. **跨线程窗口消息**：一律 `PostMessageW`（异步投递），`SendMessageW` 仅必须同步取返回值时使用。
 14. **windows features 显式声明**：Cargo.toml 必须显式列 `Win32_System_JobObjects` / `Win32_Security`（features 不随依赖传递）。
+15. **unsafe 必须 `// SAFETY:` 注释**（rust-skills unsafe-safety-comment）：每一处 `unsafe` 块上方注明前置条件/不变量（指针有效、字符串 NUL 结尾、HICON 生命周期、COM 初始化状态、窗口句柄跨线程安全性）；`unsafe fn` 需 `# Safety` 段。新增/修改含 `unsafe` 的代码必须遵守，零例外。
+16. **纯函数/关键判定必须补 `#[cfg(test)]` 单元测试**（rust-skills test-*）：解析类（`parse_dsh_ready_port`）、掩码构造（BGRA/AND）、归一化（`normalize_path`）、多实例通道合并判定等无窗口/IO 依赖的逻辑，改动后必须同步测试；`cargo test` 为发布门禁（见 PROCESS_QUALITY §2.6）。
+17. **release 构建必须启用编译优化 profile**：Cargo.toml `[profile.release]` 保持 `lto = "thin"` + `codegen-units = 1` + `strip = "symbols"`（体积/启动收益；改回默认需审查说明）。
+18. **关键路径禁止静默吞错**（rust-skills anti-empty-catch / obs-*）：窗口图标/托盘/导航/`win.eval`/COM 调用等关键操作的失败必须 `warn!` 留痕；`let _ =` 仅允许「失败无碍且已注释原因」或「同一语句内已打日志」的场景。
+19. **COM 初始化/反初始化必须配对且容错**：`CoInitializeEx` 与 `CoUninitialize` 必须成对（推荐 RAII Guard，禁止散落手动调用导致分支漏调）。
+20. **新增 Rust 代码注释用英文**（根 AGENTS.md 第 3 节；历史中文注释逐步英文化，新增/修改处必须英文——保证 rustdoc / clippy doc lint / 外部贡献者可读）。
 
 ## 分层依赖红线
 

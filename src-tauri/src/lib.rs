@@ -21,20 +21,33 @@
 //   services/ = 领域 Services（notify）
 //   commands/ = Tauri 命令薄胶水（Callback 层）
 // #[path] 保留模块名（crate::tray 等），避免引用链改动。
-#[path = "managers/window.rs"] mod window;
-#[path = "managers/window_ops.rs"] mod window_ops;
-#[path = "managers/icon.rs"] mod icon;
-#[path = "helpers/state.rs"] mod state;
-#[path = "helpers/theme.rs"] mod theme;
-#[path = "managers/tray.rs"] mod tray;
-#[path = "managers/single_instance.rs"] mod single_instance;
-#[path = "helpers/os_theme.rs"] mod os_theme;
-#[path = "services/notify.rs"] mod notify;
-#[path = "helpers/quit.rs"] mod quit;
-#[path = "managers/node.rs"] mod node;
-#[path = "commands/commands.rs"] mod commands;
+#[path = "commands/commands.rs"]
+mod commands;
 #[cfg(debug_assertions)]
-#[path = "helpers/e2e.rs"] mod e2e;
+#[path = "helpers/e2e.rs"]
+mod e2e;
+#[path = "managers/icon.rs"]
+mod icon;
+#[path = "managers/node.rs"]
+mod node;
+#[path = "services/notify.rs"]
+mod notify;
+#[path = "helpers/quit.rs"]
+mod quit;
+#[path = "managers/single_instance.rs"]
+mod single_instance;
+#[path = "helpers/state.rs"]
+mod state;
+#[path = "helpers/theme.rs"]
+mod theme;
+#[path = "managers/tray.rs"]
+mod tray;
+#[path = "managers/window.rs"]
+mod window;
+#[path = "managers/window_ops.rs"]
+mod window_ops;
+#[path = "helpers/winutil.rs"]
+mod winutil;
 
 use log::{info, warn};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -42,7 +55,9 @@ use tauri::{Listener, Manager};
 
 /// M1 IPC 冒烟命令。
 #[tauri::command]
-fn ping() -> String { "pong".to_string() }
+fn ping() -> String {
+    "pong".to_string()
+}
 
 /// READY 先验证再导航（T4.4 强制步骤）：轮询 TCP 连接到 127.0.0.1:<port> 确认端口可达。
 /// 升格为强制前置：60s 超时、500ms 间隔、连续 15 次连接失败报错。
@@ -59,7 +74,10 @@ fn wait_for_ready(port: u16) -> Result<(), String> {
 
     loop {
         if start.elapsed() > timeout {
-            return Err(format!("READY verification timeout ({:.0}s)", timeout.as_secs()));
+            return Err(format!(
+                "READY verification timeout ({:.0}s)",
+                timeout.as_secs()
+            ));
         }
         match TcpStream::connect_timeout(&addr.parse().unwrap(), Duration::from_millis(500)) {
             Ok(_) => {
@@ -69,7 +87,9 @@ fn wait_for_ready(port: u16) -> Result<(), String> {
             Err(e) => {
                 failures += 1;
                 if failures >= max_failures {
-                    return Err(format!("READY verification: {addr} connect failed ({e}) {failures}/{max_failures}"));
+                    return Err(format!(
+                        "READY verification: {addr} connect failed ({e}) {failures}/{max_failures}"
+                    ));
                 }
                 warn!("t4.4: {addr} connect failed ({e}), retry {failures}/{max_failures}");
             }
@@ -116,12 +136,14 @@ fn run_command_with_timeout(
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .spawn()?;
-    let mut stdout = child.stdout.take().ok_or_else(|| {
-        std::io::Error::other("stdout pipe missing")
-    })?;
-    let mut stderr = child.stderr.take().ok_or_else(|| {
-        std::io::Error::other("stderr pipe missing")
-    })?;
+    let mut stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| std::io::Error::other("stdout pipe missing"))?;
+    let mut stderr = child
+        .stderr
+        .take()
+        .ok_or_else(|| std::io::Error::other("stderr pipe missing"))?;
     let (tx, rx) = std::sync::mpsc::channel();
     std::thread::spawn(move || {
         let mut out = Vec::new();
@@ -150,7 +172,11 @@ fn run_command_with_timeout(
         }
     };
     let (out, err) = rx.recv().unwrap_or_default();
-    Ok(std::process::Output { status, stdout: out, stderr: err })
+    Ok(std::process::Output {
+        status,
+        stdout: out,
+        stderr: err,
+    })
 }
 
 /// T4.2 双通道多实例检测：枚举 TCP 监听端口的 PID，并与命令行匹配
@@ -167,7 +193,6 @@ fn detect_running_dsh_instances() -> InstanceScan {
     const DETECT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
 
     // 通道 1：监听端口 → PID（netstat）。
-    let mut listener_pids: std::collections::HashSet<u32> = std::collections::HashSet::new();
     let mut netstat = std::process::Command::new("netstat");
     netstat.args(["-ano", "-p", "tcp"]);
     // CREATE_NO_WINDOW：netstat 是 console 程序，不隐藏会闪命令行窗口。
@@ -176,31 +201,33 @@ fn detect_running_dsh_instances() -> InstanceScan {
         use std::os::windows::process::CommandExt;
         netstat.creation_flags(0x08000000);
     }
-    let netstat_ok = match run_command_with_timeout(&mut netstat, DETECT_TIMEOUT) {
-        Ok(out) if out.status.success() => {
-            let text = String::from_utf8_lossy(&out.stdout);
-            for line in text.lines() {
-                let cols: Vec<&str> = line.split_whitespace().collect();
-                if cols.len() >= 5 && cols[0] == "TCP" && cols[3] == "LISTENING" {
-                    if let Ok(pid) = cols[4].parse::<u32>() {
-                        listener_pids.insert(pid);
+    let netstat_pids: Option<std::collections::HashSet<u32>> =
+        match run_command_with_timeout(&mut netstat, DETECT_TIMEOUT) {
+            Ok(out) if out.status.success() => {
+                let mut pids = std::collections::HashSet::new();
+                let text = String::from_utf8_lossy(&out.stdout);
+                for line in text.lines() {
+                    let cols: Vec<&str> = line.split_whitespace().collect();
+                    if cols.len() >= 5 && cols[0] == "TCP" && cols[3] == "LISTENING" {
+                        if let Ok(pid) = cols[4].parse::<u32>() {
+                            pids.insert(pid);
+                        }
                     }
                 }
+                Some(pids)
             }
-            true
-        }
-        Ok(out) => {
-            warn!(
-                "m4: netstat channel exited {:?} — treating as channel failure (fail-closed)",
-                out.status.code()
-            );
-            false
-        }
-        Err(e) => {
-            warn!("m4: netstat channel failed: {e} (fail-closed)");
-            false
-        }
-    };
+            Ok(out) => {
+                warn!(
+                    "m4: netstat channel exited {:?} — treating as channel failure (fail-closed)",
+                    out.status.code()
+                );
+                None
+            }
+            Err(e) => {
+                warn!("m4: netstat channel failed: {e} (fail-closed)");
+                None
+            }
+        };
 
     // 通道 2：进程命令行匹配（PowerShell CIM；括号化 OR 规避本机 WQL -or 解析失败，
     // 见 2026-08-19 实测：`Name='x' -or Name='y'` 报 0x80041017 无效查询）。
@@ -208,7 +235,6 @@ fn detect_running_dsh_instances() -> InstanceScan {
     let script = format!(
         "Get-CimInstance Win32_Process -Filter \"{filter}\" | Where-Object {{ $_.CommandLine -match 'dsh.*web' }} | Select-Object -ExpandProperty ProcessId"
     );
-    let mut cim_pids: Vec<u32> = Vec::new();
     let mut ps = std::process::Command::new("powershell.exe");
     ps.args(["-NoProfile", "-NonInteractive", "-Command", &script]);
     // CREATE_NO_WINDOW：powershell 是 console 程序，不隐藏会闪命令行窗口。
@@ -217,56 +243,81 @@ fn detect_running_dsh_instances() -> InstanceScan {
         use std::os::windows::process::CommandExt;
         ps.creation_flags(0x08000000);
     }
-    let cim_ok = match run_command_with_timeout(&mut ps, DETECT_TIMEOUT) {
+    let cim_pids: Option<Vec<u32>> = match run_command_with_timeout(&mut ps, DETECT_TIMEOUT) {
         Ok(out) if out.status.success() => {
-            for pid in String::from_utf8_lossy(&out.stdout).lines() {
-                if let Ok(n) = pid.trim().parse::<u32>() {
-                    cim_pids.push(n);
-                }
-            }
-            true
+            let pids: Vec<u32> = String::from_utf8_lossy(&out.stdout)
+                .lines()
+                .filter_map(|pid| pid.trim().parse::<u32>().ok())
+                .collect();
+            Some(pids)
         }
         Ok(out) => {
             warn!(
                 "m4: CIM channel exited {:?} — treating as channel failure (fail-closed)",
                 out.status.code()
             );
-            false
+            None
         }
         Err(e) => {
             warn!("m4: CIM channel failed: {e} (fail-closed)");
-            false
+            None
         }
     };
 
-    // fail-closed 判定（宁拦勿放）。
-    match (netstat_ok, cim_ok) {
-        (true, true) => {
-            // 两通道均正常：取交集（与旧语义一致）。
+    combine_channels(netstat_pids, cim_pids)
+}
+
+/// Combine the two detection channels under fail-closed semantics (宁拦勿放):
+///   - both succeeded → intersect (legacy semantics);
+///   - one failed/timed-out → judge by the surviving channel (never relax to
+///     "no evidence", which is how the old empty-intersection bug let
+///     double-instance damage through);
+///   - both failed → `indeterminate`, the caller refuses to start.
+///
+/// Pure decision table — unit-tested so the fail-closed contract cannot
+/// regress silently (rust-skills test-*).
+fn combine_channels(
+    netstat: Option<std::collections::HashSet<u32>>,
+    cim: Option<Vec<u32>>,
+) -> InstanceScan {
+    match (netstat, cim) {
+        (Some(listeners), Some(cim_pids)) => {
             let mut matched: Vec<u32> = cim_pids
                 .into_iter()
-                .filter(|n| listener_pids.contains(n))
+                .filter(|n| listeners.contains(n))
                 .collect();
             matched.sort_unstable();
-            InstanceScan { running: matched, indeterminate: false }
+            InstanceScan {
+                running: matched,
+                indeterminate: false,
+            }
         }
-        (true, false) => {
-            // CIM 通道失败：按 netstat LISTENING 结果判定（宁拦勿放）。
+        (Some(listeners), None) => {
             warn!("m4: CIM channel failed — judging by netstat LISTENING pids only (fail-closed)");
-            let mut running: Vec<u32> = listener_pids.into_iter().collect();
+            let mut running: Vec<u32> = listeners.into_iter().collect();
             running.sort_unstable();
-            InstanceScan { running, indeterminate: false }
+            InstanceScan {
+                running,
+                indeterminate: false,
+            }
         }
-        (false, true) => {
-            // netstat 通道失败：按 CIM `dsh.*web` 进程结果判定（宁拦勿放）。
-            warn!("m4: netstat channel failed — judging by CIM dsh.*web processes only (fail-closed)");
-            cim_pids.sort_unstable();
-            InstanceScan { running: cim_pids, indeterminate: false }
+        (None, Some(cim_pids)) => {
+            warn!(
+                "m4: netstat channel failed — judging by CIM dsh.*web processes only (fail-closed)"
+            );
+            let mut running = cim_pids;
+            running.sort_unstable();
+            InstanceScan {
+                running,
+                indeterminate: false,
+            }
         }
-        (false, false) => {
-            // 两通道均失败：无法判定 → 拒绝启动（宁拦勿放）。
+        (None, None) => {
             warn!("m4: both detection channels failed — refusing to start (fail-closed)");
-            InstanceScan { running: Vec::new(), indeterminate: true }
+            InstanceScan {
+                running: Vec::new(),
+                indeterminate: true,
+            }
         }
     }
 }
@@ -284,7 +335,9 @@ fn enforce_multi_instance(app: &tauri::App) -> bool {
         return true;
     }
 
-    use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind, MessageDialogResult};
+    use tauri_plugin_dialog::{
+        DialogExt, MessageDialogButtons, MessageDialogKind, MessageDialogResult,
+    };
 
     let scan = detect_running_dsh_instances();
     // 两通道均失败/超时：无法判定运行状态 → 直接拒绝启动（宁拦勿放，
@@ -305,8 +358,16 @@ fn enforce_multi_instance(app: &tauri::App) -> bool {
     if running.is_empty() {
         return true;
     }
-    let detail = running.iter().map(|pid| format!("  · PID {pid}")).collect::<Vec<_>>().join("\n");
-    warn!("m4: detected {} running dsh instance(s):\n{}", running.len(), detail);
+    let detail = running
+        .iter()
+        .map(|pid| format!("  · PID {pid}"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    warn!(
+        "m4: detected {} running dsh instance(s):\n{}",
+        running.len(),
+        detail
+    );
 
     if !read_allow_multiple_instances() {
         // 默认：拒绝。仅 OK 按钮，无"继续"逃生口（SOP：宁可误拦不可漏拦）。
@@ -372,7 +433,6 @@ fn restore_window_state(win: &tauri::WebviewWindow) {
     }
 }
 
-
 /// Q3/Q4：Windows 未打包应用的系统 toast 需要 AUMID 才会显示
 /// （tauri-plugin-notification 用 config identifier = com.marecgents.dsh-hub）。
 /// 三管齐下（幂等，失败仅告警；M5 打包后 NSIS 自带快捷方式）：
@@ -392,8 +452,14 @@ fn register_toast_aumid() {
         c.args(["add", key, "/v", name, "/t", "REG_SZ", "/d", value, "/f"]);
         c.creation_flags(0x08000000); // CREATE_NO_WINDOW
         match c.output() {
-            Ok(out) if out.status.success() => info!("notify: AUMID {} = {} registered", name, value),
-            Ok(out) => warn!("notify: AUMID {} register failed: {}", name, String::from_utf8_lossy(&out.stderr)),
+            Ok(out) if out.status.success() => {
+                info!("notify: AUMID {} = {} registered", name, value)
+            }
+            Ok(out) => warn!(
+                "notify: AUMID {} register failed: {}",
+                name,
+                String::from_utf8_lossy(&out.stderr)
+            ),
             Err(e) => warn!("notify: AUMID {} register error: {}", name, e),
         }
     };
@@ -407,12 +473,13 @@ fn register_toast_aumid() {
 /// 用 IShellLink 创建开始菜单 + 桌面快捷方式并写入 AppUserModelID（Q3/Q4）。
 #[cfg(target_os = "windows")]
 fn create_toast_shortcuts(exe: &std::path::Path) {
+    use crate::winutil::{wide, ComInit};
     use windows::core::{Interface, PCWSTR};
     use windows::Win32::Foundation::PROPERTYKEY;
+    use windows::Win32::System::Com::StructuredStorage::{PropVariantClear, PROPVARIANT};
     use windows::Win32::System::Com::{
-        CoCreateInstance, CoInitializeEx, CoUninitialize, IPersistFile, CLSCTX_INPROC_SERVER, COINIT_MULTITHREADED,
+        CoCreateInstance, IPersistFile, CLSCTX_INPROC_SERVER, COINIT_MULTITHREADED,
     };
-    use windows::Win32::System::Com::StructuredStorage::{PROPVARIANT, PropVariantClear};
     use windows::Win32::UI::Shell::PropertiesSystem::IPropertyStore;
     use windows::Win32::UI::Shell::{IShellLinkW, ShellLink};
 
@@ -422,16 +489,19 @@ fn create_toast_shortcuts(exe: &std::path::Path) {
         pid: 3,
     };
 
-    let Some(appdata) = std::env::var_os("APPDATA") else { return };
+    let Some(appdata) = std::env::var_os("APPDATA") else {
+        return;
+    };
     let start_menu = std::path::Path::new(&appdata)
-        .join("Microsoft").join("Windows").join("Start Menu").join("Programs");
+        .join("Microsoft")
+        .join("Windows")
+        .join("Start Menu")
+        .join("Programs");
     // 桌面路径（处理 OneDrive 重定向）：SHGetKnownFolderPath(FOLDERID_Desktop)。
     let desktop = theme::known_desktop_path();
 
-    let targets: Vec<(std::path::PathBuf, &str)> = vec![
-        (start_menu, "start-menu"),
-        (desktop, "desktop"),
-    ];
+    let targets: Vec<(std::path::PathBuf, &str)> =
+        vec![(start_menu, "start-menu"), (desktop, "desktop")];
 
     for (dir, tag) in targets {
         if dir.as_os_str().is_empty() {
@@ -439,50 +509,67 @@ fn create_toast_shortcuts(exe: &std::path::Path) {
         }
         let _ = std::fs::create_dir_all(&dir);
         let lnk = dir.join("DeepSeek Harness Hub.lnk");
+        // SAFETY (whole block): every Win32 call below takes NUL-terminated
+        // UTF-16 buffers built by `wide()` (caller-held Vec stays alive for
+        // the duration of the call) or pre-registered COM class IDs; the COM
+        // apartment is opened via the ComInit RAII guard, so the paired
+        // CoUninitialize is guaranteed even on error branches (no leak). The
+        // IShellLinkW/IPropertyStore/IPersistFile objects are single-threaded
+        // COM creatures confined to this thread; property storage uses a
+        // PROPVARIANT cleared via PropVariantClear before it is dropped.
         unsafe {
-            let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
+            let Some(_com) = ComInit::new(COINIT_MULTITHREADED) else {
+                warn!("shortcut({tag}): CoInitializeEx failed");
+                continue;
+            };
             let link: IShellLinkW = match CoCreateInstance(&ShellLink, None, CLSCTX_INPROC_SERVER) {
                 Ok(l) => l,
-                Err(e) => { warn!("shortcut({tag}): CoCreateInstance failed: {e}"); CoUninitialize(); continue; }
+                Err(e) => {
+                    warn!("shortcut({tag}): CoCreateInstance failed: {e}");
+                    continue;
+                }
             };
             let exe_w = wide(&exe.to_string_lossy());
             let _ = link.SetPath(PCWSTR(exe_w.as_ptr()));
-            let wd = wide(&exe.parent().unwrap_or(std::path::Path::new("")).to_string_lossy());
+            let wd = wide(
+                &exe.parent()
+                    .unwrap_or(std::path::Path::new(""))
+                    .to_string_lossy(),
+            );
             let _ = link.SetWorkingDirectory(PCWSTR(wd.as_ptr()));
             let _ = link.SetDescription(PCWSTR(wide("DeepSeek Harness Hub").as_ptr()));
             // 先写 AUMID 属性、最后 Save（微软官方顺序）——曾在 Save 之后 SetValue
             // 且未再保存，AUMID 从未落盘（.lnk 缺 AUMID，toast 归组/图标关联失效）。
             let props: IPropertyStore = match link.cast() {
                 Ok(p) => p,
-                Err(_) => { CoUninitialize(); continue; }
+                Err(_) => {
+                    warn!("shortcut({tag}): cast to IPropertyStore failed");
+                    continue;
+                }
             };
             let mut pv = PROPVARIANT::from("com.marecgents.dsh-hub");
             let _ = props.SetValue(&PKEY_APP_USER_MODEL_ID, &pv);
             let _ = PropVariantClear(&mut pv);
             let persist: IPersistFile = match link.cast() {
                 Ok(p) => p,
-                Err(_) => { CoUninitialize(); continue; }
+                Err(_) => {
+                    warn!("shortcut({tag}): cast to IPersistFile failed");
+                    continue;
+                }
             };
             let path_w = wide(&lnk.to_string_lossy());
             if let Err(e) = persist.Save(PCWSTR(path_w.as_ptr()), true) {
                 warn!("shortcut({tag}): save failed: {e}");
-                CoUninitialize();
                 continue;
             }
-            CoUninitialize();
             info!("shortcut({tag}): created {} with AUMID", lnk.display());
         }
     }
 }
 
-/// 宽字符串辅助（含结尾 NUL）。
-#[cfg(target_os = "windows")]
-fn wide(s: &str) -> Vec<u16> {
-    s.encode_utf16().chain(std::iter::once(0)).collect()
-}
-
 // 解析桌面路径（FOLDERID_Desktop）已迁至 theme::known_desktop_path
-// （Helper 层，与 update_shell_icon_sources 共用）。
+// （Helper 层，与 update_shell_icon_sources 共用）。宽字符串编码已迁至
+// helpers/winutil.rs 的 winutil::wide（单一实现）。
 
 /// --smoke 诊断模式标记（T4.4）：main.rs 解析参数后置位，
 /// lib.rs setup 建窗成功（window build Ok）后检查 → 写 quit.marker + exit(0)。
@@ -509,14 +596,12 @@ fn maybe_smoke_exit(app: &tauri::App) {
     }
     info!("smoke: window created OK — 500ms grace for webview init, then clean exit");
     std::thread::sleep(std::time::Duration::from_millis(500));
+    // stop_dsh 已写 marker（sidecar 启动时）；quit_and_exit 再写一次幂等安全。
     if let Some(state) = app.try_state::<std::sync::Arc<node::NodeState>>() {
-        // stop_dsh：写 quit.marker + kill sidecar（--smoke 收尾）。
         // state 是 State<Arc<NodeState>>——&state 经 Deref 链（State→Arc→NodeState）收窄。
         crate::node::stop_dsh(&state);
-    } else {
-        quit::write_quit_marker();
     }
-    std::process::exit(0);
+    crate::quit::quit_and_exit();
 }
 
 pub fn run() {
@@ -781,4 +866,51 @@ pub fn run() {
         })
         .run(tauri::generate_context!())
         .expect("error while running dsh-hub");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::combine_channels;
+    use std::collections::HashSet;
+
+    fn set(pids: &[u32]) -> HashSet<u32> {
+        pids.iter().copied().collect()
+    }
+
+    #[test]
+    fn both_channels_ok_intersects() {
+        let scan = combine_channels(Some(set(&[1, 2, 3])), Some(vec![3, 2, 5]));
+        assert!(!scan.indeterminate);
+        assert_eq!(scan.running, vec![2, 3]);
+    }
+
+    #[test]
+    fn both_channels_ok_no_overlap_is_empty_but_indeterminate_false() {
+        // Legacy semantics for an empty intersection: NOT indeterminate — the
+        // caller proceeds (no listener + no CIM evidence = nothing running).
+        let scan = combine_channels(Some(set(&[1])), Some(vec![2]));
+        assert!(!scan.indeterminate);
+        assert!(scan.running.is_empty());
+    }
+
+    #[test]
+    fn cim_failed_judges_by_netstat() {
+        let scan = combine_channels(Some(set(&[4, 1])), None);
+        assert!(!scan.indeterminate);
+        assert_eq!(scan.running, vec![1, 4]);
+    }
+
+    #[test]
+    fn netstat_failed_judges_by_cim() {
+        let scan = combine_channels(None, Some(vec![9, 3]));
+        assert!(!scan.indeterminate);
+        assert_eq!(scan.running, vec![3, 9]);
+    }
+
+    #[test]
+    fn both_failed_is_indeterminate() {
+        let scan = combine_channels(None, None);
+        assert!(scan.indeterminate);
+        assert!(scan.running.is_empty());
+    }
 }

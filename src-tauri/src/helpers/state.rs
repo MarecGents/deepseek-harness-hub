@@ -7,8 +7,8 @@
 // 外部接口：dsh_home() / load_window_state() / save_window_state() /
 //           read_shell_config_str(key, default)。
 
-use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
 
 /// 解析 $DSH_HOME（env || ~/.dsh），保留 rc.14 语义。
 /// SOP §5.5 明确：不用 dirs::data_dir()，用 DSH_HOME env || homedir/.dsh。
@@ -47,7 +47,13 @@ pub fn read_shell_config_str(key: &str, default: &str) -> String {
     let config_path = dsh_home().join("dsh-hub").join("config.json");
     match std::fs::read_to_string(&config_path) {
         Ok(content) => serde_json::from_str::<serde_json::Value>(&content)
-            .map(|value| value.get(key).and_then(|v| v.as_str()).unwrap_or(default).to_string())
+            .map(|value| {
+                value
+                    .get(key)
+                    .and_then(|v| v.as_str())
+                    .unwrap_or(default)
+                    .to_string()
+            })
             .unwrap_or_else(|_| default.to_string()),
         Err(_) => default.to_string(),
     }
@@ -128,7 +134,11 @@ mod tests {
 
     #[test]
     fn window_state_roundtrip() {
-        let state = WindowState { maximized: true, width: 1024, height: 768 };
+        let state = WindowState {
+            maximized: true,
+            width: 1024,
+            height: 768,
+        };
         let json = serde_json::to_string(&state).unwrap();
         let parsed: WindowState = serde_json::from_str(&json).unwrap();
         assert!(parsed.maximized);

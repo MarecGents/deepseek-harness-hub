@@ -32,12 +32,15 @@ pub fn set_window_theme(app: &tauri::AppHandle, theme: String) -> Result<(), Str
         let js = format!(
             "(window.__mgSetShellTheme && window.__mgSetShellTheme({theme_json})) || (({theme_json} === 'light' || {theme_json} === 'dark') && (window.__mgPendingShellTheme = {theme_json}))"
         );
-        let _ = win.eval(&js);
+        let _ = win
+            .eval(&js)
+            .map_err(|e| log::warn!("set_window_theme: shell theme eval failed: {e}"));
         // 强制主题模式下 shell-init.js 跳过 apply_page_theme → 窗口/托盘图标
         // 停在旧状态（'default' 翻转不随新主题）。此处按新主题重设全部图标面。
         // IconManager.apply 只记录 pending（worker 消费）——IPC 不阻塞（防卡死）。
         let dark = matches!(tauri_theme, tauri::Theme::Dark);
-        app.state::<crate::icon::IconManager>().apply_theme_aware(app, dark);
+        app.state::<crate::icon::IconManager>()
+            .apply_theme_aware(app, dark);
         Ok(())
     } else {
         Err("main window not found".to_string())
@@ -56,7 +59,8 @@ pub fn set_desktop_icon(app: &tauri::AppHandle, icon_id: String) -> Result<(), S
         .get_webview_window("main")
         .map(|w| w.theme().unwrap_or(tauri::Theme::Dark) == tauri::Theme::Dark)
         .unwrap_or(true);
-    app.state::<crate::icon::IconManager>().apply(app, &icon_id, dark);
+    app.state::<crate::icon::IconManager>()
+        .apply(app, &icon_id, dark);
     log::info!("set_desktop_icon: queued '{}'", icon_id);
     Ok(())
 }
@@ -117,7 +121,9 @@ pub fn open_workspace_path(path: String) -> Result<(), String> {
 /// 判断：窗口可见且未最小化 → 隐藏到托盘；否则 → 显示并置顶到最前。
 /// （按可见性而非聚焦：点击托盘会夺走焦点，用聚焦判断会误「显示」。）
 pub fn window_toggle_visible(app: &tauri::AppHandle) -> Result<(), String> {
-    let win = app.get_webview_window("main").ok_or("main window not found")?;
+    let win = app
+        .get_webview_window("main")
+        .ok_or("main window not found")?;
     let front = win.is_visible().unwrap_or(false) && !win.is_minimized().unwrap_or(true);
     if front {
         let _ = win.hide();

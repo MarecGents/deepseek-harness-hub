@@ -1,0 +1,36 @@
+name: rust
+
+# Rust shell quality gate (AGENTS.md §4.7 / src-tauri AGENTS.md 红线 15-20):
+# fmt + clippy -D warnings + unit tests must be green on every push/PR.
+# The host/client halves have their own npm gates in the release pipeline;
+# this workflow covers the src-tauri crate only (Windows, MSVC toolchain
+# pinned by rust-toolchain.toml).
+
+on:
+  push:
+    branches: [dev-v2, main]
+    paths: ['src-tauri/**', 'Cargo.lock', 'Cargo.toml']
+  pull_request:
+    branches: [main]
+    paths: ['src-tauri/**', 'Cargo.lock', 'Cargo.toml']
+
+jobs:
+  check:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: src-tauri
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install stable Rust (MSVC)
+        run: rustup toolchain install stable --profile minimal --component rustfmt --component clippy
+
+      - name: fmt
+        run: cargo fmt --check
+
+      - name: clippy
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: test
+        run: cargo test --lib

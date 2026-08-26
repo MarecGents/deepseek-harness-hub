@@ -84,7 +84,11 @@ pub fn set_window_theme(app: tauri::AppHandle, theme: String) -> Result<(), Stri
 ///      固定；面级幂等，未变的面自动跳过）。
 #[tauri::command]
 pub fn apply_page_theme(app: tauri::AppHandle, dark: bool) -> Result<(), String> {
-    let theme = if dark { tauri::Theme::Dark } else { tauri::Theme::Light };
+    let theme = if dark {
+        tauri::Theme::Dark
+    } else {
+        tauri::Theme::Light
+    };
     if let Some(win) = app.get_webview_window("main") {
         crate::theme::apply_theme(&win, theme).map_err(|e| e.to_string())?;
         // webview 背景色（防 resize/导航时的白/黑闪屏；win 无 set_background 则跳过）。
@@ -98,7 +102,8 @@ pub fn apply_page_theme(app: tauri::AppHandle, dark: bool) -> Result<(), String>
             log::warn!("apply_page_theme: set_background_color failed: {}", e);
         }
         // 图标经 IconManager.apply（记录 pending + worker 消费）——IPC 不阻塞（防卡死）。
-        app.state::<crate::icon::IconManager>().apply_theme_aware(&app, dark);
+        app.state::<crate::icon::IconManager>()
+            .apply_theme_aware(&app, dark);
         log::info!("apply_page_theme: theme applied (dark={})", dark);
         Ok(())
     } else {
@@ -144,8 +149,7 @@ pub fn tray_quit(app: tauri::AppHandle) -> Result<(), String> {
     if let Some(state) = app.try_state::<std::sync::Arc<crate::node::NodeState>>() {
         crate::node::stop_dsh(&state);
     }
-    crate::quit::write_quit_marker();
-    std::process::exit(0);
+    crate::quit::quit_and_exit();
 }
 
 /// 托盘菜单第一项「显示/隐藏主界面」切换（Q1/Q7）。

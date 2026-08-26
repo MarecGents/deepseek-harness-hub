@@ -12,7 +12,7 @@
 // DWM 暗色标题栏参照 spacedrive windows.rs L627-697：
 //   attr 20 (DWMWA_USE_IMMERSIVE_DARK_MODE) / 34 (BORDER_COLOR) / 35 (CAPTION_COLOR)
 
-use tauri::{WebviewWindow, Theme};
+use tauri::{Theme, WebviewWindow};
 
 /// 应用窗口主题（T2.3）。
 pub fn apply_theme(win: &WebviewWindow, theme: Theme) -> Result<(), Box<dyn std::error::Error>> {
@@ -38,6 +38,11 @@ pub fn apply_theme(win: &WebviewWindow, theme: Theme) -> Result<(), Box<dyn std:
 
             // DWMWA_USE_IMMERSIVE_DARK_MODE = 20 (Windows 10 20H1+)。
             let dark_val: i32 = i32::from(is_dark);
+            // SAFETY: hwnd is the live window handle from tauri's WebviewWindow;
+            // each attribute write passes a pointer to a scalar whose size
+            // matches what DWM expects (i32 / u32) and stays valid for the
+            // call. Failures are benign HRESULTs, deliberately ignored — the
+            // worst case is the titlebar keeping the OS default theme.
             unsafe {
                 let _ = DwmSetWindowAttribute(
                     hwnd,
@@ -49,6 +54,8 @@ pub fn apply_theme(win: &WebviewWindow, theme: Theme) -> Result<(), Box<dyn std:
 
             // DWMWA_BORDER_COLOR = 34 (Windows 11 22H2+)。
             let border_color: u32 = if is_dark { 0x000000 } else { 0xFFFFFFFF };
+            // SAFETY: identical contract to the DWMWA_USE_IMMERSIVE_DARK_MODE
+            // write above (live handle + exact-size scalar pointer).
             unsafe {
                 let _ = DwmSetWindowAttribute(
                     hwnd,
@@ -60,6 +67,7 @@ pub fn apply_theme(win: &WebviewWindow, theme: Theme) -> Result<(), Box<dyn std:
 
             // DWMWA_CAPTION_COLOR = 35。
             let caption_color: u32 = if is_dark { 0x000000 } else { 0xFFFFFFFF };
+            // SAFETY: identical contract to the attribute writes above.
             unsafe {
                 let _ = DwmSetWindowAttribute(
                     hwnd,
@@ -85,11 +93,26 @@ pub fn apply_theme(win: &WebviewWindow, theme: Theme) -> Result<(), Box<dyn std:
 ///   - 其它（未知 id）→ 回退白鲸（icon-dark.png）并 warn。
 pub fn desktop_icon_png(dark: bool, icon_id: &str) -> (&'static [u8], &'static str) {
     match icon_id {
-        "whale-girl-sad" => (include_bytes!("../../icons/whale-girl-sad.png"), "whale-girl-sad"),
-        "whale-girl-happy" => (include_bytes!("../../icons/whale-girl-happy.png"), "whale-girl-happy"),
-        "whale-girl-duo" => (include_bytes!("../../icons/whale-girl-duo.png"), "whale-girl-duo"),
-        "whale-girl-maid" => (include_bytes!("../../icons/whale-girl-maid.png"), "whale-girl-maid"),
-        "whale-girl-blue" => (include_bytes!("../../icons/whale-girl-blue.png"), "whale-girl-blue"),
+        "whale-girl-sad" => (
+            include_bytes!("../../icons/whale-girl-sad.png"),
+            "whale-girl-sad",
+        ),
+        "whale-girl-happy" => (
+            include_bytes!("../../icons/whale-girl-happy.png"),
+            "whale-girl-happy",
+        ),
+        "whale-girl-duo" => (
+            include_bytes!("../../icons/whale-girl-duo.png"),
+            "whale-girl-duo",
+        ),
+        "whale-girl-maid" => (
+            include_bytes!("../../icons/whale-girl-maid.png"),
+            "whale-girl-maid",
+        ),
+        "whale-girl-blue" => (
+            include_bytes!("../../icons/whale-girl-blue.png"),
+            "whale-girl-blue",
+        ),
         "default" => {
             if dark {
                 (include_bytes!("../../icons/icon-dark.png"), "whale-dark")
@@ -98,7 +121,10 @@ pub fn desktop_icon_png(dark: bool, icon_id: &str) -> (&'static [u8], &'static s
             }
         }
         _ => {
-            log::warn!("theme: unknown desktop icon id '{}', falling back to whale (icon-dark)", icon_id);
+            log::warn!(
+                "theme: unknown desktop icon id '{}', falling back to whale (icon-dark)",
+                icon_id
+            );
             (include_bytes!("../../icons/icon-dark.png"), "whale")
         }
     }
@@ -153,7 +179,7 @@ fn set_icon_big_win32(
 ) {
     use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
     use windows::Win32::UI::WindowsAndMessaging::{
-        CreateIcon, DestroyIcon, HICON, ICON_BIG, PostMessageW, WM_SETICON,
+        CreateIcon, DestroyIcon, PostMessageW, HICON, ICON_BIG, WM_SETICON,
     };
 
     let Ok(hwnd_raw) = win.hwnd() else {
@@ -168,13 +194,15 @@ fn set_icon_big_win32(
     }
 
     let rgba = img.rgba();
-    let mut bgra: Vec<u8> = Vec::with_capacity(rgba.len());
-    let mut and_mask: Vec<u8> = Vec::with_capacity(rgba.len() / 4);
-    for px in rgba.chunks_exact(4) {
-        and_mask.push(255u8.wrapping_sub(px[3])); // 反相 alpha：不透明→0（绘制），透明→255
-        bgra.extend_from_slice(&[px[2], px[1], px[0], px[3]]);
-    }
+    let (bgra, and_mask) = build_bgra_and_mask(rgba);
 
+    // SAFETY: hwnd is the live tauri window handle; `hicon` is a freshly
+    // created icon owned by this call site — PostMessageW transfers the
+    // handle to the window thread (window now owns it), and the previous
+    // handle (if any) is destroyed here after being replaced in `prev_big`.
+    // The BGRA/AND buffers are sized exactly (w*h*4 and w*h) and stay alive
+    // for the CreateIcon call; the mask is one byte per pixel as CreateIcon
+    // requires, alpha-inverted per tao's RgbaIcon semantics.
     unsafe {
         match CreateIcon(None, w, h, 1, 32, and_mask.as_ptr(), bgra.as_ptr()) {
             Ok(hicon) => {
@@ -183,7 +211,13 @@ fn set_icon_big_win32(
                 // 窗口线程积压 WM_SETICON 消息会忙——SendMessageW 同步等待会阻塞
                 // 调用线程（卡死根因之一）。PostMessage 投递后立即返回，窗口按
                 // 消息队列顺序处理，最终图标一致。
-                PostMessageW(Some(hwnd), WM_SETICON, WPARAM(ICON_BIG as usize), LPARAM(new_handle)).ok();
+                PostMessageW(
+                    Some(hwnd),
+                    WM_SETICON,
+                    WPARAM(ICON_BIG as usize),
+                    LPARAM(new_handle),
+                )
+                .ok();
                 if let Some(prev) = prev_big.replace(new_handle) {
                     let _ = DestroyIcon(HICON(prev as _));
                 }
@@ -194,6 +228,20 @@ fn set_icon_big_win32(
     }
 }
 
+/// Build the BGRA pixel buffer and the per-pixel AND mask for `CreateIcon`
+/// (32bpp icon, one mask byte per pixel, alpha inverted to match tao's
+/// `RgbaIcon::into_windows_icon`). Pure function — unit-tested so a regression
+/// in the mask math cannot silently break the taskbar icon again.
+fn build_bgra_and_mask(rgba: &[u8]) -> (Vec<u8>, Vec<u8>) {
+    let mut bgra = Vec::with_capacity(rgba.len());
+    let mut and_mask = Vec::with_capacity(rgba.len() / 4);
+    for px in rgba.chunks_exact(4) {
+        // `255 - alpha` cannot underflow (alpha is u8), so no wrapping needed.
+        and_mask.push(255 - px[3]);
+        bgra.extend_from_slice(&[px[2], px[1], px[0], px[3]]);
+    }
+    (bgra, and_mask)
+}
 
 /// 解析桌面路径（FOLDERID_Desktop，处理 OneDrive 重定向）。
 /// 从 lib.rs 迁入（Controller→Helper）：update_shell_icon_sources 与
@@ -201,7 +249,10 @@ fn set_icon_big_win32(
 #[cfg(target_os = "windows")]
 pub fn known_desktop_path() -> std::path::PathBuf {
     use windows::Win32::System::Com::CoTaskMemFree;
-    use windows::Win32::UI::Shell::{FOLDERID_Desktop, KNOWN_FOLDER_FLAG, SHGetKnownFolderPath};
+    use windows::Win32::UI::Shell::{FOLDERID_Desktop, SHGetKnownFolderPath, KNOWN_FOLDER_FLAG};
+    // SAFETY: SHGetKnownFolderPath returns memory allocated by the shell's
+    // task allocator — pairing the call with CoTaskMemFree (via the raw
+    // pointer before it is dropped) is the documented ownership contract.
     unsafe {
         if let Ok(p) = SHGetKnownFolderPath(&FOLDERID_Desktop, KNOWN_FOLDER_FLAG(0), None) {
             let s = p.to_string().unwrap_or_default();
@@ -215,4 +266,39 @@ pub fn known_desktop_path() -> std::path::PathBuf {
     std::env::var_os("USERPROFILE")
         .map(|u| std::path::Path::new(&u).join("Desktop"))
         .unwrap_or_default()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::build_bgra_and_mask;
+
+    #[test]
+    fn bgra_and_mask_opaque_pixel() {
+        // Fully opaque red (RGBA → BGRA with mask 0).
+        let rgba = [0xFF, 0x00, 0x00, 0xFF];
+        let (bgra, mask) = build_bgra_and_mask(&rgba);
+        assert_eq!(bgra, [0x00, 0x00, 0xFF, 0xFF]);
+        assert_eq!(mask, [0]);
+    }
+
+    #[test]
+    fn bgra_and_mask_transparent_pixel() {
+        // Fully transparent pixel → mask byte 255 (alpha inverted).
+        let rgba = [0x00, 0x00, 0x00, 0x00];
+        let (bgra, mask) = build_bgra_and_mask(&rgba);
+        assert_eq!(bgra, [0x00, 0x00, 0x00, 0x00]);
+        assert_eq!(mask, [255]);
+    }
+
+    #[test]
+    fn bgra_and_mask_multi_pixel() {
+        // Two pixels, 50% and 30% alpha — colors reordered, masks inverted.
+        let rgba = [
+            0x11, 0x22, 0x33, 0x80, // 50% alpha
+            0xAA, 0xBB, 0xCC, 0x4D, // 30% alpha
+        ];
+        let (bgra, mask) = build_bgra_and_mask(&rgba);
+        assert_eq!(bgra, [0x33, 0x22, 0x11, 0x80, 0xCC, 0xBB, 0xAA, 0x4D]);
+        assert_eq!(mask, [255 - 0x80, 255 - 0x4D]);
+    }
 }

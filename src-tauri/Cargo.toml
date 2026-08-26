@@ -59,3 +59,17 @@ windows = { version = "0.61", features = [
 # The custom-protocol feature is required when the frontendDist is served via
 # the custom protocol in release builds.
 custom-protocol = ["tauri/custom-protocol"]
+
+# rust-skills lint-workspace-lints: make clippy's default lints part of the
+# crate's own declaration (CI enforces -D warnings on top of this).
+[lints.clippy]
+all = { level = "warn", priority = -1 }
+
+# rust-skills opt-lto-release / perf-release-profile（AGENTS.md 红线 17）：
+# thin LTO + single codegen unit + strip 显著缩小 exe 并加快启动。
+# panic = "abort" 刻意不加：tauri/wry 内部可能依赖 unwind 清理，改需实测验证。
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+strip = "symbols"

@@ -13,7 +13,7 @@
 //     探测失败回退 primary_monitor。
 //   - 去掉 1280..1600 × 720..1000 上限，纯 3/4（round），下限保持 480×360。
 
-use tauri::{App, WebviewWindow, WebviewWindowBuilder, WebviewUrl};
+use tauri::{App, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 
 /// 主窗口常量（与 rc.14 一致；兜底尺寸，正常路径被 3/4 计算取代）。
 const DEFAULT_WIDTH: f64 = 1280.0;
@@ -33,6 +33,14 @@ fn cursor_monitor_logical_size() -> Option<(f64, f64)> {
     use windows::Win32::UI::WindowsAndMessaging::GetCursorPos;
 
     unsafe {
+        // SAFETY: GetCursorPos writes into a default-initialized POINT on the
+        // stack; MonitorFromPoint consumes the POINT by value; GetMonitorInfoW
+        // writes into a MONITORINFO whose cbSize is set to the struct size
+        // (the API's documented input requirement); GetDpiForMonitor writes
+        // the two u32 outputs. Every buffer is caller-allocated and outlives
+        // its call; on any failure the function returns None and the caller
+        // falls back to the primary monitor (no handle is leaked — hmon is a
+        // borrowed monitor handle, not owned by us).
         let mut pt = POINT::default();
         if GetCursorPos(&mut pt).is_err() {
             return None;
@@ -49,7 +57,10 @@ fn cursor_monitor_logical_size() -> Option<(f64, f64)> {
             return None;
         }
         let rect = info.rcMonitor;
-        let (w, h) = ((rect.right - rect.left) as f64, (rect.bottom - rect.top) as f64);
+        let (w, h) = (
+            (rect.right - rect.left) as f64,
+            (rect.bottom - rect.top) as f64,
+        );
         let mut dpi_x = 96u32;
         let mut dpi_y = 96u32;
         let scale = if GetDpiForMonitor(hmon, MDT_EFFECTIVE_DPI, &mut dpi_x, &mut dpi_y).is_ok() {
@@ -97,9 +108,12 @@ pub fn build_main_window(app: &App) -> Result<WebviewWindow, Box<dyn std::error:
 
     log::info!(
         "window: calc {}x{}, min {}x{}, default {}x{}",
-        calc_w as u32, calc_h as u32,
-        MIN_WIDTH as u32, MIN_HEIGHT as u32,
-        DEFAULT_WIDTH as u32, DEFAULT_HEIGHT as u32
+        calc_w as u32,
+        calc_h as u32,
+        MIN_WIDTH as u32,
+        MIN_HEIGHT as u32,
+        DEFAULT_WIDTH as u32,
+        DEFAULT_HEIGHT as u32
     );
 
     // 壳初始化脚本（shell-init.js：自绘标题栏 42px + Splash + 声音 + 主题跟随，

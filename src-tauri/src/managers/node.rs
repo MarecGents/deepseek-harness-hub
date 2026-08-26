@@ -21,13 +21,13 @@
 //     超限 error! dsh:crash → 写 marker → process::exit(1)（fail-fast，
 //     下次启动 clear_quit_marker 后获得全新机会）
 
+use log::{error, info, warn};
 use std::fs;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
-use log::{error, info, warn};
 use tauri::Manager;
 
 /// 解析 dsh web 输出行中的端口号。
@@ -44,7 +44,9 @@ fn parse_dsh_ready_port(line: &str) -> Option<u16> {
     if line.contains("DSH_EVENT") {
         // 简单 JSON 解析（仅提取 port 字段）。
         if let Some(port_pos) = line.find("\"port\":") {
-            let after = &line[port_pos + 8..];
+            // `"port":` 是 7 个字符，+7 指向端口第一位数字（+8 会吃掉首位
+            // ——单测 parses_dsh_event_ready_json 捕获的真实 off-by-one）。
+            let after = &line[port_pos + 7..];
             if let Some(end) = after.find(|c: char| !c.is_ascii_digit()) {
                 return after[..end].parse().ok();
             }
@@ -92,8 +94,14 @@ fn dispatch_dsh_cmd(app: &tauri::AppHandle, cmd_json: &str) {
             }
         }
         "notify_task_complete" => {
-            let title = value.get("title").and_then(|v| v.as_str()).unwrap_or("DeepSeek Harness");
-            let body = value.get("body").and_then(|v| v.as_str()).unwrap_or("任务完成");
+            let title = value
+                .get("title")
+                .and_then(|v| v.as_str())
+                .unwrap_or("DeepSeek Harness");
+            let body = value
+                .get("body")
+                .and_then(|v| v.as_str())
+                .unwrap_or("任务完成");
             // 项 4：第 4 参由 sound 改为 session_id（透传，暂不用于定位会话）。
             let session_id = value
                 .get("sessionId")
@@ -114,7 +122,11 @@ fn dispatch_dsh_cmd(app: &tauri::AppHandle, cmd_json: &str) {
         }
         // 双向管道上行：host 解析聚焦会话工作区后回传 → Rust 打开目录（Q6 打开工作区）。
         "open_workspace_path" => {
-            let path = value.get("path").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            let path = value
+                .get("path")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
             info!("node: DSH_CMD open_workspace_path from host: '{}'", path);
             let _ = crate::window_ops::open_workspace_path(path);
         }
@@ -124,14 +136,18 @@ fn dispatch_dsh_cmd(app: &tauri::AppHandle, cmd_json: &str) {
         // 300ms × 20 次轮询，页面就绪后不再丢命令（托盘命令 boot 期可靠性）。
         "dispatch_page_event" => {
             let name = value.get("name").and_then(|v| v.as_str()).unwrap_or("");
-            let detail = value.get("detail").cloned().unwrap_or(serde_json::json!({}));
+            let detail = value
+                .get("detail")
+                .cloned()
+                .unwrap_or(serde_json::json!({}));
             if name.is_empty() {
                 warn!("node: DSH_CMD dispatch_page_event missing name");
             } else if let Some(win) = app.get_webview_window("main") {
                 // name 是受控字符串（open-workspace/new-task），detail 是 JSON 对象；
                 // 均经 serde_json::to_string 序列化后内插，避免拼接注入。
                 let name_json = serde_json::to_string(name).unwrap_or_else(|_| "\"\"".to_string());
-                let detail_json = serde_json::to_string(&detail).unwrap_or_else(|_| "{}".to_string());
+                let detail_json =
+                    serde_json::to_string(&detail).unwrap_or_else(|_| "{}".to_string());
                 let js = format!(
                     "(function(){{var n={name_json},d={detail_json};var t=0;function f(){{if(window.__mgShellReady===true){{window.dispatchEvent(new CustomEvent(n,{{detail:d}}));}}else if(t<20){{t++;setTimeout(f,300);}}}}f();}})()"
                 );
@@ -140,7 +156,10 @@ fn dispatch_dsh_cmd(app: &tauri::AppHandle, cmd_json: &str) {
                     Err(e) => warn!("node: dispatch_page_event '{}' eval failed: {}", name, e),
                 }
             } else {
-                warn!("node: dispatch_page_event '{}' skipped (no main window)", name);
+                warn!(
+                    "node: dispatch_page_event '{}' skipped (no main window)",
+                    name
+                );
             }
         }
         // 兼容旧名（早期实现）。
@@ -225,7 +244,9 @@ fn find_dsh() -> Option<PathBuf> {
         npm_cmd.creation_flags(0x08000000);
     }
     let npm_prefix = npm_cmd.output().ok()?;
-    let prefix = String::from_utf8_lossy(&npm_prefix.stdout).trim().to_string();
+    let prefix = String::from_utf8_lossy(&npm_prefix.stdout)
+        .trim()
+        .to_string();
     for name in &["dsh.cmd", "dsh.exe", "dsh"] {
         let candidate = Path::new(&prefix).join(name);
         if candidate.exists() {
@@ -274,7 +295,9 @@ fn resolve_dsh_entry(dsh_cmd: &Path) -> Result<(PathBuf, PathBuf), String> {
     if let Ok(content) = fs::read_to_string(dsh_cmd) {
         if let Some(dir) = dsh_cmd.parent() {
             let dir_str = dir.to_string_lossy();
-            let expanded = content.replace("%~dp0", &dir_str).replace("%dp0%", &dir_str);
+            let expanded = content
+                .replace("%~dp0", &dir_str)
+                .replace("%dp0%", &dir_str);
             // 提取引号包裹的路径 token（去掉空 token）。
             let tokens: Vec<&str> = expanded
                 .split('"')
@@ -285,7 +308,9 @@ fn resolve_dsh_entry(dsh_cmd: &Path) -> Result<(PathBuf, PathBuf), String> {
                 t.replace('\\', "/")
                     .ends_with("node_modules/@deepseek-ai/dsh/lib/bin.js")
             });
-            let node = tokens.iter().find(|t| t.trim_end_matches('"').ends_with("node.exe"));
+            let node = tokens
+                .iter()
+                .find(|t| t.trim_end_matches('"').ends_with("node.exe"));
             if let Some(entry) = entry {
                 let entry = PathBuf::from(entry.trim_end_matches('"'));
                 if entry.exists() {
@@ -322,7 +347,10 @@ fn resolve_dsh_entry(dsh_cmd: &Path) -> Result<(PathBuf, PathBuf), String> {
             return Ok((node, entry));
         }
     }
-    Err(format!("cannot resolve dsh entry from {}", dsh_cmd.display()))
+    Err(format!(
+        "cannot resolve dsh entry from {}",
+        dsh_cmd.display()
+    ))
 }
 
 /// 仓库根目录（assemble-profile.mjs 所在处）：
@@ -343,7 +371,9 @@ fn resolve_dsh_entry(dsh_cmd: &Path) -> Result<(PathBuf, PathBuf), String> {
 /// 自洽（release 产物 + 同期冻结的插件副本，与安装到目标机的行为一致）；
 /// `cargo tauri dev` 用 target/debug（无 staging）→ 正常判 dev 态。
 fn repo_root() -> PathBuf {
-    let dev_root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap_or(Path::new("."));
+    let dev_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap_or(Path::new("."));
     // 打包态：exe 相邻 _up_ 为完整插件包（$INSTDIR）。
     if let Ok(exe) = std::env::current_exe() {
         if let Some(exe_dir) = exe.parent() {
@@ -357,7 +387,11 @@ fn repo_root() -> PathBuf {
         }
     }
     // 开发态：CARGO_MANIFEST_DIR 的父目录（src-tauri/ 的上级 = 仓库根）。
-    if dev_root.join("scripts").join("assemble-profile.mjs").exists() {
+    if dev_root
+        .join("scripts")
+        .join("assemble-profile.mjs")
+        .exists()
+    {
         return dev_root.to_path_buf();
     }
     // 兜底：exe 相邻目录（残缺 _up_/scripts 也能定位装配脚本），最后 dev 路径。
@@ -365,7 +399,12 @@ fn repo_root() -> PathBuf {
         .ok()
         .and_then(|exe| exe.parent().map(Path::to_path_buf))
     {
-        if exe_dir.join("_up_").join("scripts").join("assemble-profile.mjs").exists() {
+        if exe_dir
+            .join("_up_")
+            .join("scripts")
+            .join("assemble-profile.mjs")
+            .exists()
+        {
             return exe_dir;
         }
     }
@@ -375,7 +414,10 @@ fn repo_root() -> PathBuf {
 /// assemble-profile.mjs 的绝对路径：打包态在 `$INSTDIR\_up_\scripts\`，dev 态在仓库根 `scripts\`。
 fn assemble_script_path() -> PathBuf {
     let root = repo_root();
-    let packed = root.join("_up_").join("scripts").join("assemble-profile.mjs");
+    let packed = root
+        .join("_up_")
+        .join("scripts")
+        .join("assemble-profile.mjs");
     if packed.exists() {
         return packed;
     }
@@ -403,8 +445,12 @@ fn find_private_dsh() -> Option<PathBuf> {
 /// dsh 自身派生的 node 子进程（MCP 等）依赖 PATH 里的 node —— 只注入
 /// 子进程环境，不改系统 PATH，不污染全局。
 fn prepend_private_node_path(cmd: &mut Command) {
-    let Some(node) = find_private_node() else { return };
-    let Some(node_dir) = node.parent() else { return };
+    let Some(node) = find_private_node() else {
+        return;
+    };
+    let Some(node_dir) = node.parent() else {
+        return;
+    };
     let mut path = node_dir.to_string_lossy().to_string();
     if let Ok(existing) = std::env::var("PATH") {
         path.push(';');
@@ -443,10 +489,15 @@ pub fn assemble_profile() -> Result<(), String> {
         .join("@marecgents")
         .join("dsh-hub");
     let package_root = if up_pkg.join("package.json").is_file() && up_pkg.join("lib").is_dir() {
-        info!("node: plugin package root = installer-bundled _up_ ({})", up_pkg.display());
+        info!(
+            "node: plugin package root = installer-bundled _up_ ({})",
+            up_pkg.display()
+        );
         up_pkg
     } else if private_pkg.is_dir() {
-        warn!("node: _up_ plugin payload missing, falling back to npm-installed copy (may be stale)");
+        warn!(
+            "node: _up_ plugin payload missing, falling back to npm-installed copy (may be stale)"
+        );
         private_pkg
     } else {
         repo_root.clone()
@@ -522,48 +573,70 @@ fn assign_sidecar_to_kill_job(child: &std::process::Child) {
     use windows::Win32::Foundation::HANDLE;
     use windows::Win32::System::JobObjects::{
         AssignProcessToJobObject, CreateJobObjectW, JobObjectExtendedLimitInformation,
-        JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
-        SetInformationJobObject,
+        SetInformationJobObject, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
+        JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
     };
 
     /// HANDLE 是裸指针（未实现 Send/Sync），但 Job Object 句柄跨线程共享是
     /// 安全的（不转移所有权，仅复用内核句柄值）——包一层标记类型。
     struct SyncHandle(HANDLE);
+    // SAFETY: the Job Object kernel handle is a plain value: sending it to
+    // another thread only copies the handle value, which is the documented
+    // Win32 sharing model (handles are per-process; the value stays valid for
+    // the process lifetime because the handle is intentionally leaked via
+    // OnceLock). No ownership transfer, no cleanup on any thread.
     unsafe impl Send for SyncHandle {}
+    // SAFETY: the job handle is immutable after creation (only read via
+    // AssignProcessToJobObject), so sharing it by reference across threads is
+    // sound; there is no mutable state on the handle itself.
     unsafe impl Sync for SyncHandle {}
 
     static JOB: OnceLock<SyncHandle> = OnceLock::new();
-    let job = JOB.get_or_init(|| {
-        unsafe {
-            match CreateJobObjectW(None, PCWSTR::null()) {
-                Ok(job) => {
-                    let mut info = JOBOBJECT_EXTENDED_LIMIT_INFORMATION::default();
-                    info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
-                    let size = std::mem::size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32;
-                    if let Err(e) = SetInformationJobObject(
-                        job,
-                        JobObjectExtendedLimitInformation,
-                        &info as *const _ as *const core::ffi::c_void,
-                        size,
-                    ) {
-                        warn!("node: SetInformationJobObject failed: {}", e);
-                        return SyncHandle(HANDLE(std::ptr::null_mut()));
+    let job = JOB
+        .get_or_init(|| {
+            // SAFETY: CreateJobObjectW with a null object name + null security
+            // descriptor creates an anonymous job with default security; the
+            // returned handle is stored in the process-lifetime OnceLock (never
+            // closed — intentional, keeps KILL_ON_JOB_CLOSE armed). The
+            // SetInformationJobObject call passes a pointer to a fully initialized
+            // JOBOBJECT_EXTENDED_LIMIT_INFORMATION with the exact byte size the
+            // API expects. On failure a null handle is stored, which the
+            // `is_invalid()` check below rejects.
+            unsafe {
+                match CreateJobObjectW(None, PCWSTR::null()) {
+                    Ok(job) => {
+                        let mut info = JOBOBJECT_EXTENDED_LIMIT_INFORMATION::default();
+                        info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+                        let size =
+                            std::mem::size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32;
+                        if let Err(e) = SetInformationJobObject(
+                            job,
+                            JobObjectExtendedLimitInformation,
+                            &info as *const _ as *const core::ffi::c_void,
+                            size,
+                        ) {
+                            warn!("node: SetInformationJobObject failed: {}", e);
+                            return SyncHandle(HANDLE(std::ptr::null_mut()));
+                        }
+                        SyncHandle(job)
                     }
-                    SyncHandle(job)
-                }
-                Err(e) => {
-                    warn!("node: CreateJobObjectW failed: {}", e);
-                    SyncHandle(HANDLE(std::ptr::null_mut()))
+                    Err(e) => {
+                        warn!("node: CreateJobObjectW failed: {}", e);
+                        SyncHandle(HANDLE(std::ptr::null_mut()))
+                    }
                 }
             }
-        }
-    })
-    .0;
+        })
+        .0;
     if job.is_invalid() {
         return;
     }
     use std::os::windows::io::AsRawHandle;
     let process = HANDLE(child.as_raw_handle());
+    // SAFETY: `child` is a live, spawned process held by the caller (not yet
+    // reaped); its raw handle is valid for this call. AssignProcessToJobObject
+    // transfers the child INTO the job — subsequent assignment to another job
+    // is refused by Windows, which is exactly the once-only semantics we want.
     if let Err(e) = unsafe { AssignProcessToJobObject(job, process) } {
         warn!("node: AssignProcessToJobObject failed: {}", e);
     }
@@ -594,7 +667,11 @@ fn spawn_inner(state: Arc<NodeState>, app: tauri::AppHandle) -> Result<(), Strin
         c.args(["web", "--port", "0", "--no-open"]);
         c
     } else {
-        info!("node: spawning {} {} web --port 0 --no-open", node.display(), entry.display());
+        info!(
+            "node: spawning {} {} web --port 0 --no-open",
+            node.display(),
+            entry.display()
+        );
         let mut c = Command::new(&node);
         c.arg(&entry).args(["web", "--port", "0", "--no-open"]);
         c
@@ -614,7 +691,9 @@ fn spawn_inner(state: Arc<NodeState>, app: tauri::AppHandle) -> Result<(), Strin
         cmd.creation_flags(0x08000000);
     }
 
-    let mut child = cmd.spawn().map_err(|e| format!("spawn dsh web failed: {e}"))?;
+    let mut child = cmd
+        .spawn()
+        .map_err(|e| format!("spawn dsh web failed: {e}"))?;
 
     // 壳死则 sidecar 树陪葬（防孤儿 node.exe 锁文件；见函数注释）。
     #[cfg(target_os = "windows")]
@@ -624,9 +703,24 @@ fn spawn_inner(state: Arc<NodeState>, app: tauri::AppHandle) -> Result<(), Strin
     let stderr = child.stderr.take();
     // stdin 管道保留给壳下行托盘命令（rc.14 tray-helper 模式）。
     *state.stdin.lock().unwrap() = child.stdin.take();
+    spawn_output_readers(&state, app.clone(), stdout, stderr, "");
 
-    // 后台线程：逐行读取 stdout，解析 READY 信号 + DSH_CMD 上行请求行。
-    // port/ready 写入共享 state（Arc<NodeState>）；DSH_CMD 经 AppHandle 执行窗口操作。
+    *state.child.lock().unwrap() = Some(child);
+    info!("node: child process spawned (waiting for READY)");
+    Ok(())
+}
+
+/// Spawn the stdout/stderr reader threads for a freshly spawned dsh web child
+/// (shared by `spawn_inner` and `spawn_via_cmd_shim` — identical reader logic:
+/// parse the READY port line and the `DSH_CMD ` uplink lines; the store is
+/// shared via `Arc<NodeState>`, window ops via the app handle).
+fn spawn_output_readers(
+    state: &Arc<NodeState>,
+    app: tauri::AppHandle,
+    stdout: std::process::ChildStdout,
+    stderr: Option<std::process::ChildStderr>,
+    log_suffix: &'static str,
+) {
     let state_ready = state.clone();
     std::thread::spawn(move || {
         let reader = BufReader::new(stdout);
@@ -651,41 +745,51 @@ fn spawn_inner(state: Arc<NodeState>, app: tauri::AppHandle) -> Result<(), Strin
                 }
             }
         }
-        info!("node: stdout loop ended");
+        info!("node: stdout loop ended{log_suffix}");
     });
 
-    // 后台线程：stderr 日志。
     if let Some(stderr) = stderr {
         std::thread::spawn(move || {
             let reader = BufReader::new(stderr);
             for line in reader.lines() {
                 match line {
                     Ok(l) => info!("dsh-stderr: {}", l),
-                    Err(e) => { warn!("dsh-stderr read error: {}", e); break; }
+                    Err(e) => {
+                        warn!("dsh-stderr read error: {}", e);
+                        break;
+                    }
                 }
             }
         });
     }
-
-    *state.child.lock().unwrap() = Some(child);
-    info!("node: child process spawned (waiting for READY)");
-    Ok(())
 }
 
 /// 兜底启动路径：`cmd /d /s /c "<dsh.cmd>" web --port 0`（仅当 entry 解析失败）。
 /// 注意：此路径的 child 是 cmd.exe——kill 时需 taskkill /T 杀整棵进程树
 /// （kill_sidecar 处理），防 node 孙进程孤儿。
-fn spawn_via_cmd_shim(state: Arc<NodeState>, app: tauri::AppHandle, dsh_cmd: &Path) -> Result<(), String> {
-    info!("node: spawning via cmd shim: {} web --port 0", dsh_cmd.display());
+fn spawn_via_cmd_shim(
+    state: Arc<NodeState>,
+    app: tauri::AppHandle,
+    dsh_cmd: &Path,
+) -> Result<(), String> {
+    info!(
+        "node: spawning via cmd shim: {} web --port 0",
+        dsh_cmd.display()
+    );
     let comspec = std::env::var("COMSPEC").unwrap_or_else(|_| "cmd.exe".to_string());
     let mut cmd = Command::new(comspec);
-    cmd.args(["/d", "/s", "/c", &format!("\"{}\" web --port 0 --no-open", dsh_cmd.display())])
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .env("DSH_HOME", crate::state::dsh_home())
-        .env("DSH_HUB_LAUNCHED", "1")
-        .env("DSH_HUB_SHELL", "tauri");
+    cmd.args([
+        "/d",
+        "/s",
+        "/c",
+        &format!("\"{}\" web --port 0 --no-open", dsh_cmd.display()),
+    ])
+    .stdin(Stdio::piped())
+    .stdout(Stdio::piped())
+    .stderr(Stdio::piped())
+    .env("DSH_HOME", crate::state::dsh_home())
+    .env("DSH_HUB_LAUNCHED", "1")
+    .env("DSH_HUB_SHELL", "tauri");
     // M5：私有 node 目录注入子进程 PATH（与 spawn_inner 一致）。
     prepend_private_node_path(&mut cmd);
     #[cfg(target_os = "windows")]
@@ -694,7 +798,9 @@ fn spawn_via_cmd_shim(state: Arc<NodeState>, app: tauri::AppHandle, dsh_cmd: &Pa
         cmd.creation_flags(0x08000000);
     }
 
-    let mut child = cmd.spawn().map_err(|e| format!("spawn dsh web via cmd failed: {e}"))?;
+    let mut child = cmd
+        .spawn()
+        .map_err(|e| format!("spawn dsh web via cmd failed: {e}"))?;
 
     // 壳死则 sidecar 树陪葬（防孤儿 node.exe 锁文件；同 spawn_inner）。
     #[cfg(target_os = "windows")]
@@ -703,43 +809,7 @@ fn spawn_via_cmd_shim(state: Arc<NodeState>, app: tauri::AppHandle, dsh_cmd: &Pa
     let stdout = child.stdout.take().expect("stdout pipe");
     let stderr = child.stderr.take();
     *state.stdin.lock().unwrap() = child.stdin.take();
-
-    let state_ready = state.clone();
-    std::thread::spawn(move || {
-        let reader = BufReader::new(stdout);
-        for line in reader.lines() {
-            match line {
-                Ok(l) => {
-                    info!("dsh-stdout: {}", l);
-                    if let Some(port) = parse_dsh_ready_port(&l) {
-                        *state_ready.ready.lock().unwrap() = true;
-                        *state_ready.port.lock().unwrap() = Some(port);
-                        state_ready.restart_count.store(0, Ordering::SeqCst);
-                        info!("node: READY on port {}", port);
-                    } else if let Some(cmd_json) = l.strip_prefix("DSH_CMD ") {
-                        dispatch_dsh_cmd(&app, cmd_json);
-                    }
-                }
-                Err(e) => {
-                    warn!("node: stdout read error: {}", e);
-                    break;
-                }
-            }
-        }
-        info!("node: stdout loop ended (cmd shim)");
-    });
-
-    if let Some(stderr) = stderr {
-        std::thread::spawn(move || {
-            let reader = BufReader::new(stderr);
-            for line in reader.lines() {
-                match line {
-                    Ok(l) => info!("dsh-stderr: {}", l),
-                    Err(e) => { warn!("dsh-stderr read error: {}", e); break; }
-                }
-            }
-        });
-    }
+    spawn_output_readers(&state, app.clone(), stdout, stderr, " (cmd shim)");
 
     *state.child.lock().unwrap() = Some(child);
     info!("node: child process spawned via cmd shim (waiting for READY)");
@@ -759,14 +829,23 @@ fn wait_restart_ready_and_navigate(state: &NodeState, app: &tauri::AppHandle) {
             let addr = format!("127.0.0.1:{port}");
             if let Ok(addr) = addr.parse::<SocketAddr>() {
                 if TcpStream::connect_timeout(&addr, Duration::from_millis(500)).is_ok() {
-                    info!("node: restart READY verified — {addr} reachable, navigating main window");
+                    info!(
+                        "node: restart READY verified — {addr} reachable, navigating main window"
+                    );
                     if let Some(win) = app.get_webview_window("main") {
                         if let Ok(url) = tauri::Url::parse(&format!("http://127.0.0.1:{port}")) {
-                            let _ = win.navigate(url);
-                            info!("node: supervisor navigated main window to http://127.0.0.1:{port}");
+                            if let Err(e) = win.navigate(url) {
+                                warn!("node: supervisor navigate failed: {e}");
+                            } else {
+                                info!("node: supervisor navigated main window to http://127.0.0.1:{port}");
+                            }
                         } else {
                             // URL 解析失败（u16 端口理论上不会）——退 eval 兜底。
-                            let _ = win.eval(format!("location.href='http://127.0.0.1:{port}'"));
+                            if let Err(e) =
+                                win.eval(format!("location.href='http://127.0.0.1:{port}'"))
+                            {
+                                warn!("node: supervisor eval fallback failed: {e}");
+                            }
                         }
                     }
                     return;
@@ -837,7 +916,10 @@ fn spawn_supervisor(state: Arc<NodeState>, app: tauri::AppHandle) {
                             // 重启后端口会变：等新 READY 并把主窗口导航到新 URL。
                             wait_restart_ready_and_navigate(&state, &app);
                         } else {
-                            error!("dsh:crash — sidecar crashed {} times consecutively, giving up", count);
+                            error!(
+                                "dsh:crash — sidecar crashed {} times consecutively, giving up",
+                                count
+                            );
                             crate::quit::write_quit_marker();
                             std::process::exit(1);
                         }
@@ -894,4 +976,41 @@ pub fn kill_sidecar(state: &NodeState) {
 pub fn stop_dsh(state: &NodeState) {
     kill_sidecar(state);
     crate::quit::write_quit_marker();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_dsh_ready_port;
+
+    #[test]
+    fn parses_dsh_web_line() {
+        assert_eq!(
+            parse_dsh_ready_port("dsh web: http://127.0.0.1:8279"),
+            Some(8279)
+        );
+    }
+
+    #[test]
+    fn parses_dsh_event_ready_json() {
+        assert_eq!(
+            parse_dsh_ready_port(r#"DSH_EVENT {"type":"ready","port":4321}"#),
+            Some(4321)
+        );
+    }
+
+    #[test]
+    fn ignores_non_matching_lines() {
+        assert_eq!(parse_dsh_ready_port("dsh web: http://127.0.0.1:0"), Some(0));
+        assert_eq!(parse_dsh_ready_port("plain log line"), None);
+        assert_eq!(parse_dsh_ready_port("DSH_EVENT {"), None);
+        assert_eq!(parse_dsh_ready_port(""), None);
+    }
+
+    #[test]
+    fn stops_at_first_digit_run() {
+        assert_eq!(
+            parse_dsh_ready_port("dsh web: http://127.0.0.1:65535 trailing"),
+            Some(65535)
+        );
+    }
 }

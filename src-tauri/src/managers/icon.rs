@@ -221,7 +221,9 @@ fn desktop_icon_ico_path(icon_id: &str) -> Option<std::path::PathBuf> {
         }
     }
     // dev 态：仓库 icons。
-    let dev = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("icons").join(&name);
+    let dev = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("icons")
+        .join(&name);
     if dev.exists() {
         return Some(dev);
     }
@@ -234,17 +236,22 @@ fn desktop_icon_ico_path(icon_id: &str) -> Option<std::path::PathBuf> {
 /// 失败仅 warn（不得破坏图标设置链路）。由 IconManager::apply_shell_face 调用。
 #[cfg(target_os = "windows")]
 fn update_shell_icon_sources(_app: &AppHandle, icon_id: &str) {
+    use crate::winutil::{wide, ComInit};
     use windows::core::{Interface, PCWSTR};
     use windows::Win32::System::Com::{
-        CoCreateInstance, CoInitializeEx, CoUninitialize, IPersistFile, CLSCTX_INPROC_SERVER,
-        COINIT_APARTMENTTHREADED, STGM_READWRITE,
+        CoCreateInstance, IPersistFile, CLSCTX_INPROC_SERVER, COINIT_APARTMENTTHREADED,
+        STGM_READWRITE,
     };
     use windows::Win32::UI::Shell::{
-        IShellLinkW, ShellLink, SHChangeNotify, SHCNE_ASSOCCHANGED, SHCNE_UPDATEITEM, SHCNF_IDLIST, SHCNF_PATHW,
+        IShellLinkW, SHChangeNotify, ShellLink, SHCNE_ASSOCCHANGED, SHCNE_UPDATEITEM, SHCNF_IDLIST,
+        SHCNF_PATHW,
     };
 
     let Some(ico) = desktop_icon_ico_path(icon_id) else {
-        log::warn!("icon: no .ico for '{}' (taskbar icon source not updated)", icon_id);
+        log::warn!(
+            "icon: no .ico for '{}' (taskbar icon source not updated)",
+            icon_id
+        );
         return; // 未置去重键——下次同 id 进入可重试（如 .ico 尚未就位）。
     };
 
@@ -252,7 +259,10 @@ fn update_shell_icon_sources(_app: &AppHandle, icon_id: &str) {
     let mut lnk_paths: Vec<std::path::PathBuf> = Vec::new();
     if let Some(appdata) = std::env::var_os("APPDATA") {
         let start_menu = std::path::Path::new(&appdata)
-            .join("Microsoft").join("Windows").join("Start Menu").join("Programs")
+            .join("Microsoft")
+            .join("Windows")
+            .join("Start Menu")
+            .join("Programs")
             .join("DeepSeek Harness Hub.lnk");
         lnk_paths.push(start_menu);
     }
@@ -262,23 +272,30 @@ fn update_shell_icon_sources(_app: &AppHandle, icon_id: &str) {
         lnk_paths.push(desktop);
     }
 
-    let wide_ico: Vec<u16> = ico.to_string_lossy().encode_utf16().chain(std::iter::once(0)).collect();
+    let wide_ico = wide(&ico.to_string_lossy());
+    // SAFETY (whole block): COM apartment is opened via the ComInit RAII guard
+    // (CoUninitialize guaranteed even on error branches).
     unsafe {
-        if CoInitializeEx(None, COINIT_APARTMENTTHREADED).is_err() {
+        let Some(_com) = ComInit::new(COINIT_APARTMENTTHREADED) else {
             log::warn!("icon: CoInitializeEx failed");
             return;
-        }
+        };
         for lnk in &lnk_paths {
             if !lnk.exists() {
                 continue;
             }
-            let wide_lnk: Vec<u16> = lnk.to_string_lossy().encode_utf16().chain(std::iter::once(0)).collect();
-            let link: Result<IShellLinkW, _> = CoCreateInstance(&ShellLink, None, CLSCTX_INPROC_SERVER);
+            let wide_lnk = wide(&lnk.to_string_lossy());
+            let link: Result<IShellLinkW, _> =
+                CoCreateInstance(&ShellLink, None, CLSCTX_INPROC_SERVER);
             match link {
                 Ok(link) => {
                     let pf: Result<IPersistFile, _> = link.cast();
                     match pf {
                         Ok(pf) => {
+                            // SAFETY: wide_lnk / wide_ico are NUL-terminated
+                            // buffers living for the duration of the calls;
+                            // the shell link object is apartment-threaded and
+                            // confined to this thread.
                             if pf.Load(PCWSTR(wide_lnk.as_ptr()), STGM_READWRITE).is_ok() {
                                 link.SetIconLocation(PCWSTR(wide_ico.as_ptr()), 0).ok();
                                 let _ = pf.Save(PCWSTR(wide_lnk.as_ptr()), true);
@@ -291,7 +308,6 @@ fn update_shell_icon_sources(_app: &AppHandle, icon_id: &str) {
                 Err(e) => log::warn!("icon: CoCreateInstance ShellLink failed: {}", e),
             }
         }
-        CoUninitialize();
     }
 
     // AUMID 注册 IconUri → 所选 .ico（任务栏按 AppUserModelId 关联取图标）。
@@ -300,22 +316,33 @@ fn update_shell_icon_sources(_app: &AppHandle, icon_id: &str) {
         let key = "HKCU\\Software\\Classes\\AppUserModelId\\com.marecgents.dsh-hub";
         let ico_str = ico.to_string_lossy().to_string();
         let mut c = std::process::Command::new("reg");
-        c.args(["add", key, "/v", "IconUri", "/t", "REG_SZ", "/d", &ico_str, "/f"]);
+        c.args([
+            "add", key, "/v", "IconUri", "/t", "REG_SZ", "/d", &ico_str, "/f",
+        ]);
         c.creation_flags(0x08000000);
         match c.output() {
             Ok(out) if out.status.success() => log::info!("icon: AUMID IconUri → {}", ico_str),
-            Ok(out) => log::warn!("icon: AUMID IconUri reg failed: {}", String::from_utf8_lossy(&out.stderr)),
+            Ok(out) => log::warn!(
+                "icon: AUMID IconUri reg failed: {}",
+                String::from_utf8_lossy(&out.stderr)
+            ),
             Err(e) => log::warn!("icon: AUMID IconUri reg error: {}", e),
         }
     }
 
     // 广播变更让 Explorer 重读（任务栏/快捷方式图标刷新）。
     unsafe {
-        // 定向快路径：让 Explorer 重读新 .ico 文件自身的图标缓存（轻量，
-        // 毫秒级），随后 ASSOCCHANGED 兜底刷新 AUMID 关联（较重，秒级——
-        // 顺序上窗口面已在 shell 面之后，任务栏重绘即取到新 IconUri）。
-        let wide_ico0: Vec<u16> = ico.to_string_lossy().encode_utf16().chain(std::iter::once(0)).collect();
-        SHChangeNotify(SHCNE_UPDATEITEM, SHCNF_PATHW, Some(wide_ico0.as_ptr() as *const _), None);
+        // SAFETY: wide_ico0 is a NUL-terminated UTF-16 buffer that lives for
+        // the duration of the SHChangeNotify call; SHCNF_PATHW consumes it
+        // synchronously. The ASSOCCHANGED broadcast passes null items, which
+        // the API documents as acceptable for this event.
+        let wide_ico0 = wide(&ico.to_string_lossy());
+        SHChangeNotify(
+            SHCNE_UPDATEITEM,
+            SHCNF_PATHW,
+            Some(wide_ico0.as_ptr() as *const _),
+            None,
+        );
         SHChangeNotify(SHCNE_ASSOCCHANGED, SHCNF_IDLIST, None, None);
     }
 }
