@@ -64,11 +64,11 @@ const ROOT = {
   WebkitAppRegion: 'no-drag',
 } as CSSProperties
 const TAB: CSSProperties = {
-  display: 'inline-flex', alignItems: 'center', gap: 5, padding: '3px 8px', borderRadius: 6, cursor: 'pointer',
+  display: 'inline-flex', alignItems: 'center', gap: 5, padding: '0 8px', borderRadius: 6, cursor: 'pointer',
   background: 'transparent', border: 'none', color: 'var(--dsw-alias-label-tertiary, #9aa7bd)', whiteSpace: 'nowrap',
-  // Fixed preferred width 180px; flex-shrink compresses it (down to minWidth
-  // 60px) when many tabs overflow — the browser tab-strip behavior.
-  flex: '0 1 180px', minWidth: 60,
+  // Fill the whole 42px titlebar so the tab's bottom edge hugs the titlebar's
+  // bottom border (Bug-1: tabs used to be a short pill in the middle).
+  flex: '0 1 180px', minWidth: 60, height: '100%', boxSizing: 'border-box',
   // Tab label one step above the 12px strip (browser-tab feel); the label
   // flexes to center and pins the close × to the tab's right edge.
   fontSize: 13,
@@ -77,7 +77,7 @@ const TAB: CSSProperties = {
 }
 const TAB_ACTIVE: CSSProperties = { ...TAB, background: 'var(--dsw-alias-interactive-bg-hover, rgba(128,128,128,.16))', color: 'var(--dsw-alias-label-primary, #fff)' }
 const TAB_DRAGGING: CSSProperties = { ...TAB, opacity: 0.4 }
-const PLUS: CSSProperties = { border: 'none', background: 'transparent', color: 'inherit', cursor: 'pointer', fontSize: 15, padding: '2px 7px', borderRadius: 6, flex: 'none' }
+const PLUS: CSSProperties = { border: 'none', background: 'transparent', color: 'inherit', cursor: 'pointer', fontSize: 15, padding: '0 7px', borderRadius: 6, flex: 'none', height: '100%' }
 const INLINE_INPUT: CSSProperties = {
   border: '1px solid var(--dsw-accent, #3964fe)', background: 'transparent', color: 'inherit',
   fontSize: 12, padding: '1px 4px', borderRadius: 4, outline: 'none', minWidth: 60, boxSizing: 'border-box',

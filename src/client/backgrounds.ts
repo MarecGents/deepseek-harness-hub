@@ -105,6 +105,12 @@ export function applyBackground(backgroundId: string): void {
     `#root div[style*="grid-template-columns"] [data-slot="conversation"] > div{` +
     `background-color:color-mix(in srgb, var(--dsw-alias-bg-base) 75%, transparent) !important;` +
     `}` +
+    // Trajectory view (轨迹): rendered one-at-a-time with ChatView inside the
+    // conversation column with its own opaque root — give it the SAME 25%
+    // show-through as the conversation page (Bug-5).
+    `#root div[style*="grid-template-columns"] [data-slot="conversation"] [data-conversation-composer-overlay]{` +
+    `background-color:color-mix(in srgb, var(--dsw-alias-bg-base) 75%, transparent) !important;` +
+    `}` +
     // Details column: the column itself is transparent by default (no rule
     // needed); only its content root gets the translucent layer (10%).
     `#root div[style*="grid-template-columns"] [data-slot="details"] > div{` +
@@ -129,7 +135,9 @@ export function applyBackground(backgroundId: string): void {
     `}` +
     // The panel's inner surfaces (cards, containers) must not stack another
     // layer over the painted image — make them transparent so the image shows.
-    `#dsh-hub-right-sidebar-root .mg-rs-root [class*="mg-rs-"]{` +
+    // The tree-node CONTEXT MENU is excluded: it must stay OPAQUE (Bug-4 —
+    // a translucent menu over arbitrary page content is unreadable).
+    `#dsh-hub-right-sidebar-root .mg-rs-root [class*="mg-rs-"]:not(.mg-rs-menu){` +
     `background-color:transparent !important;` +
     `}`
 }
