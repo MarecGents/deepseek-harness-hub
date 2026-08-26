@@ -412,14 +412,29 @@ export function installConversationRail(ctx: unknown): () => void {
     return userNodes
   }
 
-  function scrollToSegment(index: number): void {
-    if (scrollContainer === null || segmentCount <= 1) {
-      scrollContainer?.scrollTo({ top: 0 })
+  /** Lazily (re)resolve the conversation scroll container. The first
+ * findScrollContainer call can run before the chat content overflows — leaving
+ * scrollContainer null forever meant clicks and the active-tick highlight both
+ * silently no-oped (Bug: rail unusable + current segment never highlighted).
+ * Resolving on demand fixes both, because by click/scroll time the scroller
+ * actually overflows. */
+function ensureScrollContainer(): HTMLElement | null {
+  if (scrollContainer === null || !scrollContainer.isConnected) {
+    const slotEl = findSlot()
+    scrollContainer = slotEl === null ? null : findScrollContainer(slotEl)
+  }
+  return scrollContainer
+}
+
+function scrollToSegment(index: number): void {
+    const sc = ensureScrollContainer()
+    if (sc === null || segmentCount <= 1) {
+      sc?.scrollTo({ top: 0 })
       return
     }
-    const max = scrollContainer.scrollHeight - scrollContainer.clientHeight
+    const max = sc.scrollHeight - sc.clientHeight
     const ratio = index / (segmentCount - 1)
-    scrollContainer.scrollTop = ratio * max
+    sc.scrollTop = ratio * max
     updateActiveTick()
   }
 
@@ -456,9 +471,11 @@ export function installConversationRail(ctx: unknown): () => void {
 
   function updateActiveTick(): void {
     const root = rail
-    if (root === null || root.hidden || segmentCount < 1 || scrollContainer === null) return
-    const max = scrollContainer.scrollHeight - scrollContainer.clientHeight
-    const ratio = max > 0 ? scrollContainer.scrollTop / max : 0
+    if (root === null || root.hidden || segmentCount < 1) return
+    const sc = ensureScrollContainer()
+    if (sc === null) return
+    const max = sc.scrollHeight - sc.clientHeight
+    const ratio = max > 0 ? sc.scrollTop / max : 0
     const activeIndex = Math.min(segmentCount - 1, Math.max(0, Math.round(ratio * (segmentCount - 1))))
     for (const el of Array.from(root.querySelectorAll<HTMLElement>(`[data-mg-cr-index]`))) {
       const index = Number(el.dataset.mgCrIndex)

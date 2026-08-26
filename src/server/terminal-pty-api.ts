@@ -34,6 +34,7 @@ import { readJsonBody } from '../helpers/read-json-body.js'
 import { rejectIfBadHost, rejectIfBadOriginPresent } from './host-guard.ts'
 import { verifyToken } from './token.ts'
 import { createPty, detectShells, getTab, listTabs, ptyClose, ptyResize, ptySubscribe, ptyWrite, PtyLimitReachedError, type ShellId } from '../services/pty-manager.ts'
+import { readTerminalPrefs, writeTerminalPrefs } from '../services/terminal-prefs.ts'
 
 const P = '/api/dsh-hub/pty'
 const HEARTBEAT_MS = 15_000
@@ -230,6 +231,35 @@ export function makePtyRoutes(): WebRoute[] {
         // offered) — availability is probed, not assumed.
         json(res, 200, { ok: true, shells: detectShells() })
         return Promise.resolve()
+      },
+    },
+    {
+      kind: 'exact',
+      path: P + '/prefs',
+      handler: (req: IncomingMessage, res: ServerResponse): Promise<void> => {
+        if (rejectIfBadHost(req, res)) return Promise.resolve()
+        if (rejectUnauthorized(req, res)) return Promise.resolve()
+        if (rejectIfBadOriginPresent(req, res)) return Promise.resolve()
+        return readJsonBody(req).then((body) => {
+          // GET = read persisted terminal prefs (host file — survives the
+          // random port the web origin/localStorage cannot); POST = merge
+          // patch + persist. The client syncs on boot so user choices stick
+          // across relaunches (Bug: default shell reverted to PowerShell).
+          if (req.method === 'GET') {
+            json(res, 200, { ok: true, prefs: readTerminalPrefs() })
+            return
+          }
+          if (req.method !== 'POST') {
+            json(res, 405, { ok: false, error: 'method-not-allowed' })
+            return
+          }
+          const merged = writeTerminalPrefs(body)
+          if (merged === null) {
+            json(res, 500, { ok: false, error: 'prefs-write-failed' })
+            return
+          }
+          json(res, 200, { ok: true, prefs: merged })
+        }, () => json(res, 400, { ok: false, error: 'invalid-request' }))
       },
     },
     {

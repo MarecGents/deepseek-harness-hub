@@ -37,6 +37,7 @@ import { installConversationRail, refreshConversationRailPalette } from './conve
 import { installModelSelect } from './model-select.tsx'
 import { SessionTabs } from './SessionTabs.tsx'
 import { bindPtyRuntime, fetchShells, ptyToggle } from './pty-store.ts'
+import { syncHostPrefs } from './terminal-prefs.ts'
 import { TerminalPage } from './terminal-dock.tsx'
 
 /**
@@ -362,6 +363,13 @@ export function apply(ctx: ClientContext): void {
     void fetchShells()
   } catch (error) {
     console.warn('[dsh-hub] pty shells fetch failed:', error)
+  }
+  // Restore terminal preferences from the HOST (survives the random per-launch
+  // web origin — localStorage would silently reset; Bug-3).
+  try {
+    void syncHostPrefs()
+  } catch (error) {
+    console.warn('[dsh-hub] pty prefs sync failed:', error)
   }
   const onTerminalKey = (event: KeyboardEvent): void => {
     if (!((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'j')) return

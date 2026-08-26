@@ -7,6 +7,12 @@ export interface TerminalPrefs {
     shell: ShellId;
 }
 /**
+ * Load persisted prefs from the HOST (survives the random per-launch origin).
+ * Called once at assembly; the host value wins over the (possibly stale)
+ * localStorage copy, then the dock re-renders.
+ */
+export declare function syncHostPrefs(): Promise<void>;
+/**
  * Subscribe to preference changes.
  * @returns an unsubscribe function.
  */

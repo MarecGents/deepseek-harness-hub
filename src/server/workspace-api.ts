@@ -179,8 +179,10 @@ function openInOs(path: string, reveal = false): Promise<{ ok: boolean }> {
     let child: ReturnType<typeof spawn>
     if (process.platform === 'win32') {
       // explorer.exe reliably opens a folder (cmd start often fails detached);
-      // `/select,<path>` opens the parent and highlights the item.
-      const args = reveal ? [`/select,${path}`] : [path]
+      // `/select,<path>` must be ONE argument with the path QUOTED inside (the
+      // documented form) — the unquoted variant can misparse and pop the
+      // default Documents folder instead of revealing the item (Bug-1).
+      const args = reveal ? [`/select,"${path}"`] : [path]
       child = spawn('explorer.exe', args, { detached: true, stdio: 'ignore' })
     } else if (process.platform === 'darwin') {
       child = spawn('open', reveal ? ['-R', path] : [path], { detached: true, stdio: 'ignore' })

@@ -60,7 +60,47 @@ function load(): TerminalPrefs {
 let prefs: TerminalPrefs = load()
 
 function emit(): void { for (const l of listeners) l() }
-function save(): void { try { localStorage.setItem(KEY, JSON.stringify(prefs)) } catch { /* Storage full/blocked — in-memory value still applies. */ } }
+function save(): void {
+  try { localStorage.setItem(KEY, JSON.stringify(prefs)) } catch { /* Storage full/blocked — the host copy below still persists. */ }
+  // Host-side persistence is the SOURCE OF TRUTH: dsh web binds a random port
+  // per launch, so localStorage (keyed by origin incl. port) silently resets on
+  // every relaunch. POST the choice to $DSH_HOME so it survives (Bug-3).
+  const token = (globalThis as { __DSH_HUB_TOKEN__?: string }).__DSH_HUB_TOKEN__ ?? ''
+  if (token === '') return
+  void fetch('/api/dsh-hub/pty/prefs', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', Authorization: 'Bearer ' + token },
+    body: JSON.stringify(prefs),
+  }).catch(() => { /* best-effort; next sync heals */ })
+}
+
+/**
+ * Load persisted prefs from the HOST (survives the random per-launch origin).
+ * Called once at assembly; the host value wins over the (possibly stale)
+ * localStorage copy, then the dock re-renders.
+ */
+export async function syncHostPrefs(): Promise<void> {
+  const token = (globalThis as { __DSH_HUB_TOKEN__?: string }).__DSH_HUB_TOKEN__ ?? ''
+  if (token === '') return
+  try {
+    const res = await fetch('/api/dsh-hub/pty/prefs', { headers: { Authorization: 'Bearer ' + token } })
+    if (!res.ok) return
+    const body = (await res.json()) as { ok?: boolean; prefs?: Partial<TerminalPrefs> }
+    if (body.ok !== true || body.prefs === undefined) return
+    const p = body.prefs
+    const next: TerminalPrefs = {
+      fontSize: typeof p.fontSize === 'number' ? p.fontSize : prefs.fontSize,
+      dark: typeof p.dark === 'boolean' ? p.dark : prefs.dark,
+      shell: p.shell ?? prefs.shell,
+    }
+    if (next.fontSize !== prefs.fontSize || next.dark !== prefs.dark || next.shell !== prefs.shell) {
+      prefs = next
+      emit()
+    }
+  } catch {
+    // Host unreachable (early boot) — the localStorage copy is fine for now.
+  }
+}
 
 /**
  * Subscribe to preference changes.
