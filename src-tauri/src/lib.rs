@@ -5,6 +5,9 @@
 //       窗口管理（T2.1-T2.4）、Node sidecar 接入（T4.1/T4.4）、
 //       关闭到托盘（T3.2）、quit.marker 语义（T3.6）。
 // 迁移映射：src/desktop.ts + bin/launcher.mjs → Rust 壳层。
+// Bare CI retrigger: no code change — the first rust-gate run (main @ 52021e1)
+// hit a transient GitHub-side startup failure (workflow graph could not be
+// built; rerun blocked by the API), so this comment-only diff re-arms the gate.
 //
 // 启动流程（T4.4 SOP §5.4 步骤 4，先建窗 → 后台准备 → READY 后 navigate）：
 //   0. 先建窗（占位页 frontendDist ../dev/index.html + shell-init.js 标题栏/Splash）
