@@ -95,7 +95,7 @@ cmd /c "call "<vcvars64.bat>" >nul 2>&1 && npm run tauri:build"
 npm run tauri:build
 
 :: ⑤ 产物复制 + SHA256 校验（踩坑 #56：复制可能静默失败，必须校验 hash）
-set VERSION=0.0.2-rc.8
+set VERSION=0.0.2-rc.9
 mkdir build\%VERSION% 2>nul
 copy "src-tauri\target\release\bundle\nsis\DeepSeek Harness Hub_%VERSION%_x64-setup.exe" "build\%VERSION%\" && ^
 certutil -hashfile "src-tauri\target\release\bundle\nsis\DeepSeek Harness Hub_%VERSION%_x64-setup.exe" SHA256 && ^
@@ -103,7 +103,7 @@ certutil -hashfile "build\%VERSION%\DeepSeek Harness Hub_%VERSION%_x64-setup.exe
 :: 两个 hash 必须一致；不一致 → 删掉 build 里的目标再复制一次
 ```
 
-> 版本号约定：`package.json` version（当前 `0.0.2-rc.8`）与 `src-tauri/tauri.conf.json` version **必须一致**——NSIS 产物名和 `build/<version>/` 目录都以它命名；`src-tauri/Cargo.toml` 恒为 `0.0.0`（Tauri 模板约定，勿改）。
+> 版本号约定：`package.json` version（当前 `0.0.2-rc.9`）与 `src-tauri/tauri.conf.json` version **必须一致**——NSIS 产物名和 `build/<version>/` 目录都以它命名；`src-tauri/Cargo.toml` 恒为 `0.0.0`（Tauri 模板约定，勿改）。
 
 ---
 
