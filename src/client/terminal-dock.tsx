@@ -93,6 +93,26 @@ interface TerminalThemeLike {
   foreground: string
   cursor: string
   cursorAccent: string
+  // 16-color ANSI palette — PowerShell/PSReadLine colorizes typed tokens with
+  // palette colors; without it xterm falls back to VGA defaults (bright
+  // yellow/white) which are unreadable on a light background (Bug: "terminal
+  // input text is white/yellow in light mode").
+  black: string
+  red: string
+  green: string
+  yellow: string
+  blue: string
+  magenta: string
+  cyan: string
+  white: string
+  brightBlack: string
+  brightRed: string
+  brightGreen: string
+  brightYellow: string
+  brightBlue: string
+  brightMagenta: string
+  brightCyan: string
+  brightWhite: string
 }
 
 /**
@@ -129,7 +149,10 @@ function resolveTokenHex(token: string, fallback: string): string {
 
 /**
  * Build the xterm theme from dsw tokens (sampled per call so skin/theme
- * switches apply), with the classic terminal palette as hex fallbacks.
+ * switches apply), with the VS Code classic light/dark terminal palettes as
+ * the ANSI colors — proven readable on both backgrounds, so PowerShell's
+ * token-colored input stays legible in light mode (Bug: input text was
+ * white/yellow on light backgrounds).
  */
 function resolveTerminalTheme(dark: boolean): TerminalThemeLike {
   if (dark) {
@@ -139,6 +162,11 @@ function resolveTerminalTheme(dark: boolean): TerminalThemeLike {
       // No dsw token models the shell caret; keep the classic green/black pair.
       cursor: resolveTokenHex('var(--dsw-alias-state-success-primary)', '#22c55e'),
       cursorAccent: resolveTokenHex('var(--dsw-alias-bg-layer-2)', '#0b0b0d'),
+      // VS Code Dark+ terminal palette.
+      black: '#000000', red: '#cd3131', green: '#0dbc79', yellow: '#e5e510',
+      blue: '#2472c8', magenta: '#bc3fbc', cyan: '#11a8cd', white: '#e5e5e5',
+      brightBlack: '#666666', brightRed: '#f14c4c', brightGreen: '#23d18b', brightYellow: '#f5f543',
+      brightBlue: '#3b8eea', brightMagenta: '#d670d6', brightCyan: '#29b8db', brightWhite: '#ffffff',
     }
   }
   return {
@@ -146,6 +174,11 @@ function resolveTerminalTheme(dark: boolean): TerminalThemeLike {
     foreground: resolveTokenHex('var(--dsw-alias-label-primary)', '#1f1f1f'),
     cursor: resolveTokenHex('var(--dsw-alias-label-primary)', '#0b0b0d'),
     cursorAccent: resolveTokenHex('var(--dsw-alias-bg-layer-2)', '#ffffff'),
+    // VS Code Light+ terminal palette — dark-enough tones on a light canvas.
+    black: '#000000', red: '#cd3131', green: '#107c10', yellow: '#795e26',
+    blue: '#0451a5', magenta: '#bc05bc', cyan: '#0598bc', white: '#555555',
+    brightBlack: '#666666', brightRed: '#cd3131', brightGreen: '#14ce14', brightYellow: '#b5ba00',
+    brightBlue: '#0451a5', brightMagenta: '#bc05bc', brightCyan: '#0598bc', brightWhite: '#a5a5a5',
   }
 }
 

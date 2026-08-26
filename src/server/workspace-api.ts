@@ -166,17 +166,28 @@ async function gitInfo(path: string): Promise<GitInfo> {
   return { isGit: true, branch, head, changes }
 }
 
-/** Open a path with the OS default handler (Explorer / Finder / xdg-open). */
-function openInOs(path: string): Promise<{ ok: boolean }> {
+/**
+ * Open a path with the OS default handler (Explorer / Finder / xdg-open).
+ * @param path - the file/folder to open.
+ * @param reveal - when true, REVEAL the item in its parent folder instead of
+ *   opening it (Explorer `/select,`, Finder `-R`, xdg-open on the parent).
+ *   Windows note: a plain open on a FILE launches the default app — reveal is
+ *   what "在资源管理器中打开" means for files.
+ */
+function openInOs(path: string, reveal = false): Promise<{ ok: boolean }> {
   return new Promise((resolve) => {
     let child: ReturnType<typeof spawn>
     if (process.platform === 'win32') {
-      // explorer.exe reliably opens a folder in Explorer (cmd start often
-      // fails detached).
-      child = spawn('explorer.exe', [path], { detached: true, stdio: 'ignore' })
+      // explorer.exe reliably opens a folder (cmd start often fails detached);
+      // `/select,<path>` opens the parent and highlights the item.
+      const args = reveal ? [`/select,${path}`] : [path]
+      child = spawn('explorer.exe', args, { detached: true, stdio: 'ignore' })
+    } else if (process.platform === 'darwin') {
+      child = spawn('open', reveal ? ['-R', path] : [path], { detached: true, stdio: 'ignore' })
     } else {
-      const opener = process.platform === 'darwin' ? 'open' : 'xdg-open'
-      child = spawn(opener, [path], { detached: true, stdio: 'ignore' })
+      // Linux has no portable "reveal" flag — fall back to opening the parent.
+      const target = reveal ? parentDir(path) : path
+      child = spawn('xdg-open', [target], { detached: true, stdio: 'ignore' })
     }
     child.on('error', () => resolve({ ok: false }))
     child.on('spawn', () => {
@@ -184,6 +195,12 @@ function openInOs(path: string): Promise<{ ok: boolean }> {
       resolve({ ok: true })
     })
   })
+}
+
+/** Parent directory of a path (used for the Linux reveal fallback). */
+function parentDir(path: string): string {
+  const i = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'))
+  return i > 0 ? path.slice(0, i) : path
 }
 
 /**
@@ -250,7 +267,7 @@ export function makeWorkspaceRoutes(resolveWorkspaceRoot?: () => string | undefi
           return Promise.resolve()
         }
         return readJsonBody(req).then(async (body) => {
-          const record = (body ?? {}) as { path?: unknown }
+          const record = (body ?? {}) as { path?: unknown; reveal?: unknown }
           const target = validPath(record.path, false)
           if (target === null) {
             json(res, 400, { ok: false, error: 'invalid-request' })
@@ -276,7 +293,8 @@ export function makeWorkspaceRoutes(resolveWorkspaceRoot?: () => string | undefi
             json(res, 403, { ok: false, error: 'outside workspace' })
             return
           }
-          const result = await openInOs(target)
+          const reveal = record.reveal === true
+          const result = await openInOs(target, reveal)
           json(res, result.ok ? 200 : 500, { ok: result.ok, error: result.ok ? undefined : 'open-failed' })
         }, () => json(res, 400, { ok: false, error: 'invalid-request' }))
       },

@@ -283,10 +283,14 @@ export function installConversationRail(ctx: unknown): () => void {
   }
 
   function findScrollContainer(from: HTMLElement): HTMLElement | null {
-    // 0.1.x: the conversation scroll viewport is `data-conversation-scroll`
-    // (rendered by dsh-client-ui-conversation); prefer it over the generic walk.
+    // 0.1.x: the outer `data-conversation-scroll` is usually the scroll
+    // viewport, but when the chat column scrolls in a NESTED container (the
+    // composer stays pinned), the outer never overflows — scrolling it would
+    // do nothing. Only prefer the explicit marker when it ACTUALLY scrolls;
+    // otherwise fall through to the descendant walk that finds the real
+    // scroller (Bug: rail clicks did nothing when the inner list scrolled).
     const explicit = from.querySelector<HTMLElement>('[data-conversation-scroll]')
-    if (explicit !== null) return explicit
+    if (explicit !== null && explicit.scrollHeight > explicit.clientHeight + 1) return explicit
     const candidates = [from, ...Array.from(from.querySelectorAll<HTMLElement>('*'))]
     for (const el of candidates) {
       if (el.scrollHeight > el.clientHeight + 1) {
@@ -378,7 +382,10 @@ export function installConversationRail(ctx: unknown): () => void {
       'position:fixed;z-index:2147483000;display:none;pointer-events:none;max-width:260px;' +
       'padding:6px 10px;border-radius:6px;font-size:12px;line-height:1.5;' +
       'background:var(--dsw-alias-tooltip-bg, #1f1f23);' +
-      'color:var(--dsw-alias-label-primary, #e8e8ea);' +
+      // Tooltip bg is dark in every skin (light included), so the text must be
+      // LIGHT too — label-primary is dark in light mode, which made the tooltip
+      // read as a pure black rectangle (Bug: "纯黑矩形框").
+      'color:#e8e8ea;' +
       'border:1px solid var(--dsw-alias-border-l2, rgba(0,0,0,.25));' +
       'box-shadow:var(--dsw-shadow-lv2, 0 4px 12px rgba(0,0,0,.25))'
     document.body.appendChild(tip)

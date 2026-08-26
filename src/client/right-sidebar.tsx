@@ -198,18 +198,29 @@ function copyText(text: string): void {
  * `__DSH_HUB_TOKEN__` global injected by the host; without a token the
  * request is skipped entirely rather than failing (the route rejects 401).
  */
-async function openInOs(path: string): Promise<void> {
+async function openInOs(path: string, reveal = false): Promise<void> {
   const token = (globalThis as { __DSH_HUB_TOKEN__?: string }).__DSH_HUB_TOKEN__ ?? ''
   if (token === '') return
   try {
     await fetch('/api/dsh-hub/workspace/open', {
       method: 'POST',
       headers: { 'content-type': 'application/json', Authorization: 'Bearer ' + token },
-      body: JSON.stringify({ path }),
+      body: JSON.stringify({ path, reveal }),
     })
   } catch {
     // Best-effort OS open — a failure here must never break the UI flow.
   }
+}
+
+/**
+ * "在资源管理器中打开" for a file-tree row: a FOLDER opens itself in the OS
+ * file manager; a FILE is revealed in its parent folder (Explorer /select,
+ * Finder -R — see the host open route). Bug-3: the context menu previously
+ * had no reveal entry, so files could only be opened with their default app.
+ */
+function openInExplorer(entry: DirectoryRow): void {
+  if (entry.isDirectory) void openInOs(entry.path)
+  else void openInOs(entry.path, true)
 }
 
 /**
@@ -332,11 +343,13 @@ function ContextMenu({ x, y, entry, root, onClose }: {
   }
   if (entry.isDirectory) {
     items.push({ label: '打开（展开/折叠）', icon: <IconFolderOpen16 size={14} />, run: toggleDir })
+    items.push({ label: '在资源管理器中打开', icon: <IconFolderOpen16 size={14} />, run: () => { openInExplorer(entry) } })
     items.push({ label: '路径引用', icon: <IconLinkOutline16 size={14} />, run: () => { insertReferenceIntoComposer(reference) } })
     items.push({ label: '复制目录', icon: <IconCopyOutline16 size={14} />, run: () => { copyText(entry.path) } })
     items.push({ label: '在此打开终端', icon: <IconCodeOutline16 size={14} />, run: () => { void ptyOpen(entry.path) } })
   } else {
     items.push({ label: '打开', icon: <IconPlayOutline16 size={14} />, run: () => { void openInOs(entry.path) } })
+    items.push({ label: '在资源管理器中打开', icon: <IconFolderOpen16 size={14} />, run: () => { openInExplorer(entry) } })
     items.push({ label: '路径引用', icon: <IconLinkOutline16 size={14} />, run: () => { insertReferenceIntoComposer(reference) } })
     items.push({ label: '复制文件夹目录', icon: <IconCopyOutline16 size={14} />, run: () => { copyText(parentDir(entry.path)) } })
     items.push({ label: '复制文件路径', icon: <IconCopyOutline16 size={14} />, run: () => { copyText(entry.path) } })
