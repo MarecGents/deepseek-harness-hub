@@ -2,7 +2,7 @@
 
 > **`@marecgents/dsh-hub`** —— DeepSeek Harness（`dsh`）的桌面端框架：以原生 Tauri 2.x 窗口运行 dsh Web UI，提供托盘、主题同步、窗口记忆、右侧栏与系统通知。
 >
-> **版本状态（2026-08-27）**：`dev-v2`（Tauri 2.x 壳）M5 打包闭环已真机验证（rc.3 起），当前 **`0.0.2-rc.9`**（rc.9 = dev-v2 打包分发版，仅分发不发 npm；registry latest 仍为 `0.0.2-rc.7`）——NSIS 安装器**安装即用**（安装期自动下载私有 Node + dsh + 插件到安装目录，无需系统预装 Node），首启自动进 dsh UI；卸载走**快速通道**（PREUNINSTALL Get-Process + Defender 排除提速）。M1-M4 功能已落地：**会话标签栏、交互终端（含自定义 Shell：PowerShell 5.1 / pwsh / cmd / Bash）、通知跳会话、rail 数据源修复、S0 Origin 校验、工作区 open**（见 [FUNCTIONS.md](FUNCTIONS.md) §13）。`0.0.1-rc.14` 是 WebView2 壳最终 rc（`dev-v1` 分支已冻结）。正式版将在体验达标后发布（多端支持 / 自定义壳 UI，见 [外部档案 docs/dsh桌面端技术路线-2026-08-16.md](../docs/dsh桌面端技术路线-2026-08-16.md)）。
+> **版本状态（2026-08-27）**：`dev-v2`（Tauri 2.x 壳）M5 打包闭环已真机验证（rc.3 起），当前 **`0.0.2-rc.9`**（rc.9 = dev-v2 打包分发版，仅分发不发 npm；registry latest 仍为 `0.0.2-rc.7`）——NSIS 安装器**安装即用**（安装期自动下载私有 Node + dsh + 插件到安装目录，无需系统预装 Node），首启自动进 dsh UI；卸载走**快速通道**（PREUNINSTALL Get-Process + Defender 排除提速）+ **profile 清理**（卸载时清 `$DSH_HOME/profiles/*` 中 dsh-hub 自有 bundle/junction，保留 `.dsh` 本体——修复卸载残留导致裸 `dsh web` 起不来 / 重装卡「启动中」，见下）。M1-M4 功能已落地：**会话标签栏、交互终端（含自定义 Shell：PowerShell 5.1 / pwsh / cmd / Bash）、通知跳会话、rail 数据源修复、S0 Origin 校验、工作区 open**（见 [FUNCTIONS.md](FUNCTIONS.md) §13）。`0.0.1-rc.14` 是 WebView2 壳最终 rc（`dev-v1` 分支已冻结）。正式版将在体验达标后发布（多端支持 / 自定义壳 UI，见 [外部档案 docs/dsh桌面端技术路线-2026-08-16.md](../docs/dsh桌面端技术路线-2026-08-16.md)）。
 
 [![npm version](https://img.shields.io/npm/v/@marecgents/dsh-hub)](https://www.npmjs.com/package/@marecgents/dsh-hub)
 [![npm rc](https://img.shields.io/npm/v/@marecgents/dsh-hub/rc)](https://www.npmjs.com/package/@marecgents/dsh-hub)
@@ -64,6 +64,7 @@
 
 - **安装即用（M5 闭环）**：安装期自动联网下载**私有 Node**（多源测速选最快）并安装 `@deepseek-ai/dsh` + `@marecgents/dsh-hub` + `pnpm` 到 `<安装目录>\dsh-hub-win\`（私有环境，不污染系统）——**无需系统预装 Node**。进度见安装器详情页 + `<安装目录>\dsh-hub-bootstrap.log`。
 - **首启**：窗口显示「启动中」占位页 → 后台启动私有 dsh web → READY 后自动导航进 dsh UI（**不弹浏览器**）。
+- **卸载清理（rc.9 第五次打包修复）**：卸载时 PREUNINSTALL 先执行随包安装的 `_up_\scripts\uninstall-cleanup.ps1`（此时安装目录尚在），从 `$DSH_HOME/profiles/*` 的 `dsh.profile.bundles` 过滤 dsh-hub 与 `@dsh-external/*` 插件、删除对应 junction（只删链接点不递归目标、悬空可删）并清除空 `@dsh-external` 目录，JSON **无 BOM** 回写；旧安装（无此脚本）由 POSTUNINSTALL 单行兜底做等价清理。**只清 dsh-hub 自有条目，`.dsh` 本体及用户数据绝不删**——修复根因：dsh 对无法解析的 bundle 直接抛错，卸载残留（bundles@dsh-external + 指向已删安装目录的悬空 junction）会导致裸 `dsh web` 启动即崩、重装卡在「启动中」无法完成 Init。
 - 插件层 npm 包 `@marecgents/dsh-hub` 仍随 dsh 生态发布（见「发布」），postinstall 仅做 `dsh` / `pnpm` 依赖检查。
 - **WebView2 时代已移除**：`npm i -g` launcher 安装链路、`koffi` 原生依赖、postinstall 创建的桌面快捷方式与 `dsh-hub` 命令 shim。
 
@@ -191,6 +192,7 @@ dsh-hub/
 │   ├── postinstall.mjs      # 检测 dsh/pnpm（不再建快捷方式）
 │   ├── postuninstall.mjs    # 依赖检查清理
 │   ├── dsh-deps-install.ps1 # 安装期引导（私有 Node/dsh/插件下载 + Defender 排除）
+│   ├── uninstall-cleanup.ps1 # 卸载期 profile 清理（bundles 过滤 hub+@dsh-external/* + junction 删除，无 BOM 回写，保留 .dsh）
 │   ├── synthesize-sounds.mjs # 四段提示音合成
 │   ├── check-tauri-conf.mjs  # M1 字段核对断言
 │   ├── ipc-smoke.mjs         # M1 窗口 IPC 冒烟
