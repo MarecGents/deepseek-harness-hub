@@ -125,6 +125,17 @@ FunctionEnd
   Pop $0
   nsExec::ExecToStack "powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -Command $\"Get-Process node -ErrorAction SilentlyContinue | Where-Object { $$_.Path -like '*dsh-hub-win*' } | Stop-Process -Force -ErrorAction SilentlyContinue$\""
   Pop $0
+  ; ── Profile cleanup BEFORE deleting _up_ (stale dsh-hub config fix) ──
+  ; scripts/uninstall-cleanup.ps1 removes the hub + @dsh-external/* bundles and
+  ; junctions from $DSH_HOME profiles. Without it, plain `dsh web` after
+  ; uninstall crashes ("cannot resolve profile bundle …") and a REINSTALL can
+  ; hang at init on the stale profile (rc.9 test machine, fixed 2026-08-27 —
+  ; reproduced: leftover plugin bundles + dangling junctions → boot crash).
+  ; Runs here so the script file still exists; never touches anything outside
+  ; the dsh-hub entries of the profiles (.dsh itself is preserved).
+  IfFileExists "$INSTDIR\_up_\scripts\uninstall-cleanup.ps1" 0 +2
+  nsExec::ExecToStack 'powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "$INSTDIR\_up_\scripts\uninstall-cleanup.ps1"'
+  Pop $0
   ; Fast path first (see header): one native recursive delete per known
   ; small directory beats the template's per-file Delete walk. The BULK
   ; directory (dsh-hub-win, tens of thousands of runtime-downloaded files)
@@ -147,10 +158,12 @@ FunctionEnd
   ; (same pattern as big-vendor installers). Failure leaves at most an inert
   ; file tree (uninstall key is already gone) — harmless, deletable by hand.
   DetailPrint "dsh-hub: cleaning profile bundle entry (best-effort)"
-  ; NSIS 中 $$ 转义为字面 $；PowerShell 单行：从 bundles 移除 @marecgents/dsh-hub
-  ; + 删除 junction（Test-Path 会跟随悬空链接返回 false，改查 ReparsePoint 属性；
-  ;   只删链接本身，不递归目标）。
-  ExecWait 'powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -Command "$$h=$$env:DSH_HOME; if(-not $$h){$$h=\"$$env:USERPROFILE\.dsh\"}; $$j=Join-Path $$h \"profiles\web\package.json\"; if(Test-Path $$j){ try{ $$o=Get-Content $$j -Raw|ConvertFrom-Json; $$o.dsh.profile.bundles=@($$o.dsh.profile.bundles|Where-Object{$$_ -ne \"@marecgents/dsh-hub\"}); $$o|ConvertTo-Json -Depth 10|Set-Content $$j -Encoding UTF8 }catch{ } }; $$l=Join-Path $$h \"profiles\web\node_modules\@marecgents\dsh-hub\"; try{ $$i=Get-Item $$l -Force -ErrorAction Stop; if($$i.Attributes -band [IO.FileAttributes]::ReparsePoint){ $$i.Delete() } }catch{ }"' $0
+  ; NSIS 中 $$ 转义为字面 $。该一行为「旧安装无 uninstall-cleanup.ps1」的兜底：
+  ; 从 bundles 移除 @marecgents/dsh-hub 与 @dsh-external/*、删除相关 junction
+  ; （Test-Path 会跟随悬空链接返回 false，改查 ReparsePoint 属性；只删链接点、
+  ; 不递归目标）。JSON 必须无 BOM 写入——PS5.1 Set-Content -Encoding UTF8 会带
+  ; BOM，dsh 的 JSON.parse 不接受（"Unexpected token ﻿"），曾致 dsh web 启动即崩。
+  ExecWait 'powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -Command "$$h=$$env:DSH_HOME; if(-not $$h){$$h=\"$$env:USERPROFILE\.dsh\"}; Get-ChildItem (Join-Path $$h \"profiles\web\node_modules\@dsh-external\") -Force -ErrorAction SilentlyContinue | ForEach-Object { if($$_.Attributes -band [IO.FileAttributes]::ReparsePoint){ $$_.Delete() } }; $$e=Join-Path $$h \"profiles\web\node_modules\@dsh-external\"; if(Test-Path $$e){ Remove-Item $$e -Force -ErrorAction SilentlyContinue }; $$j=Join-Path $$h \"profiles\web\package.json\"; if(Test-Path $$j){ try{ $$o=Get-Content $$j -Raw|ConvertFrom-Json; $$b=@($$o.dsh.profile.bundles); $$k=@($$b|Where-Object{$$_ -ne \"@marecgents/dsh-hub\" -and $$_ -notlike \"@dsh-external/*\"}); if($$k.Count -ne $$b.Count){ $$o.dsh.profile.bundles=$$k; $$raw=($$o|ConvertTo-Json -Depth 10|Out-String).Trim(); [IO.File]::WriteAllText($$j,$$raw,(New-Object Text.UTF8Encoding($false))) } }catch{ } }; $$l=Join-Path $$h \"profiles\web\node_modules\@marecgents\dsh-hub\"; try{ $$i=Get-Item $$l -Force -ErrorAction Stop; if($$i.Attributes -band [IO.FileAttributes]::ReparsePoint){ $$i.Delete() } }catch{ }"' $0
   ${If} $0 != 0
     DetailPrint "dsh-hub: profile cleanup exited with code $0 (non-fatal)"
   ${EndIf}

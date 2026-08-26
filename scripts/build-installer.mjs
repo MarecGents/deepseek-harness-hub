@@ -368,7 +368,7 @@ function assertSourceCompleteness() {
   const mustExist = [
     'package.json', 'tsconfig.json', 'tsdown.config.ts', 'cordis.patch.yml',
     'src/index.ts', 'src/client/index.ts', 'dev/index.html',
-    'scripts/dsh-deps-install.ps1', 'scripts/assemble-profile.mjs',
+    'scripts/dsh-deps-install.ps1', 'scripts/uninstall-cleanup.ps1', 'scripts/assemble-profile.mjs',
     'src-tauri/tauri.conf.json', 'src-tauri/src/lib.rs', 'src-tauri/src/shell-init.js',
   ]
   const missing = mustExist.filter((p) => !existsSync(join(PACKAGE_ROOT, p)))

@@ -23,6 +23,7 @@
     "externalBin": [],
     "resources": [
       "../scripts/dsh-deps-install.ps1",
+      "../scripts/uninstall-cleanup.ps1",
       "../scripts/assemble-profile.mjs",
       "../package.json",
       "../cordis.patch.yml",
