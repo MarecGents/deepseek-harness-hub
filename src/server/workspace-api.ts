@@ -177,21 +177,35 @@ async function gitInfo(path: string): Promise<GitInfo> {
 function openInOs(path: string, reveal = false): Promise<{ ok: boolean }> {
   return new Promise((resolve) => {
     let child: ReturnType<typeof spawn>
+    let args: string[]
     if (process.platform === 'win32') {
-      // explorer.exe reliably opens a folder (cmd start often fails detached);
-      // `/select,<path>` must be ONE argument with the path QUOTED inside (the
-      // documented form) — the unquoted variant can misparse and pop the
-      // default Documents folder instead of revealing the item (Bug-1).
-      const args = reveal ? [`/select,"${path}"`] : [path]
-      child = spawn('explorer.exe', args, { detached: true, stdio: 'ignore' })
+      // explorer.exe reliably opens a folder (cmd start often fails detached).
+      // Reveal uses the documented `/select,"<path>"` single-argument form AND
+      // `windowsVerbatimArguments: true`: without it Node's default quoting
+      // rebuilds the line as `"/select,\"C:\...\""` and explorer (which parses
+      // its RAW command line, not CommandLineToArgvW) falls back to the
+      // Documents folder instead of locating the item (deep-reviewed rc.9 Bug-1:
+      // both the unquoted and the "just add quotes" variants fail — what
+      // matters is verbatim delivery). Only the reveal branch sets verbatim;
+      // the plain folder-open arg must keep Node's quoting for space safety.
+      args = reveal ? [`/select,"${path}"`] : [path]
+      child = spawn('explorer.exe', args, { detached: true, stdio: 'ignore', windowsVerbatimArguments: reveal })
     } else if (process.platform === 'darwin') {
-      child = spawn('open', reveal ? ['-R', path] : [path], { detached: true, stdio: 'ignore' })
+      args = reveal ? ['-R', path] : [path]
+      child = spawn('open', args, { detached: true, stdio: 'ignore' })
     } else {
       // Linux has no portable "reveal" flag — fall back to opening the parent.
       const target = reveal ? parentDir(path) : path
-      child = spawn('xdg-open', [target], { detached: true, stdio: 'ignore' })
+      args = [target]
+      child = spawn('xdg-open', args, { detached: true, stdio: 'ignore' })
     }
-    child.on('error', () => resolve({ ok: false }))
+    // Spawn reaches the OS even when explorer itself cannot act on the args
+    // (exactly this Bug-1) — log what we handed over so the failure is visible.
+    console.log('[dsh-hub] workspace open:', { platform: process.platform, reveal, args })
+    child.on('error', (e) => {
+      console.log('[dsh-hub] workspace open spawn error:', e.message)
+      resolve({ ok: false })
+    })
     child.on('spawn', () => {
       child.unref()
       resolve({ ok: true })
