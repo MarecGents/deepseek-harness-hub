@@ -409,12 +409,6 @@ export function apply(ctx: ClientContext): void {
   // Only page-level blank space shows the refresh item.
   try {
     ctx.effect(() => {
-      // TEMP diag: prove this effect executes and the listener registers
-      // (ctx-trace channel; remove with the probe API).
-      const armed = (t: string): void => {
-        void fetch('/api/dsh-hub/ctx-trace?t=' + encodeURIComponent(t)).catch(() => {})
-      }
-      armed('effect-armed:context-menu')
       let menuEl: HTMLElement | null = null
       const closeMenu = (): void => {
         if (menuEl === null) return
@@ -431,13 +425,6 @@ export function apply(ctx: ClientContext): void {
       const onContext = (event: MouseEvent): void => {
         const target = event.target
         if (target instanceof Element) {
-          // TEMP diagnostic: report the target into the host log so the Rust
-          // dsh-stdout stream shows whether/where the handler fires and what
-          // element absorbs the right-click (remove with ctx-trace API).
-          const cls = typeof target.className === 'string' ? target.className.slice(0, 60) : ''
-          const role = target.getAttribute?.('role') ?? ''
-          void fetch('/api/dsh-hub/ctx-trace?t=' + encodeURIComponent(
-            `C:${target.tagName.toLowerCase()}|${cls}|${role}`)).catch(() => {})
           // Object controls (session / workspace tree rows) never show the
           // refresh item — they open their own menus (pin-conversations /
           // workspace-menu; the row catches its inner buttons too). EVERYTHING
@@ -481,7 +468,6 @@ export function apply(ctx: ClientContext): void {
         window.addEventListener('scroll', closeMenu, true)
       }
       document.addEventListener('contextmenu', onContext)
-      armed('effect-registered:context-menu')
       return () => {
         document.removeEventListener('contextmenu', onContext)
         closeMenu()
