@@ -106,6 +106,7 @@ export const zh = {
   'menu.copyLogPath': '复制日志路径',
   'menu.copySessionId': '复制会话 ID',
   'menu.gotoConfig': '前往配置',
+  'menu.refresh': '刷新',
   'ws.newTask': '新建任务',
   'ws.openWorkspace': '打开工作区',
 } satisfies Record<string, string>
@@ -205,6 +206,7 @@ export const en: Record<HubKey, string> = {
   'menu.copyLogPath': 'Copy log path',
   'menu.copySessionId': 'Copy session ID',
   'menu.gotoConfig': 'Go to configuration',
+  'menu.refresh': 'Refresh',
   'ws.newTask': 'New task',
   'ws.openWorkspace': 'Open workspace',
 } satisfies Record<string, string>

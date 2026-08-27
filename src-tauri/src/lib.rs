@@ -575,6 +575,42 @@ fn create_toast_shortcuts(exe: &std::path::Path) {
 // helpers/winutil.rs 的 winutil::wide（单一实现）。
 
 /// --smoke 诊断模式标记（T4.4）：main.rs 解析参数后置位，
+/// Disable the WebView2 native right-click menu (refresh / back / inspect).
+/// That menu is browser-level: a page's `contextmenu` + `preventDefault`
+/// CANNOT suppress it (that is why session/workspace rows still showed
+/// "刷新" — Bug3 root cause). With it off, the DOM layer owns right-click:
+/// object rows open their menus (pin-conversations / workspace-menu) and open
+/// space shows the hub's own refresh menu. Best-effort; failure only logs.
+#[cfg(target_os = "windows")]
+fn disable_default_context_menu(app: &tauri::AppHandle) {
+    use tauri::Manager;
+    let Some(win) = app.get_webview_window("main") else { return };
+    // PlatformWebview (the with_webview callback argument) exposes the
+    // webview2-com typed controller; the chain is
+    // controller.CoreWebView2().Settings().SetAreDefaultContextMenusEnabled
+    // (false) — mirrors wry's own set_webview_settings.
+    if let Err(e) = win.with_webview(|wv| {
+        let controller = wv.controller();
+        // SAFETY: all three interface pointers come from tauri's live
+        // WebView2 platform webview (valid for the webview lifetime),
+        // acquired via wry/tauri; these calls only toggle a controller
+        // setting and dereference no user-controlled memory.
+        let disabled = unsafe {
+            controller
+                .CoreWebView2()
+                .ok()
+                .and_then(|core| core.Settings().ok())
+                .and_then(|settings| settings.SetAreDefaultContextMenusEnabled(false).ok())
+                .is_some()
+        };
+        if !disabled {
+            log::warn!("webview: failed to disable default context menus");
+        }
+    }) {
+        log::warn!("webview: with_webview callback failed: {e}");
+    }
+}
+
 /// lib.rs setup 建窗成功（window build Ok）后检查 → 写 quit.marker + exit(0)。
 /// 普通启动（无 --smoke）保持 false，行为完全不变。
 static SMOKE_MODE: AtomicBool = AtomicBool::new(false);
@@ -764,6 +800,10 @@ pub fn run() {
             // stop_dsh 收尾（也未托管 NodeState，maybe_smoke_exit 走写 marker 分支）。
             // 普通启动零开销返回。
             maybe_smoke_exit(app);
+
+            // WebView2 原生右键菜单接管（DOM 侧全量右键：对象行菜单 / 空白刷新）。
+            #[cfg(target_os = "windows")]
+            disable_default_context_menu(app.handle());
 
             // 1. 多实例门禁（T4.2 双通道）：预启 CLI dsh web 必拦截 / 确认。
             //    对话框显示在已建窗口之上（用户能看到）。

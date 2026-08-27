@@ -28,6 +28,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-slots'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import { DesktopSettingsCard, type DesktopSettingsCardProps } from './settings-card.tsx'
 import { injectCardStyle } from './style.ts'
+import { installRefreshContextMenu } from './refresh-menu.ts'
 import { RightSidebar } from './right-sidebar.tsx'
 import { injectRightSidebarStyle } from './right-sidebar-style.ts'
 import { applySkin, fetchStoredSkin, hasUserPickedSkin } from './skins.ts'
@@ -212,6 +213,15 @@ export function apply(ctx: ClientContext): void {
     // so the tray button still works; this path is not expected in practice.
     console.warn('[dsh-hub] shell-command effect failed, using unmanaged listener:', error)
     window.addEventListener('mg:shell-command', (event) => handleShellCommand(ctx, event))
+  }
+
+  // Blank-area right-click → our refresh menu (the WebView2 native menu is
+  // disabled in Rust; object rows are handled by pin-conversations /
+  // workspace-menu). Effect disposer keeps HMR re-installs from stacking.
+  try {
+    ctx.effect(() => installRefreshContextMenu(), 'dsh-hub: blank-area refresh menu')
+  } catch (error) {
+    console.warn('[dsh-hub] refresh-menu effect failed, using unmanaged listener:', error)
   }
 
   // Expose page functions for the current workspace: one sends the path over
