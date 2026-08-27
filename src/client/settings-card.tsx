@@ -15,6 +15,7 @@ import clsx from 'clsx'
 import { IconChevronDownOutline14, Menu } from '@deepseek-ai/dsh-client-ui-primitives'
 import { CARD_CSS_CLASSES as c } from './style.ts'
 import { SKINS, DEFAULT_SKIN_ID, applySkin, markSkinUserPicked, type DshSkin } from './skins.ts'
+import { t, useLocaleLang, type HubKey } from './locale.ts'
 import { BACKGROUNDS, DEFAULT_BACKGROUND_ID, applyBackground, markBackgroundUserPicked } from './backgrounds.ts'
 import { refreshConversationRailPalette } from './conversation-rail.ts'
 import { DESKTOP_ICONS, DEFAULT_DESKTOP_ICON_ID } from './desktop-icons.ts'
@@ -177,6 +178,13 @@ export function DesktopSettingsCard(_props: DesktopSettingsCardProps): ReactNode
   const [backgroundMenuOpen, setBackgroundMenuOpen] = useState(false)
   const [desktopIconId, setDesktopIconId] = useState<string>(DEFAULT_DESKTOP_ICON_ID)
   const [desktopIconFailed, setDesktopIconFailed] = useState(false)
+  // Re-render on dsh language switch: skin names/descriptions are dictionary
+  // driven and must follow Settings → General → Language immediately.
+  useLocaleLang()
+  /** Dictionary key for a skin's display name (keys exist for all 15 skins). */
+  const skinName = (id: string): string => t(`skin.name.${id}` as HubKey) ?? SKINS.find((s) => s.id === id)?.name ?? id
+  /** Dictionary key for a skin's description (falls back to the static copy). */
+  const skinDesc = (id: string): string => t(`skin.desc.${id}` as HubKey) ?? SKINS.find((s) => s.id === id)?.description ?? id
   // B7: monotonic request sequence — only the LATEST config write's response
   // may commit state; a slow older response must not clobber a newer one
   // (overlapping onSave + skin pick, or two quick skin picks).
@@ -488,17 +496,18 @@ export function DesktopSettingsCard(_props: DesktopSettingsCardProps): ReactNode
                   )}
                   {/* Skin picker — official Setting-Cell row: label left, menu pill right
                       (rows carry a light|dark skin dot in the official Menu
-                      icon slot), live description below. */}
+                      icon slot), live description below. Copy follows the
+                      active dsh language (locale.ts dictionary). */}
                   {draft !== null && (
                     <div className={c.section}>
                       <div className={c.fieldRow}>
-                        <span className={c.fieldLabel}>{COPY.skinLabel}</span>
+                        <span className={c.fieldLabel}>{t('settings.skinLabel')}</span>
                         <Menu
                           open={skinMenuOpen}
                           onClose={() => { setSkinMenuOpen(false) }}
                           items={[
-                            { id: DEFAULT_SKIN_ID, label: COPY.skinDefaultName, icon: <SkinDot skin={undefined} /> },
-                            ...SKINS.map((skin) => ({ id: skin.id, label: skin.name, icon: <SkinDot skin={skin} /> })),
+                            { id: DEFAULT_SKIN_ID, label: t('settings.skinDefaultName'), icon: <SkinDot skin={undefined} /> },
+                            ...SKINS.map((skin) => ({ id: skin.id, label: skinName(skin.id), icon: <SkinDot skin={skin} /> })),
                           ]}
                           selectedId={skinId}
                           onSelect={(id) => {
@@ -517,8 +526,8 @@ export function DesktopSettingsCard(_props: DesktopSettingsCardProps): ReactNode
                             >
                               <SkinDot skin={SKINS.find((skin) => skin.id === skinId)} />
                               {skinId === DEFAULT_SKIN_ID
-                                ? COPY.skinDefaultName
-                                : (SKINS.find((skin) => skin.id === skinId)?.name ?? skinId)}
+                                ? t('settings.skinDefaultName')
+                                : skinName(skinId)}
                               <IconChevronDownOutline14 />
                             </button>
                           )}
@@ -526,11 +535,11 @@ export function DesktopSettingsCard(_props: DesktopSettingsCardProps): ReactNode
                       </div>
                       <div className={c.hint}>
                         {skinId === DEFAULT_SKIN_ID
-                          ? COPY.skinDefaultDesc
-                          : (SKINS.find((skin) => skin.id === skinId)?.description ?? '')}
-                        {' — '}{COPY.skinHint}
+                          ? t('settings.skinDefaultDesc')
+                          : skinDesc(skinId)}
+                        {' — '}{t('settings.skinHint')}
                       </div>
-                      {skinFailed ? <p className={c.failed} role="status">{COPY.skinApplyFailed}</p> : null}
+                      {skinFailed ? <p className={c.failed} role="status">{t('settings.skinApplyFailed')}</p> : null}
                     </div>
                   )}
                   {/* Background picker — official Setting-Cell row like the skin picker. */}
