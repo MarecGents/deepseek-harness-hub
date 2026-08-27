@@ -28,7 +28,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-slots'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import { DesktopSettingsCard, type DesktopSettingsCardProps } from './settings-card.tsx'
 import { injectCardStyle } from './style.ts'
-import { installRefreshContextMenu } from './refresh-menu.ts'
+import { t } from './locale.ts'
 import { RightSidebar } from './right-sidebar.tsx'
 import { injectRightSidebarStyle } from './right-sidebar-style.ts'
 import { applySkin, fetchStoredSkin, hasUserPickedSkin } from './skins.ts'
@@ -213,15 +213,6 @@ export function apply(ctx: ClientContext): void {
     // so the tray button still works; this path is not expected in practice.
     console.warn('[dsh-hub] shell-command effect failed, using unmanaged listener:', error)
     window.addEventListener('mg:shell-command', (event) => handleShellCommand(ctx, event))
-  }
-
-  // Blank-area right-click → our refresh menu (the WebView2 native menu is
-  // disabled in Rust; object rows are handled by pin-conversations /
-  // workspace-menu). Effect disposer keeps HMR re-installs from stacking.
-  try {
-    ctx.effect(() => installRefreshContextMenu(), 'dsh-hub: blank-area refresh menu')
-  } catch (error) {
-    console.warn('[dsh-hub] refresh-menu effect failed, using unmanaged listener:', error)
   }
 
   // Expose page functions for the current workspace: one sends the path over
@@ -409,10 +400,13 @@ export function apply(ctx: ClientContext): void {
 
   // Disable the default browser context menu (its 返回 / 另存为 items navigate
   // the webview back to the placeholder or do nothing useful — Bug-2) and
-  // replace it with a minimal refresh-only menu. Our own custom menus (right
-  // sidebar file tree, session menu) call stopPropagation on contextmenu, so
-  // they keep their own menu; everywhere else the native menu is suppressed
-  // and a single 刷新 item is offered.
+  // replace it with a minimal refresh-only menu. The WebView2 native menu is
+  // ALSO disabled at the Rust layer; this DOM handler is the single refresh
+  // source. Explicit target exemptions, NOT stopPropagation side-effects:
+  //   - left object rail (session/workspace trees + empty/blank space) →
+  //     their own menus (pin-conversations / workspace-menu) or nothing;
+  //   - interactive controls → nothing.
+  // Only page-level blank space shows the refresh item.
   try {
     ctx.effect(() => {
       let menuEl: HTMLElement | null = null
@@ -429,6 +423,15 @@ export function apply(ctx: ClientContext): void {
         if (menuEl !== null && !menuEl.contains(event.target as Node | null)) closeMenu()
       }
       const onContext = (event: MouseEvent): void => {
+        const target = event.target
+        if (target instanceof Element) {
+          // Left object rail (rows, empty state, rail blank space) never shows
+          // refresh: rows own their menus, rail blank space shows nothing.
+          if (target.closest('div[data-slot="sidebar.workspaces"], [role="tree"], div[role="treeitem"]')) return
+          // Interactive controls keep their native/own behavior (no menu now
+          // that the WebView2 menu is disabled) — never the refresh item.
+          if (target.closest('textarea, input, select, button, a, [contenteditable="true"], [role="button"]')) return
+        }
         event.preventDefault()
         closeMenu()
         const el = document.createElement('div')
@@ -443,7 +446,7 @@ export function apply(ctx: ClientContext): void {
         el.style.top = Math.min(event.clientY, window.innerHeight - 44) + 'px'
         const item = document.createElement('button')
         item.setAttribute('role', 'menuitem')
-        item.textContent = '刷新'
+        item.textContent = t('menu.refresh')
         item.style.cssText = [
           'display:block', 'width:100%', 'padding:6px 10px', 'border:none', 'border-radius:6px',
           'background:transparent', 'color:inherit', 'font:inherit', 'text-align:left', 'cursor:pointer',

@@ -689,6 +689,7 @@ export function installPinnedConversations(ctx: unknown): () => void {
         const ws = matchWorkspaceByContent(wrow)
         if (ws !== undefined) {
           event.preventDefault()
+          event.stopPropagation()
           openWorkspaceMenu({ x: event.clientX, y: event.clientY, workspace: ws, ctx: runtime })
         }
       }
@@ -699,6 +700,7 @@ export function installPinnedConversations(ctx: unknown): () => void {
     const summary = sessionSnapshot()?.byId?.[match.id]
     if (summary === undefined || summary.blank === true) return
     event.preventDefault()
+    event.stopPropagation()
     openSessionMenu({
       x: event.clientX,
       y: event.clientY,
