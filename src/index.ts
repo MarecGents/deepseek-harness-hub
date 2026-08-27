@@ -46,6 +46,7 @@ import { makeSessionPathsRoutes } from './server/session-paths-api.js'
 import { makeBackgroundsRoutes } from './server/backgrounds-api.js'
 import { makeSoundsRoutes } from './server/sounds-api.js'
 import { makeIconsRoutes } from './server/icons-api.js'
+import { makeCtxTraceRoutes } from './server/ctx-trace-api.js'
 import { makePtyRoutes } from './server/terminal-pty-api.js'
 import { getToken } from './server/token.js'
 import { disposeAll as disposeAllPty } from './services/pty-manager.js'
@@ -188,6 +189,8 @@ export function apply(ctx: Context, config: Config): void {
       ...makeSoundsRoutes(),
       ...makeIconsRoutes(),
       ...makePtyRoutes(),
+      // TEMP diagnostic: remove together with src/server/ctx-trace-api.ts.
+      ...makeCtxTraceRoutes(),
     ].map((route) => server.register(route))
     routesDisposed = () => {
       for (const dispose of disposers) void dispose()

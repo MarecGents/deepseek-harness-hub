@@ -409,6 +409,12 @@ export function apply(ctx: ClientContext): void {
   // Only page-level blank space shows the refresh item.
   try {
     ctx.effect(() => {
+      // TEMP diag: prove this effect executes and the listener registers
+      // (ctx-trace channel; remove with the probe API).
+      const armed = (t: string): void => {
+        void fetch('/api/dsh-hub/ctx-trace?t=' + encodeURIComponent(t)).catch(() => {})
+      }
+      armed('effect-armed:context-menu')
       let menuEl: HTMLElement | null = null
       const closeMenu = (): void => {
         if (menuEl === null) return
@@ -425,12 +431,25 @@ export function apply(ctx: ClientContext): void {
       const onContext = (event: MouseEvent): void => {
         const target = event.target
         if (target instanceof Element) {
-          // Left object rail (rows, empty state, rail blank space) never shows
-          // refresh: rows own their menus, rail blank space shows nothing.
-          if (target.closest('div[data-slot="sidebar.workspaces"], [role="tree"], div[role="treeitem"]')) return
-          // Interactive controls keep their native/own behavior (no menu now
-          // that the WebView2 menu is disabled) — never the refresh item.
-          if (target.closest('textarea, input, select, button, a, [contenteditable="true"], [role="button"]')) return
+          // TEMP diagnostic: report the target into the host log so the Rust
+          // dsh-stdout stream shows whether/where the handler fires and what
+          // element absorbs the right-click (remove with ctx-trace API).
+          const cls = typeof target.className === 'string' ? target.className.slice(0, 60) : ''
+          const role = target.getAttribute?.('role') ?? ''
+          void fetch('/api/dsh-hub/ctx-trace?t=' + encodeURIComponent(
+            `C:${target.tagName.toLowerCase()}|${cls}|${role}`)).catch(() => {})
+          // Object controls (session / workspace tree rows) never show the
+          // refresh item — they open their own menus (pin-conversations /
+          // workspace-menu; the row catches its inner buttons too). EVERYTHING
+          // else — including rail blank space, empty state and most containers
+          // — falls through to the refresh menu, matching "only object
+          // controls are exempt, blank space anywhere is refreshable".
+          if (target.closest('div[role="treeitem"]')) return
+          // Text-editing essentials only: never pop refresh over an active
+          // input/selection. Broad control classes (button/a/[role=button])
+          // were over-broad — they wrap most "blank-looking" chrome and made
+          // plain-space right-click dead. They are thus NOT exempt here.
+          if (target.closest('textarea, input, select, [contenteditable="true"]')) return
         }
         event.preventDefault()
         closeMenu()
@@ -462,6 +481,7 @@ export function apply(ctx: ClientContext): void {
         window.addEventListener('scroll', closeMenu, true)
       }
       document.addEventListener('contextmenu', onContext)
+      armed('effect-registered:context-menu')
       return () => {
         document.removeEventListener('contextmenu', onContext)
         closeMenu()
