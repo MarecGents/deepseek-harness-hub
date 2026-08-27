@@ -291,9 +291,16 @@ const TB_ICON_URLS = {
   'whale-girl-blue': '/api/dsh-hub/icons/whale-girl-blue.png',
 };
 
+// Brand dot fallback when the icons-api image 404s on early boot (host not up
+// yet) — the titlebar face must never stay blank waiting for a manual switch.
+const TB_ICON_FALLBACK_URI = 'data:image/svg+xml;utf8,' + encodeURIComponent(
+  "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><circle cx='8' cy='8' r='7' fill='#3964fe'/></svg>");
+window.__mgTbIconFallbackUri = TB_ICON_FALLBACK_URI;
+
 function iconHtmlFor(id) {
   const url = TB_ICON_URLS[id] || TB_ICON_URLS.default;
-  return '<img class="tb-icon" src="' + url + '" width="16" height="16" alt="" draggable="false" aria-hidden="true">';
+  return '<img class="tb-icon" src="' + url + '" width="16" height="16" alt="" draggable="false" aria-hidden="true"'
+    + ' onerror="this.onerror=null;this.src=window.__mgTbIconFallbackUri">';
 }
 
 // Rust 经 eval 调用（icon.rs apply_titlebar_face）；页面未就绪时写 pending，
