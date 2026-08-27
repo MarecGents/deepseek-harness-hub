@@ -9,6 +9,7 @@
  */
 
 import { injectSessionMenuStyle } from './session-menu-style.ts'
+import { t } from './locale.ts'
 import { closeSessionMenu } from './session-menu.ts'
 
 /** Minimal shape of the official workspace view we consume. */
@@ -87,14 +88,14 @@ export function openWorkspaceMenu(params: WorkspaceMenuParams): void {
     menu.append(item)
   }
 
-  addItem('新建任务', () => { ctx.workspaces?.startSession?.(params.workspace.workspaceId) })
+  addItem(t('ws.newTask'), () => { ctx.workspaces?.startSession?.(params.workspace.workspaceId) })
 
   const path = params.workspace.path
   if (path !== undefined && path !== '') {
     const sep = document.createElement('div')
     sep.className = 'mg-ctxmenu__sep'
     menu.append(sep)
-    addItem('打开工作区', () => { openInExplorer(path) })
+    addItem(t('ws.openWorkspace'), () => { openInExplorer(path) })
   }
 
   document.body.append(menu)

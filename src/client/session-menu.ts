@@ -23,6 +23,7 @@
  */
 
 import { injectSessionMenuStyle } from './session-menu-style.ts'
+import { t } from './locale.ts'
 
 /** Loose runtime views (mirrors pin-conversations.ts style). */
 interface SessionSummaryLike {
@@ -161,21 +162,21 @@ export function openSessionMenu(params: SessionMenuParams): void {
   const workspacePath = resolveWorkspacePath(params.ctx, params.id)
 
   const entries: Array<MenuEntry | 'sep'> = [
-    { label: '打开会话', run: () => runtime.sessions?.open?.(params.id) },
+    { label: t('menu.openSession'), run: () => runtime.sessions?.open?.(params.id) },
   ]
   // Pin / rename items render only when the owning module (pin-conversations)
   // supplies the callbacks — SessionTabs (no pins store) omits them.
   // Destructure to local consts so TS narrowing survives the closure.
   const { pinned, onTogglePin, onRename } = params
   if (onTogglePin !== undefined) {
-    entries.push({ label: pinned ? '取消置顶' : '置顶任务', run: () => onTogglePin() })
+    entries.push({ label: pinned ? t('menu.unpinTask') : t('menu.pinTask'), run: () => onTogglePin() })
   }
   if (onRename !== undefined) {
-    entries.push({ label: '重命名任务', run: () => onRename() })
+    entries.push({ label: t('menu.renameTask'), run: () => onRename() })
   }
   entries.push('sep')
   entries.push({
-    label: '分叉会话',
+    label: t('menu.forkSession'),
     run: () => {
       runtime.sessions?.fork?.({ sessionId: params.id, increaseTitle: true })
         ?.then((childId) => { runtime.sessions?.open?.(childId) })
@@ -183,26 +184,26 @@ export function openSessionMenu(params: SessionMenuParams): void {
     },
   })
   entries.push({
-    label: '归档会话',
+    label: t('menu.archiveSession'),
     danger: true,
     run: () => { void runtime.workspaces?.archiveSession?.(params.id)?.catch(() => {}) },
   })
   entries.push('sep')
   if (workspacePath !== undefined) {
-    entries.push({ label: '在资源管理器中打开', run: () => { openInExplorer(workspacePath) } })
-    entries.push({ label: '复制工作区路径', run: () => { void copyText(workspacePath) } })
+    entries.push({ label: t('menu.openInExplorer'), run: () => { openInExplorer(workspacePath) } })
+    entries.push({ label: t('menu.copyWorkspacePath'), run: () => { void copyText(workspacePath) } })
   }
   entries.push({
-    label: '复制日志路径',
+    label: t('menu.copyLogPath'),
     run: () => {
       void fetchJson(`/api/dsh-hub/session-paths/paths?${new URLSearchParams({ id: params.id })}`)
         .then((d) => { if (d?.found === true && typeof d.logPath === 'string') void copyText(d.logPath) })
     },
   })
-  entries.push({ label: '复制会话 ID', run: () => { void copyText(params.id) } })
+  entries.push({ label: t('menu.copySessionId'), run: () => { void copyText(params.id) } })
   entries.push('sep')
   entries.push({
-    label: '前往配置',
+    label: t('menu.gotoConfig'),
     run: () => {
       void fetchJson(`/api/dsh-hub/session-paths/paths?${new URLSearchParams({ id: params.id })}`)
         .then((d) => {
