@@ -8,7 +8,7 @@
 |---|---|
 | `index.ts` | client 入口：`inject` 声明（slots/workspaces/sessions）、slot 声明合并（`settings.plugin.item`）、设置卡片 + 右侧栏装配、托盘桥 `__mgShellReady` |
 | `settings-card.tsx` | 设置卡片（DSH HUB 设置）：窗口尺寸/主题/托盘行为/通知/提示音/多实例开关/皮肤选择/桌面图标选择（S6，保存 → `set_desktop_icon` invoke）（Setting-Cell 行式），走 `/api/dsh-hub/config` |
-| `skins.ts` | 皮肤注册表：`DshSkin` 定义 + 5 套皮肤（午夜蓝/旧纸张/终端绿/ZCode/极光紫）+ `findSkin`/`applySkin` |
+| `skins.ts` | 皮肤注册表：`DshSkin` 定义 + 15 套皮肤（内置 5：午夜蓝/旧纸张/终端绿/ZCode/极光紫；Reasonix 8：rx-noir-gold 等；opencode 2：oc-classic/oc-graphite，见 docs/skins/）+ `findSkin`/`applySkin` |
 | `backgrounds.ts` | 背景图注册表：`DshBackground` 定义 + 内置图片（远航）+ `applyBackground`（frame 层双层背景注入）/ `fetchStoredBackground` |
 | `right-sidebar.tsx` | 右侧栏：概览（Token 统计）/ 文件树 / Git 三页，body portal 挂载 |
 | `right-sidebar-style.ts` | 右侧栏样式（CSS 字符串注入，`mg-rs-*` 前缀） |

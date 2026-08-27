@@ -136,7 +136,7 @@ dsh-hub 是**双 half** 结构，且**套壳代码与插件代码必须严格模
   - `default` 皮肤必须移除注入的样式表（零副作用）。
   - 皮肤 id 为不透明短字符串（≤64 字符）；未知 id 回退 `default`。
   - `skins.ts` 的 `DshSkin` 结构：`light`/`dark` = alias token（`--dsw-alias-` 前缀），`specific.light`/`specific.dark` = specific token（`--dsw-specific-` 前缀）；`buildCss` 双块输出。
-- 皮肤清单见 `src/client/skins.ts`（当前 5 套：午夜蓝/旧纸张/终端绿/ZCode/极光紫）。
+- 皮肤清单见 `src/client/skins.ts`（当前 15 套：内置 5 + Reasonix 移植 8（`rx-*`，官方主题包直移 + 统一推导规则，见 `docs/skins/rx-noir-gold.md` 规则）+ opencode 移植 2（`oc-*`）；移植皮肤由生成器产出，**禁止手改色板**，改规则后全系列重出）。
 
 ## 4. 代码质量规范（大厂级）
 
