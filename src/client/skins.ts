@@ -1329,6 +1329,23 @@ export function findSkin(id: string): DshSkin | undefined {
   return SKINS.find((skin) => skin.id === id)
 }
 
+/** Class toggled briefly around a skin swap so token-driven surfaces animate. */
+const SKIN_SWITCH_CLASS = 'mg-skin-switching'
+/**
+ * One-shot global color transition while a skin swap settles (~150ms). Injected
+ * with the stylesheet so BOTH skin→skin and →default swaps animate the
+ * token-driven surfaces without enumerating elements; stationary afterwards
+ * (the rules only apply while the class is present).
+ */
+const SKIN_SWITCH_CSS = `body.${SKIN_SWITCH_CLASS},body.${SKIN_SWITCH_CLASS} *{` +
+  'transition:background-color .15s ease,color .15s ease,border-color .15s ease,fill .15s ease!important}'
+
+/** Add the switch class, remove it once the transition has settled. */
+function flashSkinSwitch(): void {
+  document.body.classList.add(SKIN_SWITCH_CLASS)
+  window.setTimeout(() => document.body.classList.remove(SKIN_SWITCH_CLASS), 180)
+}
+
 /**
  * Apply (or clear) a skin by injecting/updating one `<style id="mg-dsh-skin">`
  * element in the document head. Removing is a no-op when nothing was injected.
@@ -1341,7 +1358,8 @@ export function applySkin(skinId: string): void {
     document.head.appendChild(style)
   }
   const skin = findSkin(skinId)
-  style.textContent = skin === undefined ? '' : buildCss(skin)
+  style.textContent = SKIN_SWITCH_CSS + (skin === undefined ? '' : buildCss(skin))
+  flashSkinSwitch()
 }
 
 /** True once the user explicitly picked a skin in this page lifetime. The

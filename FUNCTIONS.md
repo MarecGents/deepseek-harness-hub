@@ -74,7 +74,7 @@
 
 | # | 功能 | 说明（rc.14 行为） | 当前状态 |
 |---|---|---|---|
-| 24 | 皮肤系统 | 5 套自绘（午夜蓝/旧纸张/终端绿/ZCode/极光紫），覆盖 `--dsw-alias-*`+`--dsw-specific-*`，浅深双色板跟随 `data-ds-dark-theme`；default 清空；boot 恢复不覆盖用户选择 | ✅ `client/skins.ts` 保留（标题栏强制模式按皮肤色板解析） |
+| 24 | 皮肤系统 | **15 套**：内置 5 自绘（午夜蓝/旧纸张/终端绿/ZCode/极光紫）+ 移植 8（`rx-*`，Reasonix 官方主题包直移 + 统一推导规则）+ 移植 2（`oc-*`，opencode 配方）；全部覆盖 `--dsw-alias-*`+`--dsw-specific-*`，浅深双色板跟随 `data-ds-dark-theme`；default 清空；boot 恢复不覆盖用户选择；更换皮肤带 150ms 全局色过渡（`mg-skin-switching`） | ✅ `client/skins.ts` + 设置卡官方 Menu（菜单项品牌/浅深色块预览）+ `docs/skins/*.md`（每套文档，移植皮肤改色走生成器规则，禁手改） |
 
 ## 10. 背景图
 
