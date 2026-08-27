@@ -235,7 +235,10 @@ fn set_icon_big_win32(
 fn build_bgra_and_mask(rgba: &[u8]) -> (Vec<u8>, Vec<u8>) {
     let mut bgra = Vec::with_capacity(rgba.len());
     let mut and_mask = Vec::with_capacity(rgba.len() / 4);
-    for px in rgba.chunks_exact(4) {
+    // as_chunks::<4>().0 iterates the full 4-byte pixel groups (clippy 1.98
+    // chunks_exact_to_as_chunks); any trailing remainder is dropped, same as
+    // chunks_exact did.
+    for px in rgba.as_chunks::<4>().0 {
         // `255 - alpha` cannot underflow (alpha is u8), so no wrapping needed.
         and_mask.push(255 - px[3]);
         bgra.extend_from_slice(&[px[2], px[1], px[0], px[3]]);
