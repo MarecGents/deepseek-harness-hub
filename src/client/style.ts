@@ -50,6 +50,15 @@ export const CARD_CSS_CLASSES = {
   iconSelected: 'mg-card-icon-selected',
   iconPreview: 'mg-card-icon-preview',
   iconName: 'mg-card-icon-name',
+
+  // Skin gallery (groups + light|dark split swatches).
+  skinGrid: 'mg-card-skin-grid',
+  skinGroup: 'mg-card-skin-group',
+  skinSwatch: 'mg-card-skin-swatch',
+  skinSwatchDefault: 'mg-card-skin-swatch-default',
+  swatchHalf: 'mg-card-swatch-half',
+  swatchDot: 'mg-card-swatch-dot',
+  swatchBar: 'mg-card-swatch-bar',
 } as const
 
 const css = CARD_CSS_CLASSES
@@ -371,6 +380,60 @@ const STYLE_TEXT = `
   font-size: 11px;
   line-height: 1.4;
   color: var(--dsw-alias-label-secondary, #61666b);
+}
+/* Skin gallery: swatch grid + light|dark split previews. The swatch colors
+ * come from each skin's own palette (inline styles in settings-card.tsx), so
+ * no token references are needed here. */
+.${css.skinGrid} {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(88px, 1fr));
+  gap: 8px;
+  margin: 8px 0 2px;
+}
+.${css.skinGroup} {
+  grid-column: 1 / -1;
+  padding-top: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.5;
+  color: var(--dsw-alias-label-tertiary, #81858c);
+}
+.${css.skinSwatch} {
+  position: relative;
+  display: flex;
+  width: 100%;
+  box-sizing: border-box;
+  height: 54px;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid var(--dsw-alias-border-l2, rgb(0 0 0 / 10%));
+  background: var(--dsw-alias-bg-module-platform, #f5f6f7);
+}
+/* "Make/原生" cell: neutral tile + dashed border, no injected palette. */
+.${css.skinSwatchDefault} {
+  border-style: dashed;
+  background: var(--dsw-alias-bg-module-platform, #f5f6f7);
+}
+.${css.swatchHalf} {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 0;
+}
+.${css.swatchDot} {
+  position: absolute;
+  top: 5px;
+  left: 5px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+}
+.${css.swatchBar} {
+  position: absolute;
+  left: 5px;
+  right: 5px;
+  bottom: 4px;
+  height: 6px;
+  border-radius: 3px;
 }
 `
 

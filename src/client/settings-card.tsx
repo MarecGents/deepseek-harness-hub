@@ -10,11 +10,11 @@
  * `dsh-hub`); a plain command-line `dsh web` never mounts the bundle at all.
  */
 
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { Fragment, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import clsx from 'clsx'
 import { IconChevronDownOutline14, Menu } from '@deepseek-ai/dsh-client-ui-primitives'
 import { CARD_CSS_CLASSES as c } from './style.ts'
-import { SKINS, DEFAULT_SKIN_ID, applySkin, markSkinUserPicked } from './skins.ts'
+import { SKINS, DEFAULT_SKIN_ID, applySkin, markSkinUserPicked, type DshSkin } from './skins.ts'
 import { BACKGROUNDS, DEFAULT_BACKGROUND_ID, applyBackground, markBackgroundUserPicked } from './backgrounds.ts'
 import { refreshConversationRailPalette } from './conversation-rail.ts'
 import { DESKTOP_ICONS, DEFAULT_DESKTOP_ICON_ID } from './desktop-icons.ts'
@@ -135,6 +135,44 @@ function invokeDesktopIcon(iconId: string): void {
   }
 }
 
+/**
+ * Group the built-in skins by source for the gallery (the group label derives
+ * from the id prefix — rx- = Reasonix series, oc- = opencode series, anything
+ * else = the original in-house series). Stable order: in-house first, then the
+ * two ported series in the order they were created.
+ */
+function skinGroupsOf(skins: DshSkin[]): Array<{ label: string; skins: DshSkin[] }> {
+  const bySource: Record<string, DshSkin[]> = {}
+  for (const skin of skins) {
+    const group = skin.id.startsWith('rx-') ? 'Reasonix 系列'
+      : skin.id.startsWith('oc-') ? 'opencode 系列'
+      : '内置系列'
+    ;(bySource[group] ??= []).push(skin)
+  }
+  return ['内置系列', 'Reasonix 系列', 'opencode 系列']
+    .filter((label) => bySource[label] !== undefined)
+    .map((label) => ({ label, skins: bySource[label] ?? [] }))
+}
+
+/** Mini light|dark split preview of a skin, colored by its own palette. */
+function SkinSwatch({ skin }: { skin: DshSkin }): ReactNode {
+  const half = (mode: 'light' | 'dark'): CSSProperties => ({
+    background: skin[mode]['bg-base'],
+  })
+  return (
+    <span className={c.skinSwatch} aria-hidden="true">
+      <span className={c.swatchHalf} style={half('light')}>
+        <span className={c.swatchDot} style={{ background: skin.light['label-primary'] }} />
+        <span className={c.swatchBar} style={{ background: skin.light['brand-primary'] }} />
+      </span>
+      <span className={c.swatchHalf} style={half('dark')}>
+        <span className={c.swatchDot} style={{ background: skin.dark['label-primary'] }} />
+        <span className={c.swatchBar} style={{ background: skin.dark['brand-primary'] }} />
+      </span>
+    </span>
+  )
+}
+
 /** Render the desktop-shell settings card. */
 export function DesktopSettingsCard(_props: DesktopSettingsCardProps): ReactNode {
   const [open, setOpen] = useState(false)
@@ -146,7 +184,6 @@ export function DesktopSettingsCard(_props: DesktopSettingsCardProps): ReactNode
   const [saved, setSaved] = useState(false)
   const [skinId, setSkinId] = useState<string>(DEFAULT_SKIN_ID)
   const [skinFailed, setSkinFailed] = useState(false)
-  const [skinMenuOpen, setSkinMenuOpen] = useState(false)
   const [backgroundId, setBackgroundId] = useState<string>(DEFAULT_BACKGROUND_ID)
   const [backgroundFailed, setBackgroundFailed] = useState(false)
   const [backgroundMenuOpen, setBackgroundMenuOpen] = useState(false)
@@ -461,41 +498,44 @@ export function DesktopSettingsCard(_props: DesktopSettingsCardProps): ReactNode
                         : <div className={c.hint}>{COPY.multiInstanceHint}</div>}
                     </div>
                   )}
-                  {/* Skin picker — official Setting-Cell row: label left, menu pill right, live description below. */}
+                  {/* Skin gallery — "默认" (native look) first, then grouped
+                      swatch cells (light|dark split preview); one click
+                      applies + persists, like the desktop-icon grid. */}
                   {draft !== null && (
                     <div className={c.section}>
                       <div className={c.sectionTitle}>{COPY.skinSection}</div>
-                      <div className={c.fieldRow}>
-                        <span className={c.fieldLabel}>{COPY.skinLabel}</span>
-                        <Menu
-                          open={skinMenuOpen}
-                          onClose={() => { setSkinMenuOpen(false) }}
-                          items={[
-                            { id: DEFAULT_SKIN_ID, label: COPY.skinDefaultName },
-                            ...SKINS.map((skin) => ({ id: skin.id, label: skin.name })),
-                          ]}
-                          selectedId={skinId}
-                          onSelect={(id) => {
-                            onPickSkin(id)
-                            setSkinMenuOpen(false)
-                          }}
-                          align="end"
-                          portal
-                          anchor={(
-                            <button
-                              type="button"
-                              className={c.selectPill}
-                              aria-haspopup="menu"
-                              aria-expanded={skinMenuOpen}
-                              onClick={() => { setSkinMenuOpen(v => !v) }}
-                            >
-                              {skinId === DEFAULT_SKIN_ID
-                                ? COPY.skinDefaultName
-                                : (SKINS.find((skin) => skin.id === skinId)?.name ?? skinId)}
-                              <IconChevronDownOutline14 />
-                            </button>
-                          )}
-                        />
+                      <div className={c.skinGrid} role="radiogroup" aria-label={COPY.skinLabel}>
+                        <button
+                          key={DEFAULT_SKIN_ID}
+                          type="button"
+                          role="radio"
+                          aria-checked={skinId === DEFAULT_SKIN_ID}
+                          className={clsx(c.iconCell, skinId === DEFAULT_SKIN_ID && c.iconSelected)}
+                          onClick={() => { onPickSkin(DEFAULT_SKIN_ID) }}
+                          title={COPY.skinDefaultDesc}
+                        >
+                          <span className={clsx(c.skinSwatch, c.skinSwatchDefault)} />
+                          <span className={c.iconName}>{COPY.skinDefaultName}</span>
+                        </button>
+                        {skinGroupsOf(SKINS).map((group) => (
+                          <Fragment key={group.label}>
+                            <div className={c.skinGroup}>{group.label}</div>
+                            {group.skins.map((skin) => (
+                              <button
+                                key={skin.id}
+                                type="button"
+                                role="radio"
+                                aria-checked={skinId === skin.id}
+                                className={clsx(c.iconCell, skinId === skin.id && c.iconSelected)}
+                                onClick={() => { onPickSkin(skin.id) }}
+                                title={skin.description}
+                              >
+                                <SkinSwatch skin={skin} />
+                                <span className={c.iconName}>{skin.name}</span>
+                              </button>
+                            ))}
+                          </Fragment>
+                        ))}
                       </div>
                       <div className={c.hint}>
                         {skinId === DEFAULT_SKIN_ID
