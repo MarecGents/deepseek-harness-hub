@@ -9,10 +9,11 @@ name: rust
 on:
   push:
     branches: [dev-v2, main]
-    paths: ['src-tauri/**', 'Cargo.lock', 'Cargo.toml']
+    paths: ['src-tauri/**', 'Cargo.lock', 'Cargo.toml', '.github/workflows/rust.yml']
   pull_request:
     branches: [main]
-    paths: ['src-tauri/**', 'Cargo.lock', 'Cargo.toml']
+    paths: ['src-tauri/**', 'Cargo.lock', 'Cargo.toml', '.github/workflows/rust.yml']
+  workflow_dispatch: {}
 
 jobs:
   check:
@@ -21,7 +22,22 @@ jobs:
       run:
         working-directory: src-tauri
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+
+      # tauri-build's build.rs glob-validates every bundle.resources entry
+      # against ../node_modules/** — a fresh CI checkout has no node_modules,
+      # and a non-matching glob panics the build script before clippy/test
+      # can run. All resource packages are pinned in package-lock.json, so a
+      # plain `npm ci` at the repo root satisfies the globs (it must run at
+      # the root, NOT inside src-tauri, hence the explicit working-directory).
+      - name: Install JS deps (bundle.resources for tauri-build)
+        working-directory: ${{ github.workspace }}
+        run: npm ci
 
       - name: Install stable Rust (MSVC)
         run: rustup toolchain install stable --profile minimal --component rustfmt --component clippy
