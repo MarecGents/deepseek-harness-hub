@@ -64,6 +64,11 @@ function ensureShellStyles() {
     '#dsh-hub-splash .splash-title{font-size:15px;font-weight:600;letter-spacing:.3px;color:#e4e4e7;}',
     '#dsh-hub-splash .splash-spinner{width:22px;height:22px;border:2px solid rgba(255,255,255,.18);',
     'border-top-color:#ffffff;border-radius:50%;animation:splash-spin .8s linear infinite;}',
+    // System light mode: near-white splash + brand spinner (the page predates
+    // the skin, so it follows prefers-color-scheme instead of dsw tokens).
+    '@media (prefers-color-scheme: light){#dsh-hub-splash{background:#f7f7f8;color:#1c1f24;}',
+    '#dsh-hub-splash .splash-title{color:#2c3138;}',
+    '#dsh-hub-splash .splash-spinner{border:2px solid rgba(0,0,0,.14);border-top-color:#3964fe;}}',
     '@keyframes splash-spin{to{transform:rotate(360deg);}}',
     '@keyframes splash-pulse{0%,100%{opacity:1;}50%{opacity:.55;}}',
   ].join('');
