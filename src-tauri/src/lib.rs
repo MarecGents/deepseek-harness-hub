@@ -584,7 +584,9 @@ fn create_toast_shortcuts(exe: &std::path::Path) {
 #[cfg(target_os = "windows")]
 fn disable_default_context_menu(app: &tauri::AppHandle) {
     use tauri::Manager;
-    let Some(win) = app.get_webview_window("main") else { return };
+    let Some(win) = app.get_webview_window("main") else {
+        return;
+    };
     // PlatformWebview (the with_webview callback argument) exposes the
     // webview2-com typed controller; the chain is
     // controller.CoreWebView2().Settings().SetAreDefaultContextMenusEnabled
@@ -605,6 +607,11 @@ fn disable_default_context_menu(app: &tauri::AppHandle) {
         };
         if !disabled {
             log::warn!("webview: failed to disable default context menus");
+        } else {
+            // Visible confirmation for the Bug3 forensics: a menu STILL
+            // appearing afterwards is a DOM menu (this hub's or the page's),
+            // never the WebView2 native one.
+            log::info!("webview: default context menus disabled");
         }
     }) {
         log::warn!("webview: with_webview callback failed: {e}");

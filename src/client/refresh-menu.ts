@@ -65,6 +65,13 @@ export function installRefreshContextMenu(): () => void {
   const onContext = (event: MouseEvent): void => {
     const target = event.target
     if (!(target instanceof Element)) return
+    // The left object rail never shows the refresh menu. Verified anchors:
+    // `div[data-slot="sidebar.workspaces"]` is the official slot seam
+    // (ui-workspace injects that key) and `[role="tree"]` wraps the rows AND
+    // the empty state — so rail blank space, empty state and row gaps are all
+    // covered. Its rows keep their own context menus (pin-conversations /
+    // workspace-menu); the rail's blank space intentionally shows nothing.
+    if (target.closest('div[data-slot="sidebar.workspaces"], [role="tree"]')) return
     // Session / workspace tree rows own their own context menus.
     if (target.closest('div[role="treeitem"]')) return
     // Interactive controls: no menu at all.
