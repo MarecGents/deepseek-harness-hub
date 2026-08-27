@@ -48,13 +48,7 @@ export declare const CARD_CSS_CLASSES: {
     readonly iconSelected: "mg-card-icon-selected";
     readonly iconPreview: "mg-card-icon-preview";
     readonly iconName: "mg-card-icon-name";
-    readonly skinGrid: "mg-card-skin-grid";
-    readonly skinGroup: "mg-card-skin-group";
-    readonly skinSwatch: "mg-card-skin-swatch";
-    readonly skinSwatchDefault: "mg-card-skin-swatch-default";
-    readonly swatchHalf: "mg-card-swatch-half";
     readonly swatchDot: "mg-card-swatch-dot";
-    readonly swatchBar: "mg-card-swatch-bar";
 };
 /** Inject the card stylesheet once (idempotent; no-op when already present). */
 export declare function injectCardStyle(): void;
