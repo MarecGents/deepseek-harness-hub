@@ -30,7 +30,7 @@
 |---|---|---|
 | bg-base / layer-1 / layer-2 / layer-3 | `#FDFAF2` / `#F6F0DF` / `#F7F1E1` / `#FEFBF4` | 暖白纸面（chat/soft/workspaceFiles/panel） |
 | bg-overlay | `#FEFBF4` | 浮层纸面 |
-| label-primary / secondary / tertiary / dimmed | `#2A241B` / `#5C5340` / `#7B715A` / `#8F8469` | 暖棕灰文字（dimmed 调深至 ≥3.5:1，见注意事项） |
+| label-primary / secondary / tertiary / dimmed | `#2A241B` / `#5C5340` / `#7B715A` / `#8F856C` | 暖棕灰文字（dimmed 为生成规则夹取值 ≈3.5:1） |
 | border-l1 / l2 / l3 | `#EFE8D2` / `#DFD5B6` / `#CCBE94` | 浅金分隔线 |
 | brand-primary | `#7A5A16` | 金棕 |
 | brand-primary-invert / brand-text | `#FCF8EE` | 反白奶油 |
@@ -85,7 +85,7 @@
 - 主文字：浅 14.7:1（bg-base）/ 13.4:1（侧栏）/ 14.9:1（menu）；深 16.9:1 / 16.7:1 / 15.5:1 —— 全部 ≥ 7:1
 - 次文字：浅 7.3:1 / 深 11.8:1 —— ≥ 4.5:1
 - 按钮反白（brand-text on fill）：浅 7.2:1 / 深 9.2:1 —— ≥ 4.5:1
-- 浅色 dimmed 3.6:1、tertiary 4.2:1、深色 dimmed 5.7:1 —— 装饰性弱化层级，达同角色阈值
+- 浅色 dimmed 3.51:1、tertiary 4.2:1、深色 dimmed 5.7:1 —— 装饰性弱化层级，达同角色阈值
 
 ## 与默认风格的关系
 
@@ -96,6 +96,6 @@
 ## 注意事项
 
 - 引入后续 Reasonix 皮肤时沿用本文件的映射/推导规则（批量移植的一致性基础）。
-- 浅色 `label-dimmed` 从 Reasonix 原值 `#9A8F74`（3.07:1）压至 `#8F8469`（3.6:1）是有意修正，改色板勿回退到低于 3.5:1。
+- 浅色 `label-dimmed` 为**生成规则夹取值**：Reasonix 原值 `#9A8F74`（3.07:1 < 3.5）按规则压暗 7%（×0.93）得 `#8F856C`（3.51:1）；改色板勿回退到低于 3.5:1，并同步系列生成器规则（其余 rx-* 皮肤同规则）。
 - `tooltip-bg`：浅色用 `label-primary`（深底白字）、深色用 `#241F16`（暖黑浮层）——勿改成浅色浮层（会破坏 tooltip 白字对比）。
 - 修改色板时同步更新本文件的色值表（单一事实来源：`src/client/skins.ts`）。
