@@ -40,6 +40,7 @@
 
 import { PIN_CSS_CLASSES as c, injectPinStyle } from './pin-conversations-style.ts'
 import { closeSessionMenu, openSessionMenu } from './session-menu.ts'
+import { openWorkspaceMenu } from './workspace-menu.ts'
 
 /** Route prefix of the host pins API (mirrors server/pins-api.ts). */
 const PINS_API = '/api/dsh-hub/pins'
@@ -657,6 +658,17 @@ export function installPinnedConversations(ctx: unknown): () => void {
   // ── Boot ────────────────────────────────────────────────────────────────
   injectPinStyle()
 
+  // Workspace (project) row → workspace view via content matching (title ==
+  // row text), mirroring mapRowByContent's contract for session rows.
+  const matchWorkspaceByContent = (row: HTMLElement): { workspaceId: string; title?: string; path?: string } | undefined => {
+    const text = (row.textContent ?? '').trim()
+    if (text === '') return undefined
+    const items = (runtime as unknown as {
+      workspaces?: { list?: { getSnapshot?: () => { items?: Array<{ workspaceId: string; title?: string; path?: string }> } } }
+    }).workspaces?.list?.getSnapshot?.()?.items ?? []
+    return items.find((w) => (w.title ?? '').trim() === text)
+  }
+
   // Delegated context menu for EVERY official session row (置顶与否都一样):
   // right-click resolves the row → session id via the same content matching
   // the pin buttons use, then opens the full-action menu. Rows that cannot be
@@ -667,7 +679,21 @@ export function installPinnedConversations(ctx: unknown): () => void {
     const row = event.target instanceof Element
       ? event.target.closest<HTMLElement>('div[role="treeitem"]:not([aria-expanded])')
       : null
-    if (row === null) return
+    if (row === null) {
+      // Workspace (project) rows carry aria-expanded: right-click opens the
+      // workspace menu (new task / open folder), never the native refresh.
+      const wrow = event.target instanceof Element
+        ? event.target.closest<HTMLElement>('div[role="treeitem"][aria-expanded]')
+        : null
+      if (wrow !== null) {
+        const ws = matchWorkspaceByContent(wrow)
+        if (ws !== undefined) {
+          event.preventDefault()
+          openWorkspaceMenu({ x: event.clientX, y: event.clientY, workspace: ws, ctx: runtime })
+        }
+      }
+      return
+    }
     const match = mapRowByContent(row)
     if (match === undefined) return
     const summary = sessionSnapshot()?.byId?.[match.id]
