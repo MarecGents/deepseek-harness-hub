@@ -2,7 +2,7 @@
 
 > **`@marecgents/dsh-hub`** —— DeepSeek Harness（`dsh`）的桌面端框架：以原生 Tauri 2.x 窗口运行 dsh Web UI，提供托盘、主题同步、窗口记忆、右侧栏与系统通知。
 >
-> **版本状态（2026-08-27）**：`dev-v2`（Tauri 2.x 壳）M5 打包闭环已真机验证（rc.3 起），当前 **`0.0.2-rc.9`**（rc.9 = dev-v2 打包分发版；npm 以 **`rc` tag** 发布，registry latest 仍为 `0.0.2-rc.7`）——NSIS 安装器**安装即用**（安装期自动下载私有 Node + dsh + 插件到安装目录，无需系统预装 Node），首启自动进 dsh UI；卸载走**快速通道**（PREUNINSTALL Get-Process + Defender 排除提速）+ **profile 清理**（卸载时清 `$DSH_HOME/profiles/*` 中 dsh-hub 自有 bundle/junction，保留 `.dsh` 本体——修复卸载残留导致裸 `dsh web` 起不来 / 重装卡「启动中」，见下）。M1-M4 功能已落地：**会话标签栏、交互终端（含自定义 Shell：PowerShell 5.1 / pwsh / cmd / Bash）、通知跳会话、rail 数据源修复、S0 Origin 校验、工作区 open**（见 [FUNCTIONS.md](FUNCTIONS.md) §13）。`0.0.1-rc.14` 是 WebView2 壳最终 rc（`dev-v1` 分支已冻结）。正式版将在体验达标后发布（多端支持 / 自定义壳 UI，见 [外部档案 docs/dsh桌面端技术路线-2026-08-16.md](../docs/dsh桌面端技术路线-2026-08-16.md)）。
+> **版本状态（2026-08-27）**：`dev-v2`（Tauri 2.x 壳）M5 打包闭环已真机验证（rc.3 起），当前 **`0.0.2-rc.9`**（rc.9 = dev-v2 打包分发版；npm `latest` / `rc` 双 tag 均已指向 `0.0.2-rc.9`）——NSIS 安装器**安装即用**（安装期自动下载私有 Node + dsh + 插件到安装目录，无需系统预装 Node），首启自动进 dsh UI；卸载走**快速通道**（PREUNINSTALL Get-Process + Defender 排除提速）+ **profile 清理**（卸载时清 `$DSH_HOME/profiles/*` 中 dsh-hub 自有 bundle/junction，保留 `.dsh` 本体——修复卸载残留导致裸 `dsh web` 起不来 / 重装卡「启动中」，见下）。M1-M4 功能已落地：**会话标签栏、交互终端（含自定义 Shell：PowerShell 5.1 / pwsh / cmd / Bash）、通知跳会话、rail 数据源修复、S0 Origin 校验、工作区 open**（见 [FUNCTIONS.md](FUNCTIONS.md) §13）。`0.0.1-rc.14` 是 WebView2 壳最终 rc（`dev-v1` 分支已冻结）。正式版将在体验达标后发布（多端支持 / 自定义壳 UI，见 [外部档案 docs/dsh桌面端技术路线-2026-08-16.md](../docs/dsh桌面端技术路线-2026-08-16.md)）。
 
 [![npm version](https://img.shields.io/npm/v/@marecgents/dsh-hub)](https://www.npmjs.com/package/@marecgents/dsh-hub)
 [![npm rc](https://img.shields.io/npm/v/@marecgents/dsh-hub/rc)](https://www.npmjs.com/package/@marecgents/dsh-hub)
@@ -17,9 +17,9 @@
 
 | 分支 | 状态 | 说明 |
 |---|---|---|
-| `main` | 发布分支（**唯一合并目标**） | registry latest = `0.0.2-rc.7`（rc.4–rc.9 已发布，rc.9 为 `rc` tag） |
+| `main` | 发布分支（**唯一合并目标**） | registry latest = `0.0.2-rc.9`（rc.4–rc.9 已发布） |
 | `dev-v1` | **永久冻结**（WebView2 时代存档） | 不再接收任何更新/同步；历史收尾 = `0.0.1-rc.13/rc.14`（WebView2 最终版） |
-| `dev-v2` | **唯一开发分支**（Tauri 2.x 壳） | 所有更新在此开发，merge 只到 main；当前 = `0.0.2-rc.9`（打包分发 + npm `rc` tag） |
+| `dev-v2` | **唯一开发分支**（Tauri 2.x 壳） | 所有更新在此开发，merge 只到 main；当前 = `0.0.2-rc.9`（打包分发 + npm latest/rc） |
 
 ---
 
