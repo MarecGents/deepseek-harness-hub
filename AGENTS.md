@@ -121,6 +121,9 @@ dsh-hub 是**双 half** 结构，且**套壳代码与插件代码必须严格模
 - **对话定位条自适应配色（计算色豁免）**：`src/client/conversation-rail.ts` 在运行时采样 rail 下方有效背景（表面 computed color × 背景图 cover 采样混合），按采样色相经 HSL 推导 tick/active 颜色并写入 rail 根元素 CSS 变量（`--mg-rail-*`，样式层保留 token 回退）——运行时计算色无法用静态 token 表达，类比背景图豁免；禁止在样式层新增硬编码 hex（回退字面量除外）。
 - 产品文案用中文；代码注释用英文（与 dsh 官方一致）。
 
+- **文案 i18n 纪律**：非皮肤代码的产品文案一律写入 `src/client/locale.ts` 词典（zh 为键源、en 完整对照，tsc 保证键集完备），经 `t()` 消费，语言源跟随 dsh 设置（官方 locale 插件写入 `<html lang>`，MutationObserver + `useSyncExternalStore` 订阅）；**禁止在组件/样式/路由中硬编码中文字面量文案**。皮肤 name/description 同样词典化（`skin.name.<id>` / `skin.desc.<id>`，展示端 `t()` 回退静态值）。新增文案 = 词典双向键 + 当前语言立即生效。
+- **右键菜单语义（壳 UI 行为契约）**：WebView2 原生右键菜单已在 Rust 侧禁用；页面右键全部由 DOM 接管——对象行（`div[role="treeitem"]`，会话/工作区）→ 各自专属菜单，**空白处（含左栏空态）→ 刷新菜单**，文本编辑要素不干预；全局刷新菜单必须保持**单一注册源**（见 docs/关键踩坑记录.md #77-80，勿重复注册）。
+
 ### 3.1 皮肤（skins）风格豁免
 
 - **「默认（default）」= 原生外观**，严格受上述 UI 风格约束（官方 token、官方图标、官方组件参照）。

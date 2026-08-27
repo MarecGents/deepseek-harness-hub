@@ -17,6 +17,8 @@
 | `model-select.tsx` | composer 模型嵌套菜单：slot `conversation.input.model` priority -1 阴影官方，自声明 `modelDirectories` 类型 |
 | `session-tabs.ts` | 会话标签 store：`tabAdd`/`tabRemove`/`tabReplaceOrder` + `useTabs`（useSyncExternalStore），localStorage `dsh-hub:session-tabs` 持久化（旧键 `dsh-hub.session-tabs` 一次性迁移，读旧写新删旧） |
 | `SessionTabs.tsx` | 会话标签栏：createPortal 渲染进标题栏 `#dsh-hub-titlebar .tb-title`——点击切换 / `+` 新建 / `×` 关闭 / 状态点（等待琥珀·完成绿·运行蓝+脉冲）/ 右键菜单复用 session-menu / 拖拽排序 / 内联重命名（IME 组合不误提交）/ 自动滚动 / 归档删除自动移除（空快照不剪枝门控，F1-F8） |
+| `locale.ts` | 词典与语言基建：zh/en flat 词典（~120 键）+ `t()` 插值 + `<html lang>` 订阅（官方 locale 插件写入，dsh 设置→General→Language）+ `useLocaleLang`/`skinText`；**非皮肤文案必须走词典，禁止硬编码中文** |
+| `workspace-menu.ts` | 左侧工作区行右键菜单（新建任务→workspaces.startSession / 打开工作区→open_workspace_path），复用 `.mg-ctxmenu` 样式 |
 | `session-menu.ts` | 任务右键菜单：置顶/重命名/分叉/归档/资源管理器/复制路径 |
 | `session-menu-style.ts` | 任务右键菜单样式（CSS 字符串注入，`mg-ctxmenu-*` 前缀） |
 | `conversation-rail.ts` | 对话定位条：turnTimings 时间窗对齐真实节点 kind 预览（修 #35：extractNodeText / extractTurnSummaries），body portal 挂载 |

@@ -172,3 +172,11 @@
 
 ### 仍待收口（M5）
 1. **自动更新**（M5 仅剩项：NSIS 安装器 / 卸载快速通道 / Job Object 防残留已随 rc.3–rc.8 闭环，见打包记录）
+
+
+## 11. 右键菜单语义与 i18n
+
+| # | 功能 | 说明 | 当前状态 |
+|---|---|---|---|
+| 26 | 右键菜单语义 | WebView2 原生右键菜单 Rust 侧禁用（SetAreDefaultContextMenusEnabled(false)）；DOM 全量接管：对象行（会话树 `div[role=treeitem]`）→ 会话/工作区专属菜单（preventDefault + stopPropagation 双保险）；空白（含左栏空态）→ 刷新菜单（单一刷新源，index.ts context menu (refresh-only)）；文本编辑要素（textarea/input/select/contenteditable）不干预 | ✅ `src/client/index.ts` + `pin-conversations.ts` + `workspace-menu.ts` |
+| 27 | 全量 i18n（zh/en） | hub 界面文案（设置卡/会话菜单/工作区菜单/皮肤名/空白右键等）与 usage-stats 插件文案全部词典化；语言源 = dsh 设置（General → Language，官方 locale 插件写 `<html lang>`）；React 用 useSyncExternalStore 订阅、DOM 菜单打开时求值 | ✅ `src/client/locale.ts`（~120 键）+ usage-stats 自带词典；皮肤名/描述随语言切换 |

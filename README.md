@@ -2,7 +2,7 @@
 
 > **`@marecgents/dsh-hub`** —— DeepSeek Harness（`dsh`）的桌面端框架：以原生 Tauri 2.x 窗口运行 dsh Web UI，提供托盘、主题同步、窗口记忆、右侧栏与系统通知。
 >
-> **版本状态（2026-08-27）**：`dev-v2`（Tauri 2.x 壳）M5 打包闭环已真机验证（rc.3 起），当前 **`0.0.2-rc.9`**（rc.9 = dev-v2 打包分发版；npm `latest` / `rc` 双 tag 均已指向 `0.0.2-rc.9`）——NSIS 安装器**安装即用**（安装期自动下载私有 Node + dsh + 插件到安装目录，无需系统预装 Node），首启自动进 dsh UI；卸载走**快速通道**（PREUNINSTALL Get-Process + Defender 排除提速）+ **profile 清理**（卸载时清 `$DSH_HOME/profiles/*` 中 dsh-hub 自有 bundle/junction，保留 `.dsh` 本体——修复卸载残留导致裸 `dsh web` 起不来 / 重装卡「启动中」，见下）。M1-M4 功能已落地：**会话标签栏、交互终端（含自定义 Shell：PowerShell 5.1 / pwsh / cmd / Bash）、通知跳会话、rail 数据源修复、S0 Origin 校验、工作区 open**（见 [FUNCTIONS.md](FUNCTIONS.md) §13）。`0.0.1-rc.14` 是 WebView2 壳最终 rc（`dev-v1` 分支已冻结）。正式版将在体验达标后发布（多端支持 / 自定义壳 UI，见 [外部档案 docs/dsh桌面端技术路线-2026-08-16.md](../docs/dsh桌面端技术路线-2026-08-16.md)）。
+> **版本状态（2026-08-27）**：`dev-v2`（Tauri 2.x 壳）M5 打包闭环已真机验证（rc.3 起），当前 **`0.0.2-rc.9`**（rc.9 = dev-v2 打包分发版；npm `latest` / `rc` 双 tag 均已指向 `0.0.2-rc.9`）——NSIS 安装器**安装即用**（安装期自动下载私有 Node + dsh + 插件到安装目录，无需系统预装 Node），首启自动进 dsh UI；卸载走**快速通道**（PREUNINSTALL Get-Process + Defender 排除提速）+ **profile 清理**（卸载时清 `$DSH_HOME/profiles/*` 中 dsh-hub 自有 bundle/junction，保留 `.dsh` 本体——修复卸载残留导致裸 `dsh web` 起不来 / 重装卡「启动中」）。**皮肤册 15 套**（内置 5 + Reasonix 官方 8 + opencode 2 移植，统一推导规则与 `docs/skins/*.md` 文档）与**全量 i18n**（zh/en 词典，跟随 dsh 设置语言）已开发完成（dev-v2 未推送，待验收）。M1-M4 功能已落地：**会话标签栏、交互终端（含自定义 Shell：PowerShell 5.1 / pwsh / cmd / Bash）、通知跳会话、rail 数据源修复、S0 Origin 校验、工作区 open**（见 [FUNCTIONS.md](FUNCTIONS.md) §13）。`0.0.1-rc.14` 是 WebView2 壳最终 rc（`dev-v1` 分支已冻结）。正式版将在体验达标后发布（多端支持 / 自定义壳 UI，见 [外部档案 docs/dsh桌面端技术路线-2026-08-16.md](../docs/dsh桌面端技术路线-2026-08-16.md)）。
 
 [![npm version](https://img.shields.io/npm/v/@marecgents/dsh-hub)](https://www.npmjs.com/package/@marecgents/dsh-hub)
 [![npm rc](https://img.shields.io/npm/v/@marecgents/dsh-hub/rc)](https://www.npmjs.com/package/@marecgents/dsh-hub)
@@ -43,9 +43,11 @@
 - **findings-ledger 插件（PR #38）**：独立 dsh 插件（`plugins/dsh-findings-ledger/`）——baseline 快照 + 变更对账 + 覆盖度报告。
 - **permission-guard 插件（PR #37）**：独立 dsh 插件（`plugins/dsh-permission-guard/`）——逐命令权限白名单 + 四级能力拦截（auto / give-command / confirm / never）。
 - **project-memory 插件（PR #36）**：独立 dsh 插件（`plugins/dsh-project-memory/`）——每项目持久记忆（FACT.md + JOURNAL.jsonl，自动注入 systemPrompt.context + `memory_read`/`memory_log`/`memory_fact` 工具）。
-- **usage-stats 插件（PR #34）**：独立 dsh 插件（`plugins/dsh-usage-stats/`）——全会话 token 用量统计（按 provider/model 聚合 + 设置页可视化 + HTTP API）。
+- **usage-stats 插件（PR #34）**：独立 dsh 插件（`plugins/dsh-usage-stats/`）——全会话 token 用量统计（按 provider/model 聚合 + 设置页可视化 + HTTP API）；provider 名与服务端文案均双语（zh/en，跟随 dsh 语言设置，独立加载插件同样生效）。
   以上 4 个独立插件**双轨分发**（随 hub resources + 独立 npm 轨，package.json 均已 `private:false` 就绪），见 [BUILD.md §7](BUILD.md) 与 AGENTS.md §1.1。
-- **设置卡片**：dsh 设置 → 插件页提供桌面壳配置（窗口尺寸 / 主题 / 托盘行为 / 会话完成通知 / 提示音 / 多实例开关 / 界面皮肤 / 背景图 / 桌面图标）。
+- **设置卡片**：dsh 设置 → 插件页提供桌面壳配置（窗口尺寸 / 主题 / 托盘行为 / 会话完成通知 / 提示音 / 多实例开关 / 界面皮肤 / 背景图 / 桌面图标）。**皮肤 15 套**：内置 5（午夜蓝/旧纸张/终端绿/ZCode/极光紫）+ **Reasonix 官方 8**（rx-*，黑金/绯红地平线/青蓝舞台/熔炉金红/玫瑰晨光/鼠尾草微风/火花笔记/紫罗兰星光）+ **opencode 2**（oc-* 经典/石墨）——由**统一推导规则生成器**产出（1:1 直映射 + 定向混合 + dimmed 夹取 ≥3.5:1），每套浅/深 × 33 token + `docs/skins/*.md` 文档；选择器为官方 Setting-Cell + Menu（菜单项与 pill 带皮肤浅|深色块预览），皮肤名/描述走词典、随 dsh 语言切换。
+- **i18n（全量双语）**：hub 全部界面文案（设置卡/会话菜单/工作区菜单/皮肤名/空白右键菜单等）与 **usage-stats 插件**文案均收进 zh/en 词典（`src/client/locale.ts`；usage-stats 独立插件自带词典），语言源 = dsh 设置（General → Language）——官方 locale 插件写入的 `<html lang>`，切换即全量刷新。
+- **右键菜单语义**：WebView2 原生右键菜单已在 Rust 侧禁用（`SetAreDefaultContextMenusEnabled(false)`）；右键全部由 DOM 接管——**对象行（会话/工作区）→ 各自专属菜单**（会话全功能菜单 / 工作区：新建任务、打开工作区），**空白处（含左栏空态）→ 刷新菜单**，输入框等文本编辑要素不干预。
 - **多实例保护**：启动时检测已有 dsh 实例（任意端口），默认拒绝共存以防会话数据损坏；确需共存可在设置中显式开启（附危险警告）。
 - **右侧栏**：概览（Token 统计）、文件树、Git 变更三页；收起后保留窄栏快捷按钮。
 - **对话定位条（rail）**：中栏左缘竖排小横条 minimap（每段对话一条，点击跳转；位置按段序近似，数据源官方 ConversationSnapshot turnTimings，只读）。**时间窗真实 kind 预览（修 #35）**：hover 预览按 turnTimings 时间窗 [startTime, endTime) + node.turn 对齐真实节点 kind（user/steering/context/assistant/command/compaction）提取开场文本，替换原 turn-tail 死代码（命令轮次回退助手回复）。**自适应配色**：采样 rail 下方的实际背景（皮肤表面色 × 背景图 cover 数学混合），按采样色相派生 tick 深/浅色调（WCAG 对比度择优，≥7:1）与激活态强调色——每套皮肤/背景图得到自己的 rail 色板，非固定两色；tick 附 1px 对比描边兜底。
