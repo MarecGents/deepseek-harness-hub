@@ -47,6 +47,7 @@ import { makeBackgroundsRoutes } from './server/backgrounds-api.js'
 import { makeSoundsRoutes } from './server/sounds-api.js'
 import { makeIconsRoutes } from './server/icons-api.js'
 import { makePtyRoutes } from './server/terminal-pty-api.js'
+import { installSessionWarmup } from './services/session-warmup.js'
 import { getToken } from './server/token.js'
 import { disposeAll as disposeAllPty } from './services/pty-manager.js'
 import { getFocusedSessionState, setupSessionRuntime, type SessionShellLike } from './controllers/session-runtime.ts'
@@ -131,6 +132,11 @@ export function apply(ctx: Context, config: Config): void {
     return
   }
   console.log('[dsh-hub] launched by the Tauri shell; desktop shell + plugin page active')
+
+  // Session warm-up: preload the persistence LRU in the background so opening
+  // a long session skips the full decode (cold ≈2s → cache-hit ≈0.9s).
+  // Best-effort; failure only logs.
+  ctx.effect(() => installSessionWarmup(ctx), 'dsh-hub: session warmup lifecycle')
 
   // S0/M4: inject the per-process API token into the SPA so pty/config routes
   // can authenticate browser calls. dsh's frontend-static emits this table per

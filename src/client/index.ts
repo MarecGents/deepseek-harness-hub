@@ -27,7 +27,7 @@ import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
 import type {} from '@deepseek-ai/dsh-client-ui-slots'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import { DesktopSettingsCard, type DesktopSettingsCardProps } from './settings-card.tsx'
-import { injectCardStyle } from './style.ts'
+import { injectCardStyle, injectChatVisibilityStyle } from './style.ts'
 import { t } from './locale.ts'
 import { RightSidebar } from './right-sidebar.tsx'
 import { injectRightSidebarStyle } from './right-sidebar-style.ts'
@@ -279,6 +279,9 @@ export function apply(ctx: ClientContext): void {
   // Inject the card + right-sidebar stylesheets (idempotent).
   injectCardStyle()
   injectRightSidebarStyle()
+  // Long-history rendering aid: content-visibility on chat rows (browser
+  // skips off-screen layout/paint when a session's DOM grows large).
+  injectChatVisibilityStyle()
 
   // Restore the persisted skin once the config API is reachable. If the user
   // already picked a skin in this page lifetime (settings card), the restore
