@@ -1,7 +1,7 @@
 # dsh-hub 功能清单（FUNCTIONS）
 
 > 基线：`main` 分支 `v0.0.1-rc.14`（WebView2 时代最终版）。
-> 更新：2026-08-24 · 当前开发分支 `dev-v2`（Tauri 2.x 壳 + dsh web 插件层）。本轮（08-22/23）新增：图标系统模块化重构（icon.rs 6 面编排）、图标快速切换防卡死（worker 合并）、卸载提速（Get-Process + Defender 排除）、Job Object 防 sidecar 残留、模型嵌套菜单（PR #33）、findings-ledger 插件（PR #38）、build:installer 完整性预检。（08-24 文档同步 M1-M4：会话标签栏（M2）、交互终端（M4）、notify focus-session（M1）、rail 数据源修复（M1）、S0 Origin 校验（M3）、工作区 dialog:allow-open（M2）+ workspace/open（M4），见 §13）
+> 更新：2026-08-28 · 当前开发分支 `dev-v2`（Tauri 2.x 壳 + dsh web 插件层）。本轮（08-28）rc.12 修复：`dsh-permission-guard` / `dsh-findings-ledger` 插件工具 `output.render` 返回字符串而非 `ContentBlock[]` 数组 → 会话整轮崩溃（`content.some is not a function`）。（08-24 文档同步 M1-M4：会话标签栏（M2）、交互终端（M4）、notify focus-session（M1）、rail 数据源修复（M1）、S0 Origin 校验（M3）、工作区 dialog:allow-open（M2）+ workspace/open（M4），见 §13）
 > 状态标记：✅ 已覆盖（Tauri 壳或插件层等价实现）· ⚠️ 部分/待补（M4/M5 收口项）· ➖ 不适用（被 Tauri 原生能力替代）。
 > 依据：`git show main:<path>` 源码 + `docs/` 发布记录（rc10–rc14）。
 
