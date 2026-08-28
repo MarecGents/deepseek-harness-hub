@@ -64,6 +64,11 @@ function ensureShellStyles() {
     '#dsh-hub-splash .splash-title{font-size:15px;font-weight:600;letter-spacing:.3px;color:#e4e4e7;}',
     '#dsh-hub-splash .splash-spinner{width:22px;height:22px;border:2px solid rgba(255,255,255,.18);',
     'border-top-color:#ffffff;border-radius:50%;animation:splash-spin .8s linear infinite;}',
+    // System light mode: near-white splash + brand spinner (the page predates
+    // the skin, so it follows prefers-color-scheme instead of dsw tokens).
+    '@media (prefers-color-scheme: light){#dsh-hub-splash{background:#f7f7f8;color:#1c1f24;}',
+    '#dsh-hub-splash .splash-title{color:#2c3138;}',
+    '#dsh-hub-splash .splash-spinner{border:2px solid rgba(0,0,0,.14);border-top-color:#3964fe;}}',
     '@keyframes splash-spin{to{transform:rotate(360deg);}}',
     '@keyframes splash-pulse{0%,100%{opacity:1;}50%{opacity:.55;}}',
   ].join('');
@@ -286,9 +291,16 @@ const TB_ICON_URLS = {
   'whale-girl-blue': '/api/dsh-hub/icons/whale-girl-blue.png',
 };
 
+// Brand dot fallback when the icons-api image 404s on early boot (host not up
+// yet) — the titlebar face must never stay blank waiting for a manual switch.
+const TB_ICON_FALLBACK_URI = 'data:image/svg+xml;utf8,' + encodeURIComponent(
+  "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><circle cx='8' cy='8' r='7' fill='#3964fe'/></svg>");
+window.__mgTbIconFallbackUri = TB_ICON_FALLBACK_URI;
+
 function iconHtmlFor(id) {
   const url = TB_ICON_URLS[id] || TB_ICON_URLS.default;
-  return '<img class="tb-icon" src="' + url + '" width="16" height="16" alt="" draggable="false" aria-hidden="true">';
+  return '<img class="tb-icon" src="' + url + '" width="16" height="16" alt="" draggable="false" aria-hidden="true"'
+    + ' onerror="this.onerror=null;this.src=window.__mgTbIconFallbackUri">';
 }
 
 // Rust 经 eval 调用（icon.rs apply_titlebar_face）；页面未就绪时写 pending，

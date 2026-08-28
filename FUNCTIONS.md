@@ -74,7 +74,7 @@
 
 | # | 功能 | 说明（rc.14 行为） | 当前状态 |
 |---|---|---|---|
-| 24 | 皮肤系统 | 5 套自绘（午夜蓝/旧纸张/终端绿/ZCode/极光紫），覆盖 `--dsw-alias-*`+`--dsw-specific-*`，浅深双色板跟随 `data-ds-dark-theme`；default 清空；boot 恢复不覆盖用户选择 | ✅ `client/skins.ts` 保留（标题栏强制模式按皮肤色板解析） |
+| 24 | 皮肤系统 | **15 套**：内置 5 自绘（午夜蓝/旧纸张/终端绿/ZCode/极光紫）+ 移植 8（`rx-*`，Reasonix 官方主题包直移 + 统一推导规则）+ 移植 2（`oc-*`，opencode 配方）；全部覆盖 `--dsw-alias-*`+`--dsw-specific-*`，浅深双色板跟随 `data-ds-dark-theme`；default 清空；boot 恢复不覆盖用户选择；更换皮肤带 150ms 全局色过渡（`mg-skin-switching`） | ✅ `client/skins.ts` + 设置卡官方 Menu（菜单项品牌/浅深色块预览）+ `docs/skins/*.md`（每套文档，移植皮肤改色走生成器规则，禁手改） |
 
 ## 10. 背景图
 
@@ -172,3 +172,12 @@
 
 ### 仍待收口（M5）
 1. **自动更新**（M5 仅剩项：NSIS 安装器 / 卸载快速通道 / Job Object 防残留已随 rc.3–rc.8 闭环，见打包记录）
+
+
+## 11. 右键菜单语义与 i18n
+
+| # | 功能 | 说明 | 当前状态 |
+|---|---|---|---|
+| 26 | 右键菜单语义 | WebView2 原生右键菜单 Rust 侧禁用（SetAreDefaultContextMenusEnabled(false)）；DOM 全量接管：对象行（会话树 `div[role=treeitem]`）→ 会话/工作区专属菜单（preventDefault + stopPropagation 双保险）；空白（含左栏空态）→ 刷新菜单（单一刷新源，index.ts context menu (refresh-only)）；文本编辑要素（textarea/input/select/contenteditable）不干预 | ✅ `src/client/index.ts` + `pin-conversations.ts` + `workspace-menu.ts` |
+| 28 | 会话右键「重命名任务」 | 左栏会话行右键菜单内嵌改名表单（当前标题 input+保存/取消，Enter/Esc/外点关闭），确定调官方 `session.rename`（同源数据联动；官方 ⋯ 弹层本环境不可用——踩坑#85） | ✅ `pin-conversations.ts` openRenameForm |
+| 27 | 全量 i18n（zh/en） | hub 界面文案（设置卡/会话菜单/工作区菜单/皮肤名/空白右键等）与 usage-stats 插件文案全部词典化；语言源 = dsh 设置（General → Language，官方 locale 插件写 `<html lang>`）；React 用 useSyncExternalStore 订阅、DOM 菜单打开时求值 | ✅ `src/client/locale.ts`（~120 键）+ usage-stats 自带词典；皮肤名/描述随语言切换 |

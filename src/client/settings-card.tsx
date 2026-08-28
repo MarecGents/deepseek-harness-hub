@@ -14,7 +14,8 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import clsx from 'clsx'
 import { IconChevronDownOutline14, Menu } from '@deepseek-ai/dsh-client-ui-primitives'
 import { CARD_CSS_CLASSES as c } from './style.ts'
-import { SKINS, DEFAULT_SKIN_ID, applySkin, markSkinUserPicked } from './skins.ts'
+import { SKINS, DEFAULT_SKIN_ID, applySkin, markSkinUserPicked, type DshSkin } from './skins.ts'
+import { t, useLocaleLang, type HubKey } from './locale.ts'
 import { BACKGROUNDS, DEFAULT_BACKGROUND_ID, applyBackground, markBackgroundUserPicked } from './backgrounds.ts'
 import { refreshConversationRailPalette } from './conversation-rail.ts'
 import { DESKTOP_ICONS, DEFAULT_DESKTOP_ICON_ID } from './desktop-icons.ts'
@@ -41,53 +42,6 @@ interface ShellConfig {
   desktopIcon: string
 }
 
-/** Localized copy kept inline (the card is small; no locale plugin needed). */
-const COPY = {
-  title: 'DSH HUB 设置',
-  description: '桌面壳配置：窗口尺寸、主题与托盘行为',
-  unsaved: '未保存',
-  readOnly: '当前文档只读，无法保存',
-  windowSection: '窗口设置',
-  widthLabel: '宽度 (px)',
-  heightLabel: '高度 (px)',
-  themeLabel: '主题',
-  themeOptions: { system: '跟随 dsh 主题', light: '浅色', dark: '深色' } as const,
-  themeHint: '跟随 dsh 主题：dsh 设为深色窗口即深色，设为浅色窗口即浅色',
-  minimizeLabel: '最小化到托盘',
-  minimizeHint: '最小化时隐藏到系统托盘，任务栏入口消失',
-  closeLabel: '关闭到托盘',
-  closeHint: '点 X 关闭窗口时保持进程与托盘存活（不勾选则完全退出）',
-  notifyLabel: '会话完成通知',
-  notifyHint: '任务回合完成时弹出系统通知',
-  soundLabel: '提示音',
-  soundHint: '用户提问、任务完成、AI 请求批准或任务出错时播放提示音（与系统通知互相独立）',
-  multiInstanceLabel: '允许同时运行多个 dsh 实例',
-  multiInstanceDanger:
-    '⚠ 危险：多个 dsh 实例共享同一份会话数据（$DSH_HOME），' +
-    '若同时在同一个会话中操作，会导致会话日志损坏（seq 冲突），' +
-    '可能丢失对话内容且需要手工修复。强烈不建议开启。',
-  multiInstanceHint: '不勾选时，若检测到已有 dsh 在运行，桌面壳将拒绝启动以保护数据',
-  skinSection: '界面皮肤',
-  skinLabel: '界面皮肤',
-  skinHint: '点击即应用并保存；「默认」恢复原生外观。深色模式下的皮肤跟随 dsh 主题设置',
-  skinDefaultName: '默认',
-  skinDefaultDesc: '官方原生外观',
-  skinApplyFailed: '皮肤切换失败，请重试',
-  backgroundSection: '背景图',
-  backgroundLabel: '背景图',
-  backgroundHint: '点击即应用并保存；「无」关闭背景图，恢复原生/皮肤背景',
-  backgroundDefaultName: '无',
-  backgroundDefaultDesc: '不显示背景图',
-  backgroundApplyFailed: '背景切换失败，请重试',
-  desktopIconSection: '桌面图标',
-  desktopIconHint: '点击即保存并应用到窗口标题栏与任务栏图标；「深鲸原版」为官方鲸鱼（跟随明暗主题）',
-  desktopIconApplyFailed: '图标切换失败，请重试',
-  discard: '放弃',
-  save: '保存',
-  saving: '保存中…',
-  saveFailed: '保存失败，请重试',
-  saved: '已保存',
-}
 
 /** Read one shell config document (GET), or null on failure. */
 async function fetchConfig(): Promise<ShellConfig | null> {
@@ -135,6 +89,31 @@ function invokeDesktopIcon(iconId: string): void {
   }
 }
 
+/**
+ * Tiny skin preview for the official Menu row "icon" slot: a 12px dot split
+ * left|right into the skin's light|dark content backgrounds, with a border in
+ * the active theme's brand color. Empty for the native look. Sits entirely
+ * inside the official Setting-Cell / Menu structure — no new layout.
+ */
+function SkinDot({ skin }: { skin: DshSkin | undefined }): ReactNode {
+  if (skin === undefined) {
+    return (
+      <span
+        className={c.swatchDot}
+        style={{ background: 'var(--dsw-alias-bg-module-platform, #f5f6f7)' }}
+        aria-hidden="true"
+      />
+    )
+  }
+  return (
+    <span
+      className={c.swatchDot}
+      style={{ background: `linear-gradient(90deg, ${skin.light['bg-base']} 0 50%, ${skin.dark['bg-base']} 50% 100%)` }}
+      aria-hidden="true"
+    />
+  )
+}
+
 /** Render the desktop-shell settings card. */
 export function DesktopSettingsCard(_props: DesktopSettingsCardProps): ReactNode {
   const [open, setOpen] = useState(false)
@@ -152,6 +131,54 @@ export function DesktopSettingsCard(_props: DesktopSettingsCardProps): ReactNode
   const [backgroundMenuOpen, setBackgroundMenuOpen] = useState(false)
   const [desktopIconId, setDesktopIconId] = useState<string>(DEFAULT_DESKTOP_ICON_ID)
   const [desktopIconFailed, setDesktopIconFailed] = useState(false)
+  // Re-render on dsh language switch: skin names/descriptions are dictionary
+  // driven and must follow Settings → General → Language immediately.
+  useLocaleLang()
+  // Copy rebuilt per render: the active dsh language drives every label
+  // (dictionary in locale.ts), so a Settings → General → Language switch
+  // immediately re-renders the whole card.
+  const COPY = {
+    title: t('settings.title'),
+    description: t('settings.description'),
+    unsaved: t('settings.unsaved'),
+    readOnly: t('settings.readOnly'),
+    windowSection: t('settings.windowSection'),
+    widthLabel: t('settings.widthLabel'),
+    heightLabel: t('settings.heightLabel'),
+    themeLabel: t('settings.themeLabel'),
+    themeOptions: { system: t('settings.themeSystem'), light: t('settings.themeLight'), dark: t('settings.themeDark') } as const,
+    themeHint: t('settings.themeHint'),
+    minimizeLabel: t('settings.minimizeLabel'),
+    minimizeHint: t('settings.minimizeHint'),
+    closeLabel: t('settings.closeLabel'),
+    closeHint: t('settings.closeHint'),
+    notifyLabel: t('settings.notifyLabel'),
+    notifyHint: t('settings.notifyHint'),
+    soundLabel: t('settings.soundLabel'),
+    soundHint: t('settings.soundHint'),
+    multiInstanceLabel: t('settings.multiInstanceLabel'),
+    multiInstanceDanger: t('settings.multiInstanceDanger'),
+    multiInstanceHint: t('settings.multiInstanceHint'),
+    backgroundSection: t('settings.backgroundSection'),
+    backgroundLabel: t('settings.backgroundLabel'),
+    backgroundHint: t('settings.backgroundHint'),
+    backgroundDefaultName: t('settings.backgroundDefaultName'),
+    backgroundDefaultDesc: t('settings.backgroundDefaultDesc'),
+    backgroundApplyFailed: t('settings.backgroundApplyFailed'),
+    desktopIconSection: t('settings.desktopIconSection'),
+    desktopIconHint: t('settings.desktopIconHint'),
+    desktopIconApplyFailed: t('settings.desktopIconApplyFailed'),
+    discard: t('settings.discard'),
+    save: t('settings.save'),
+    saving: t('settings.saving'),
+    saveFailed: t('settings.saveFailed'),
+    saved: t('settings.saved'),
+  }
+
+  /** Dictionary key for a skin's display name (keys exist for all 15 skins). */
+  const skinName = (id: string): string => t(`skin.name.${id}` as HubKey) ?? SKINS.find((s) => s.id === id)?.name ?? id
+  /** Dictionary key for a skin's description (falls back to the static copy). */
+  const skinDesc = (id: string): string => t(`skin.desc.${id}` as HubKey) ?? SKINS.find((s) => s.id === id)?.description ?? id
   // B7: monotonic request sequence — only the LATEST config write's response
   // may commit state; a slow older response must not clobber a newer one
   // (overlapping onSave + skin pick, or two quick skin picks).
@@ -461,18 +488,20 @@ export function DesktopSettingsCard(_props: DesktopSettingsCardProps): ReactNode
                         : <div className={c.hint}>{COPY.multiInstanceHint}</div>}
                     </div>
                   )}
-                  {/* Skin picker — official Setting-Cell row: label left, menu pill right, live description below. */}
+                  {/* Skin picker — official Setting-Cell row: label left, menu pill right
+                      (rows carry a light|dark skin dot in the official Menu
+                      icon slot), live description below. Copy follows the
+                      active dsh language (locale.ts dictionary). */}
                   {draft !== null && (
                     <div className={c.section}>
-                      <div className={c.sectionTitle}>{COPY.skinSection}</div>
                       <div className={c.fieldRow}>
-                        <span className={c.fieldLabel}>{COPY.skinLabel}</span>
+                        <span className={c.fieldLabel}>{t('settings.skinLabel')}</span>
                         <Menu
                           open={skinMenuOpen}
                           onClose={() => { setSkinMenuOpen(false) }}
                           items={[
-                            { id: DEFAULT_SKIN_ID, label: COPY.skinDefaultName },
-                            ...SKINS.map((skin) => ({ id: skin.id, label: skin.name })),
+                            { id: DEFAULT_SKIN_ID, label: t('settings.skinDefaultName'), icon: <SkinDot skin={undefined} /> },
+                            ...SKINS.map((skin) => ({ id: skin.id, label: skinName(skin.id), icon: <SkinDot skin={skin} /> })),
                           ]}
                           selectedId={skinId}
                           onSelect={(id) => {
@@ -489,9 +518,10 @@ export function DesktopSettingsCard(_props: DesktopSettingsCardProps): ReactNode
                               aria-expanded={skinMenuOpen}
                               onClick={() => { setSkinMenuOpen(v => !v) }}
                             >
+                              <SkinDot skin={SKINS.find((skin) => skin.id === skinId)} />
                               {skinId === DEFAULT_SKIN_ID
-                                ? COPY.skinDefaultName
-                                : (SKINS.find((skin) => skin.id === skinId)?.name ?? skinId)}
+                                ? t('settings.skinDefaultName')
+                                : skinName(skinId)}
                               <IconChevronDownOutline14 />
                             </button>
                           )}
@@ -499,11 +529,11 @@ export function DesktopSettingsCard(_props: DesktopSettingsCardProps): ReactNode
                       </div>
                       <div className={c.hint}>
                         {skinId === DEFAULT_SKIN_ID
-                          ? COPY.skinDefaultDesc
-                          : (SKINS.find((skin) => skin.id === skinId)?.description ?? '')}
-                        {' — '}{COPY.skinHint}
+                          ? t('settings.skinDefaultDesc')
+                          : skinDesc(skinId)}
+                        {' — '}{t('settings.skinHint')}
                       </div>
-                      {skinFailed ? <p className={c.failed} role="status">{COPY.skinApplyFailed}</p> : null}
+                      {skinFailed ? <p className={c.failed} role="status">{t('settings.skinApplyFailed')}</p> : null}
                     </div>
                   )}
                   {/* Background picker — official Setting-Cell row like the skin picker. */}

@@ -50,6 +50,9 @@ export const CARD_CSS_CLASSES = {
   iconSelected: 'mg-card-icon-selected',
   iconPreview: 'mg-card-icon-preview',
   iconName: 'mg-card-icon-name',
+
+  // Skin picker: one dot in the official Menu item icon slot / pill.
+  swatchDot: 'mg-card-swatch-dot',
 } as const
 
 const css = CARD_CSS_CLASSES
@@ -372,6 +375,20 @@ const STYLE_TEXT = `
   line-height: 1.4;
   color: var(--dsw-alias-label-secondary, #61666b);
 }
+/* Skin picker dot: 12px circle, split light|dark content bg via inline style,
+ * border follows the active theme's brand token. Used in the official Menu
+ * row icon slot and inside the select pill — no new layout introduced. */
+.${css.swatchDot} {
+  display: inline-block;
+  flex: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 1.5px solid var(--dsw-alias-brand-primary, #3964fe);
+  box-sizing: border-box;
+  vertical-align: middle;
+}
+.${css.selectPill} .${css.swatchDot} { margin-right: 6px; }
 `
 
 /** Inject the card stylesheet once (idempotent; no-op when already present). */

@@ -48,6 +48,7 @@ export declare const CARD_CSS_CLASSES: {
     readonly iconSelected: "mg-card-icon-selected";
     readonly iconPreview: "mg-card-icon-preview";
     readonly iconName: "mg-card-icon-name";
+    readonly swatchDot: "mg-card-swatch-dot";
 };
 /** Inject the card stylesheet once (idempotent; no-op when already present). */
 export declare function injectCardStyle(): void;

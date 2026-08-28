@@ -39,7 +39,9 @@
  */
 
 import { PIN_CSS_CLASSES as c, injectPinStyle } from './pin-conversations-style.ts'
+import { injectSessionMenuStyle } from './session-menu-style.ts'
 import { closeSessionMenu, openSessionMenu } from './session-menu.ts'
+import { openWorkspaceMenu } from './workspace-menu.ts'
 
 /** Route prefix of the host pins API (mirrors server/pins-api.ts). */
 const PINS_API = '/api/dsh-hub/pins'
@@ -248,6 +250,98 @@ export function installPinnedConversations(ctx: unknown): () => void {
       // can retry; the caller handles null by keeping editingId.
       return null
     }
+  }
+
+  /** Official session rename RPC — the same channel the titlebar tab rename uses. */
+  async function renameSession(id: string, title: string): Promise<string | null> {
+    const session = runtime.sessions?.binding?.(id)?.session
+    if (session?.rename === undefined) return null
+    try {
+      const result = await session.rename(title)
+      if (result.ok !== true || typeof result.value?.title !== 'string') return null
+      return result.value.title
+    } catch {
+      return null
+    }
+  }
+
+  /**
+   * In-menu rename micro-form after clicking 重命名任务 in the session context
+   * menu. The official row ⋯ menu is UNUSABLE in this WebView2 environment
+   * (real clicks cannot open it — measured), so its dialog cannot be reached;
+   * instead we collect the new title here and call the SAME official
+   * session.rename — data-layer identical, so the rename propagates to
+   * tree/labels/details like the titlebar rename. Reuses .mg-ctxmenu chrome.
+   */
+  function openRenameForm(id: string, title: string, x: number, y: number): void {
+    closeSessionMenu()
+    injectSessionMenuStyle()
+    const menu = document.createElement('div')
+    menu.className = 'mg-ctxmenu'
+    menu.style.left = x + 'px'
+    menu.style.top = y + 'px'
+    const head = document.createElement('div')
+    head.className = 'mg-ctxmenu__head'
+    head.textContent = '重命名会话'
+    const input = document.createElement('input')
+    input.value = title
+    input.spellcheck = false
+    input.setAttribute('aria-label', '重命名会话')
+    input.style.cssText = 'display:block;width:100%;box-sizing:border-box;margin:2px 0 6px;padding:5px 8px;border:1px solid var(--dsw-alias-border-l2,#333);border-radius:6px;background:var(--dsw-alias-bg-layer-3,#1f1f23);color:var(--dsw-alias-label-primary,#e6e6e6);font:inherit;font-size:13px;outline:none;'
+    const status = document.createElement('div')
+    status.className = 'mg-ctxmenu__head'
+    status.style.cssText = 'color:var(--dsw-alias-state-error-primary,#e5484d);display:none;'
+    const save = document.createElement('div')
+    save.className = 'mg-ctxmenu__item'
+    save.textContent = '保存'
+    const cancel = document.createElement('div')
+    cancel.className = 'mg-ctxmenu__item'
+    cancel.textContent = '取消'
+    let busy = false
+    const close = (): void => {
+      window.removeEventListener('pointerdown', onOutside, true)
+      window.removeEventListener('keydown', onKey, true)
+      menu.remove()
+    }
+    const submit = (): void => {
+      if (busy) return
+      const next = input.value.trim().replace(/\s+/g, ' ')
+      if (next === '') { input.focus(); return }
+      busy = true
+      void renameSession(id, next).then((accepted) => {
+        if (accepted !== null) { close(); return }
+        busy = false
+        status.style.display = ''
+        status.textContent = '重命名失败，请重试'
+      })
+    }
+    save.addEventListener('click', submit)
+    cancel.addEventListener('click', close)
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); submit() }
+      else if (e.key === 'Escape') { e.preventDefault(); close() }
+    })
+    const onOutside = (e: PointerEvent): void => {
+      if (e.target instanceof Node && menu.contains(e.target)) return
+      close()
+    }
+    const onKey = (e: KeyboardEvent): void => { if (e.key === 'Escape') close() }
+    menu.append(head, input, status, save, cancel)
+    document.body.append(menu)
+    const rect = menu.getBoundingClientRect()
+    menu.style.left = Math.max(4, Math.min(x, window.innerWidth - rect.width - 4)) + 'px'
+    menu.style.top = Math.max(4, Math.min(y, window.innerHeight - rect.height - 4)) + 'px'
+    window.addEventListener('pointerdown', onOutside, true)
+    window.addEventListener('keydown', onKey, true)
+    queueMicrotask(() => { input.focus(); input.select() })
+  }
+
+  /** Context-menu rename: in-menu rename form on rows; pinned form otherwise. */
+  function renameViaMenu(id: string, row?: HTMLElement, x?: number, y?: number): void {
+    if (row === undefined) { beginRename(id); return }
+    const summary = sessionSnapshot()?.byId?.[id]
+    const title = summary?.displayTitle !== undefined ? summary.displayTitle : id
+    openRenameForm(id, title, x ?? 0, y ?? 0)
   }
 
   /** Open inline rename for one pinned item. */
@@ -657,6 +751,17 @@ export function installPinnedConversations(ctx: unknown): () => void {
   // ── Boot ────────────────────────────────────────────────────────────────
   injectPinStyle()
 
+  // Workspace (project) row → workspace view via content matching (title ==
+  // row text), mirroring mapRowByContent's contract for session rows.
+  const matchWorkspaceByContent = (row: HTMLElement): { workspaceId: string; title?: string; path?: string } | undefined => {
+    const text = (row.textContent ?? '').trim()
+    if (text === '') return undefined
+    const items = (runtime as unknown as {
+      workspaces?: { list?: { getSnapshot?: () => { items?: Array<{ workspaceId: string; title?: string; path?: string }> } } }
+    }).workspaces?.list?.getSnapshot?.()?.items ?? []
+    return items.find((w) => (w.title ?? '').trim() === text)
+  }
+
   // Delegated context menu for EVERY official session row (置顶与否都一样):
   // right-click resolves the row → session id via the same content matching
   // the pin buttons use, then opens the full-action menu. Rows that cannot be
@@ -667,12 +772,28 @@ export function installPinnedConversations(ctx: unknown): () => void {
     const row = event.target instanceof Element
       ? event.target.closest<HTMLElement>('div[role="treeitem"]:not([aria-expanded])')
       : null
-    if (row === null) return
+    if (row === null) {
+      // Workspace (project) rows carry aria-expanded: right-click opens the
+      // workspace menu (new task / open folder), never the native refresh.
+      const wrow = event.target instanceof Element
+        ? event.target.closest<HTMLElement>('div[role="treeitem"][aria-expanded]')
+        : null
+      if (wrow !== null) {
+        const ws = matchWorkspaceByContent(wrow)
+        if (ws !== undefined) {
+          event.preventDefault()
+          event.stopPropagation()
+          openWorkspaceMenu({ x: event.clientX, y: event.clientY, workspace: ws, ctx: runtime })
+        }
+      }
+      return
+    }
     const match = mapRowByContent(row)
     if (match === undefined) return
     const summary = sessionSnapshot()?.byId?.[match.id]
     if (summary === undefined || summary.blank === true) return
     event.preventDefault()
+    event.stopPropagation()
     openSessionMenu({
       x: event.clientX,
       y: event.clientY,
@@ -681,7 +802,7 @@ export function installPinnedConversations(ctx: unknown): () => void {
       pinned: pinnedSet.has(match.id),
       ctx: runtime,
       onTogglePin: () => togglePin(match.id),
-      onRename: () => beginRename(match.id),
+      onRename: () => renameViaMenu(match.id, row, event.clientX, event.clientY),
     })
   }
   document.addEventListener('contextmenu', onRowContextMenu)
@@ -715,7 +836,7 @@ export function installPinnedConversations(ctx: unknown): () => void {
       pinned: pinnedSet.has(match.id),
       ctx: runtime,
       onTogglePin: () => togglePin(match.id),
-      onRename: () => beginRename(match.id),
+      onRename: () => renameViaMenu(match.id, row, event.clientX, event.clientY),
     })
   }
   document.addEventListener('click', onRowActionsClick, true)

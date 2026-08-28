@@ -20,6 +20,7 @@
 5. **settings 命名空间约束**：`settingsNamespace('dsh-hub')` 强制小写 kebab-case；带 scope 的包名（`@marecgents/dsh-hub`）不能用作 settings ns 或 API 前缀。第三方配置 UI 一律走插件自有 HTTP 路由 `/api/dsh-hub/*`。
 6. **发布前检查不可跳过**：每次 `npm publish` 之前**必须**运行 `node scripts/verify-release.mjs` 且**全部 PASS**（含「干净安装 → 首启装配」冒烟），FAIL 立即停止排查，**禁止发布**。发布流程与检查细则见 §5（rc.10–rc.13 曾因跳过"全新环境安装验证"连发 4 版首启即崩的包，见 [docs/关键踩坑记录.md#33](docs/关键踩坑记录.md)）。
 7. **开发流程必须遵循 PROCESS_QUALITY**：任何开发任务（迁移、功能、修复、文档、发布）**必须严格遵循 [PROCESS_QUALITY.md](PROCESS_QUALITY.md) 的 SOP（标准作业程序）与质量管理规范**——含阶段输入/输出/门禁（Gate）逐项核查、验收表、回归基线、DMAIC 改进循环。**禁止跳过阶段门禁**；与本文件铁律冲突时，以本文件（AGENTS.md）为准。
+9. **bug 修复必须遵循 BUG_FIX_SOP.md**（五阶段：复现/测量/根因/方案审查/实施验证；先测量后下结论；链路探针用完即删；修复沉淀进踩坑记录）。官方弹层类 UI 在本环境可能不可达（合成事件与真实事件均失败，实测）——依赖官方 UI 入口前先判别其可用性，功能落点优先官方数据层 API。（详见 [BUG_FIX_SOP.md](BUG_FIX_SOP.md)）
 8. **数据安全红线：绝不触碰 home / C 盘**（历史血泪：`~/` 与 C 盘曾被删除导致配置全丢、系统重装，2026-08-25 复现）。**任何 agent / 脚本 / 手工操作都必须遵守**：
    - **禁止**删除/移动/清空 `C:\Users\*` 下任何文件（尤其 `~`、`$HOME`、`USERPROFILE`、真实 `~/.dsh`、`.ssh`、`.gitconfig` 等配置文件）；任何 `rm` / `Remove-Item` / `RMDir` / `unlinkSync` / `rmSync` 的目标路径**不得含** `~`、`$HOME`、`USERPROFILE`、`C:\Users`、`homedir()`。
    - **测试 / 复现 / 安装 / 卸载一律用隔离环境**：`DSH_HOME` 指向 E:/D: 盘或 `%TEMP%` 下的独立目录（如 `$env:TEMP\dsh-hub-repro`），**禁止**指向真实 `~/.dsh`；「清干净重来」只对隔离目录执行，**永不删除真实 `~/.dsh`**（dsh 会自动重建空 profile，配置/会话/凭据不可恢复）。
@@ -121,6 +122,9 @@ dsh-hub 是**双 half** 结构，且**套壳代码与插件代码必须严格模
 - **对话定位条自适应配色（计算色豁免）**：`src/client/conversation-rail.ts` 在运行时采样 rail 下方有效背景（表面 computed color × 背景图 cover 采样混合），按采样色相经 HSL 推导 tick/active 颜色并写入 rail 根元素 CSS 变量（`--mg-rail-*`，样式层保留 token 回退）——运行时计算色无法用静态 token 表达，类比背景图豁免；禁止在样式层新增硬编码 hex（回退字面量除外）。
 - 产品文案用中文；代码注释用英文（与 dsh 官方一致）。
 
+- **文案 i18n 纪律**：非皮肤代码的产品文案一律写入 `src/client/locale.ts` 词典（zh 为键源、en 完整对照，tsc 保证键集完备），经 `t()` 消费，语言源跟随 dsh 设置（官方 locale 插件写入 `<html lang>`，MutationObserver + `useSyncExternalStore` 订阅）；**禁止在组件/样式/路由中硬编码中文字面量文案**。皮肤 name/description 同样词典化（`skin.name.<id>` / `skin.desc.<id>`，展示端 `t()` 回退静态值）。新增文案 = 词典双向键 + 当前语言立即生效。
+- **右键菜单语义（壳 UI 行为契约）**：WebView2 原生右键菜单已在 Rust 侧禁用；页面右键全部由 DOM 接管——对象行（`div[role="treeitem"]`，会话/工作区）→ 各自专属菜单，**空白处（含左栏空态）→ 刷新菜单**，文本编辑要素不干预；全局刷新菜单必须保持**单一注册源**（见 docs/关键踩坑记录.md #77-80，勿重复注册）。
+
 ### 3.1 皮肤（skins）风格豁免
 
 - **「默认（default）」= 原生外观**，严格受上述 UI 风格约束（官方 token、官方图标、官方组件参照）。
@@ -136,7 +140,7 @@ dsh-hub 是**双 half** 结构，且**套壳代码与插件代码必须严格模
   - `default` 皮肤必须移除注入的样式表（零副作用）。
   - 皮肤 id 为不透明短字符串（≤64 字符）；未知 id 回退 `default`。
   - `skins.ts` 的 `DshSkin` 结构：`light`/`dark` = alias token（`--dsw-alias-` 前缀），`specific.light`/`specific.dark` = specific token（`--dsw-specific-` 前缀）；`buildCss` 双块输出。
-- 皮肤清单见 `src/client/skins.ts`（当前 5 套：午夜蓝/旧纸张/终端绿/ZCode/极光紫）。
+- 皮肤清单见 `src/client/skins.ts`（当前 15 套：内置 5 + Reasonix 移植 8（`rx-*`，官方主题包直移 + 统一推导规则，见 `docs/skins/rx-noir-gold.md` 规则）+ opencode 移植 2（`oc-*`）；移植皮肤由生成器产出，**禁止手改色板**，改规则后全系列重出）。
 
 ## 4. 代码质量规范（大厂级）
 

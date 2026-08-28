@@ -22,7 +22,10 @@ use tauri::{AppHandle, Manager};
 /// 各面去重键：
 ///   - window/tray：(icon_id, dark)——'default' 输出依赖主题，同 id 不同 dark
 ///     必须重应用（过去以 id 为键导致强制主题模式 + 同 id 重试 stale）。
-///   - shell/titlebar：icon_id（静态输出，.ico / SVG 与主题无关）。
+///   - shell：icon_id（静态输出，.ico / SVG 与主题无关）。
+///   - titlebar：**不设去重**——启动早期 eval 时页面图标容器可能尚未就绪或
+///     icons-api 未起（img 404），相同 id 也必须重灌（页面端幂等）修复
+///     「启动后标题栏图标一直空白、切换图标才出现」的时序竞态。
 pub struct IconManager {
     /// 全局 apply 串行锁：worker 内各面串行执行（防并发竞争/卡死）。
     apply_lock: Mutex<()>,
@@ -35,7 +38,6 @@ pub struct IconManager {
     window: Mutex<Option<(String, bool)>>,
     tray: Mutex<Option<(String, bool)>>,
     shell: Mutex<Option<String>>,
-    titlebar: Mutex<Option<String>>,
     /// 窗口 BIG（ICON_BIG）HICON 句柄（isize），替换时 Destroy 旧值防泄漏。
     big_icon: Mutex<Option<isize>>,
 }
@@ -50,7 +52,6 @@ impl Default for IconManager {
             window: Mutex::new(None),
             tray: Mutex::new(None),
             shell: Mutex::new(None),
-            titlebar: Mutex::new(None),
             big_icon: Mutex::new(None),
         }
     }
@@ -178,12 +179,9 @@ impl IconManager {
     /// 页面未就绪时写入 `__mgPendingDesktopIcon`，initShell 补应用（与
     /// __mgSetShellTheme / __mgPendingShellTheme 同一容错模式）。
     fn apply_titlebar_face(&self, app: &AppHandle, icon_id: &str) {
-        {
-            let tb = self.titlebar.lock().unwrap();
-            if tb.as_deref() == Some(icon_id) {
-                return;
-            }
-        }
+        // No dedup: re-inject on every apply (page-side is idempotent). The
+        // first boot eval can race the page container / icons-api being up
+        // (blank img), so the next apply_page_theme or icon switch must retry.
         let Some(win) = app.get_webview_window("main") else {
             return;
         };
@@ -195,7 +193,6 @@ impl IconManager {
             log::warn!("icon: titlebar eval failed: {}", e);
             return;
         }
-        *self.titlebar.lock().unwrap() = Some(icon_id.to_string());
         log::info!("icon: titlebar face applied ({})", icon_id);
     }
 }

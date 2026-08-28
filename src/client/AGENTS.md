@@ -8,7 +8,7 @@
 |---|---|
 | `index.ts` | client 入口：`inject` 声明（slots/workspaces/sessions）、slot 声明合并（`settings.plugin.item`）、设置卡片 + 右侧栏装配、托盘桥 `__mgShellReady` |
 | `settings-card.tsx` | 设置卡片（DSH HUB 设置）：窗口尺寸/主题/托盘行为/通知/提示音/多实例开关/皮肤选择/桌面图标选择（S6，保存 → `set_desktop_icon` invoke）（Setting-Cell 行式），走 `/api/dsh-hub/config` |
-| `skins.ts` | 皮肤注册表：`DshSkin` 定义 + 5 套皮肤（午夜蓝/旧纸张/终端绿/ZCode/极光紫）+ `findSkin`/`applySkin` |
+| `skins.ts` | 皮肤注册表：`DshSkin` 定义 + 15 套皮肤（内置 5：午夜蓝/旧纸张/终端绿/ZCode/极光紫；Reasonix 8：rx-noir-gold 等；opencode 2：oc-classic/oc-graphite，见 docs/skins/）+ `findSkin`/`applySkin` |
 | `backgrounds.ts` | 背景图注册表：`DshBackground` 定义 + 内置图片（远航）+ `applyBackground`（frame 层双层背景注入）/ `fetchStoredBackground` |
 | `right-sidebar.tsx` | 右侧栏：概览（Token 统计）/ 文件树 / Git 三页，body portal 挂载 |
 | `right-sidebar-style.ts` | 右侧栏样式（CSS 字符串注入，`mg-rs-*` 前缀） |
@@ -17,6 +17,8 @@
 | `model-select.tsx` | composer 模型嵌套菜单：slot `conversation.input.model` priority -1 阴影官方，自声明 `modelDirectories` 类型 |
 | `session-tabs.ts` | 会话标签 store：`tabAdd`/`tabRemove`/`tabReplaceOrder` + `useTabs`（useSyncExternalStore），localStorage `dsh-hub:session-tabs` 持久化（旧键 `dsh-hub.session-tabs` 一次性迁移，读旧写新删旧） |
 | `SessionTabs.tsx` | 会话标签栏：createPortal 渲染进标题栏 `#dsh-hub-titlebar .tb-title`——点击切换 / `+` 新建 / `×` 关闭 / 状态点（等待琥珀·完成绿·运行蓝+脉冲）/ 右键菜单复用 session-menu / 拖拽排序 / 内联重命名（IME 组合不误提交）/ 自动滚动 / 归档删除自动移除（空快照不剪枝门控，F1-F8） |
+| `locale.ts` | 词典与语言基建：zh/en flat 词典（~120 键）+ `t()` 插值 + `<html lang>` 订阅（官方 locale 插件写入，dsh 设置→General→Language）+ `useLocaleLang`/`skinText`；**非皮肤文案必须走词典，禁止硬编码中文** |
+| `workspace-menu.ts` | 左侧工作区行右键菜单（新建任务→workspaces.startSession / 打开工作区→open_workspace_path），复用 `.mg-ctxmenu` 样式 |
 | `session-menu.ts` | 任务右键菜单：置顶/重命名/分叉/归档/资源管理器/复制路径 |
 | `session-menu-style.ts` | 任务右键菜单样式（CSS 字符串注入，`mg-ctxmenu-*` 前缀） |
 | `conversation-rail.ts` | 对话定位条：turnTimings 时间窗对齐真实节点 kind 预览（修 #35：extractNodeText / extractTurnSummaries），body portal 挂载 |

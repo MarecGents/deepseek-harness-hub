@@ -28,6 +28,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-slots'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import { DesktopSettingsCard, type DesktopSettingsCardProps } from './settings-card.tsx'
 import { injectCardStyle } from './style.ts'
+import { t } from './locale.ts'
 import { RightSidebar } from './right-sidebar.tsx'
 import { injectRightSidebarStyle } from './right-sidebar-style.ts'
 import { applySkin, fetchStoredSkin, hasUserPickedSkin } from './skins.ts'
@@ -399,10 +400,13 @@ export function apply(ctx: ClientContext): void {
 
   // Disable the default browser context menu (its 返回 / 另存为 items navigate
   // the webview back to the placeholder or do nothing useful — Bug-2) and
-  // replace it with a minimal refresh-only menu. Our own custom menus (right
-  // sidebar file tree, session menu) call stopPropagation on contextmenu, so
-  // they keep their own menu; everywhere else the native menu is suppressed
-  // and a single 刷新 item is offered.
+  // replace it with a minimal refresh-only menu. The WebView2 native menu is
+  // ALSO disabled at the Rust layer; this DOM handler is the single refresh
+  // source. Explicit target exemptions, NOT stopPropagation side-effects:
+  //   - left object rail (session/workspace trees + empty/blank space) →
+  //     their own menus (pin-conversations / workspace-menu) or nothing;
+  //   - interactive controls → nothing.
+  // Only page-level blank space shows the refresh item.
   try {
     ctx.effect(() => {
       let menuEl: HTMLElement | null = null
@@ -419,6 +423,21 @@ export function apply(ctx: ClientContext): void {
         if (menuEl !== null && !menuEl.contains(event.target as Node | null)) closeMenu()
       }
       const onContext = (event: MouseEvent): void => {
+        const target = event.target
+        if (target instanceof Element) {
+          // Object controls (session / workspace tree rows) never show the
+          // refresh item — they open their own menus (pin-conversations /
+          // workspace-menu; the row catches its inner buttons too). EVERYTHING
+          // else — including rail blank space, empty state and most containers
+          // — falls through to the refresh menu, matching "only object
+          // controls are exempt, blank space anywhere is refreshable".
+          if (target.closest('div[role="treeitem"]')) return
+          // Text-editing essentials only: never pop refresh over an active
+          // input/selection. Broad control classes (button/a/[role=button])
+          // were over-broad — they wrap most "blank-looking" chrome and made
+          // plain-space right-click dead. They are thus NOT exempt here.
+          if (target.closest('textarea, input, select, [contenteditable="true"]')) return
+        }
         event.preventDefault()
         closeMenu()
         const el = document.createElement('div')
@@ -433,7 +452,7 @@ export function apply(ctx: ClientContext): void {
         el.style.top = Math.min(event.clientY, window.innerHeight - 44) + 'px'
         const item = document.createElement('button')
         item.setAttribute('role', 'menuitem')
-        item.textContent = '刷新'
+        item.textContent = t('menu.refresh')
         item.style.cssText = [
           'display:block', 'width:100%', 'padding:6px 10px', 'border:none', 'border-radius:6px',
           'background:transparent', 'color:inherit', 'font:inherit', 'text-align:left', 'cursor:pointer',

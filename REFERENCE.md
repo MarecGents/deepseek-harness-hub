@@ -25,6 +25,12 @@
   - `apps/cli` + `apps/web` → 入口与 web 前端壳
 - **调研状态**：已完成
 
+### 2.1 2026-08-27 实测补充（会话/左栏/locale/menu）
+- **会话改名链路**：client `sessions.binding(id).session.rename(title)` → `api.sessions.rename({sessionId,title})` RPC → host 持久化 → settle「title」事件 → byId 快照更新 → 左栏/标签/详情等所有消费 displayTitle 的 UI 自动联动（单一事实源）。
+- **左栏树结构（ui-workspace）**：会话树容器 `role="tree"`、行 = `div[role="treeitem"]`（项目行带 aria-expanded、会话行 aria-selected、搜索行 `button[role=treeitem]`、空态 `.empty` div 在树容器内）；slot 容器 `div[data-slot="sidebar.workspaces"]`；行尾 `span.rowActions` = 官方 ⋯ 菜单锚点（span→Menu(portal, closeOnPointerLeave)→anchor button，`POINTER_GRACE_MS=200`）。
+- **官方重命名对话框**：行 ⋯ 菜单 → `onRename(id,title)` → `WorkspaceBrowser.onSessionRename` → React 内部 state（`setSessionRenameTarget/Draft`）——**无外部触发面**；⚠️ 实测该 ⋯ 弹层在本环境（WebView2/Tauri dev）合成事件与真实点击均无法打开（BUG_FIX_SOP/踩坑 #85）——此类官方弹层不可依赖。
+- **ui-primitives Menu**：item = `<button role="menuitem">`（icon+itemLabel span），容器 `role="menu"`，portal 到 body；`closeOnPointerLeave` 关闭窗口 200ms。
+- **官方 locale**：`packages/client/locale`——语言设置在 dsh 设置 General（Language 行，插件自带）；active locale 写入 `document.documentElement.lang`；词典 = flat key→template（zh 键源），命名空间经 `declare module '@deepseek-ai/dsh-client-ui-slots' { interface LocaleNamespaceMap {…} }` 合并；插件可用 `<html lang>` + MutationObserver 自订阅（dsh-hub locale.ts 做法）。
 ## 3. awesome-tauri-[desk-ui,desk-ui-plugin]
 - **文件目录**：`E:\Workdata\Git_repositories\deepseek\reference\awesome-tauri-[desk-ui,desk-ui-plugin]`
 - **描述**：Tauri 官方维护的 **awesome 精选资源清单**（awesome.re 仓库，非插件 monorepo——本身不含插件源码，README 全为外链）。覆盖面：入门/模板、约 50 个社区插件（`tauri-plugin-pinia`/`tauri-plugin-svelte` 持久化 store、`tauri-plugin-theme` 主题切换、`window-vibrancy`/`window-shadows` 窗口效果、`tauri-update-server` 等）、集成工具（Tauri Specta 类型安全命令、MCP server、更新服务器）、大量 Tauri 桌面应用案例（含托盘/菜单栏应用 KFtray、GitBar、SwitchShuttle、TrayFier）。对 dsh-hub Tauri 2.x 迁移的价值是**索引而非实现**：官方插件（store/shell/fs/notification/updater/single-instance/window-state/tray 等）源码需顺 README 的 `tauri-apps/plugins-workspace` 入口去拿；自动更新可参考清单给出的多个 update-server 实现；主题可参考 `tauri-plugin-theme`。注意：README 未单独列出 single-instance/window-state/tray/deep-link 官方插件条目，需在 plugins-workspace 内确认。
@@ -54,6 +60,8 @@
   - `cmd/` + `sdk/go` + `npm/reasonix` → 多入口（reasonix / -launcher / -plugin-example / extension-protocol-gen）、零依赖 Go SDK、二进制 npm 分发模式
 - **调研状态**：已完成
 
+### 5.1 2026-08-27 实测补充（主题移植）
+- 官方 8 主题（desktop/themes/official/official-*/theme.json）：每套**浅/深双板**，token 固定 15 键 `bg/bgSoft/bgElev/panel/sidebar/chat/workspace/workspaceFiles/border/borderSoft/fg/fgDim/fgFaint/accent/accentFg`——与 dsh 皮肤 token 矩阵直接映射（dsh-hub 移植生成器推导规则见 docs/skins/rx-noir-gold.md）。
 ## 6. DSH-better-sidebar-[dsh-ui,dsh-plugin]
 - **文件目录**：`E:\Workdata\Git_repositories\deepseek\reference\DSH-better-sidebar-[dsh-ui,dsh-plugin]`
 - **描述**：已发布 npm 的官方外生态 dsh 插件（v0.12.3，源码态）。VSCode 风格「右侧栏 + 底部面板」双工作台（文件管理器/CodeMirror 编辑器/内嵌沙箱浏览器/xterm+node-pty 真实终端/Git 面板/subagent 后台任务），按会话隔离持久化，核心启动约 325KB、重依赖懒加载。单包 host/client 双半结构：`cordis.patch.yml` 单条 insert 装配（`better-sidebar`），双安装通道（官方 profile bundle 与 plugin-registry），双 client bundle 同源编译。host 半（`src/index.ts`）注册 `/sidebar/api/*` JSON API、`/sidebar/file` 媒体、`/sidebar/html` 预览、`/sidebar/bundle` 懒加载 chunk、`/sidebar/ws/terminal` WebSocket（node-pty），按 sessionId 隔离 + Host 头信任围栏，并 `ctx.tools` 注册 `terminal_*` 工具；client 半 React 18 挂 `document.body` 的 `[data-dsh-better-sidebar]` portal（非 slot），slots 仅 `settings.section` 与 `conversation.chat.turnTail` 两处注入，i18n 走 `ctx.locale` 词典。对外暴露 `ctx.betterSidebar` 服务（`registerTab`/`registerFileViewer`），内置 7 tab + 6 viewer 走同一服务（吃狗粮）。UI 令牌驱动（`--dsw-alias-*`，与皮肤中心 10 款皮肤自动兼容）；构建：host ESM + 2 个 CJS 浏览器 bundle（`__ModuleLoader__.load` banner、10 项 externals）+ 2 个懒加载 chunk（`globalThis.__dshChunks__`）+ 纯度门（禁 client value-import 其他 `@deepseek-ai/*`，跨插件协作只走 cordis 服务）；`src/context-types.ts` 用 `declare module 'cordis'/'@deepseek-ai/cordis'` 类型合并（client 零 Node 依赖）。工程规范：仓库内 AGENTS.md 接入文档、18 份 docs/plans/ 设计文档、~60 vitest + `mount.e2e.ts` 真实挂载 CI 门禁、OIDC 自动发版。参考价值：dsh 插件开发完整样板（双通道声明/patch 装配/双半划分/HMR-safe disposer/CI 门禁/发版流水线）、官方 UI token 正确姿势（`tests/theme.spec.ts` 守护）、slot 与 portal 边界、懒加载 chunk 路由、服务化扩展点（registerTab + 类型合并 + 能力探测）；`platform: web` 的挂载方式对 dsh-hub Tauri 2.x webview 迁移可直接沿用。
@@ -86,6 +94,8 @@
   - `packages/enterprise` → 商业化扩展形态
 - **调研状态**：已完成
 
+### 8.1 2026-08-27 实测补充（opencode 配色配方）
+- `packages/ui/src/theme/resolve.ts` 调色板：近黑/近白中性底 + 橙强调（#FF8C00 系）+ 功能色（红/青/黄绿/紫）；dsh-hub oc-classic/oc-graphite 据此移植（docs/skins/）。
 ## 9. spacedrive-[desk-ui]
 - **文件目录**：`E:\Workdata\Git_repositories\deepseek\reference\spacedrive-[desk-ui]`
 - **描述**：Spacedrive v2（2.0.0-alpha.2）——本地优先的跨设备文件/数据平台（VDFS 虚拟分布式文件系统 + BLAKE3 内容寻址 + Iroh/QUIC P2P 同步 + AI 数据安全层），「Rust core 守护进程 + Tauri 2 桌面壳 + React 前端」daemon-client 架构，完整可用的 Tauri 2 参考工程（tauri 2.1，features: macos-private-api/devtools/protocol-asset + 7 官方插件：dialog/fs/shell/clipboard-manager/global-shortcut/os/updater）。对 dsh-hub Tauri 迁移的具体参考价值：① **壳层保持薄**——窗口/菜单/快捷键/守护进程生命周期全放 `apps/tauri/src-tauri`，业务逻辑留独立 Rust core（与 dsh-hub「壳层重写、插件层保留」方向一致；注意它用 daemon socket 探活做单实例，非 single-instance 插件，可对比取舍）；② **多窗口范式**——`windows.rs` 的 `SpacedriveWindow` 枚举（Main/Explorer/Settings/Inspector/QuickPreview/VoiceOverlay/ContextMenu 等 17 类）统一生成 label，`WebviewWindowBuilder` + `WebviewUrl::App(route)` 动态建多 webview 窗口（transparent/always_on_top/skip_taskbar 组合），capabilities 按窗口 label 白名单授权；③ **主题**——Windows DWM 暗色标题栏（`DwmSetWindowAttribute`：immersive dark mode + caption/border color）与 macOS `ns_window` 私有 API 样式，可直接借鉴；④ **IPC 桥接模式**——`main.rs` 前端 invoke → `#[tauri::command]`：`daemon_request`（把前端 JSON 代理到 daemon TCP JSON-RPC）、`get_daemon_socket`、`set_current_library_id`（持久化 + `window.eval` 注入全局变量 + emit 事件）、文件打开/分享、全局快捷键、拖拽会话、原生菜单动态启停；daemon 事件经后台 TCP 订阅线程 `app.emit("core-event")` 广播；⑤ **发布链路**——`externalBin` 把 sd-daemon 伴生二进制打进安装包 + updater 接 GitHub Release + Windows `embedBootstrapper` + macOS entitlements；beforeBuildCommand 先 `build:daemon:release` 再 `vite build`；daemon 生命周期（macOS LaunchAgent / Linux systemd user unit / Windows 计划任务）全在壳层。⚠️ 仓库体量巨大，参考时只看 `apps/tauri` 与 `core` 的桥接边界。

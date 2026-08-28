@@ -233,6 +233,14 @@ npm dist-tag add <pkg>@<ver> latest --registry=https://registry.npmjs.org/
 
 ---
 
+## 7.5 bug 修复 → 验证 → 重打包 SOP 要点
+
+- **修复门禁**：tsc（`npm run build`）与 client bundle（`npm run build:client`）**必须都跑**（漏 `build:client`＝新代码不进 lib/，dev/打包仍旧行为——踩坑 #85）；Rust 侧 `cargo fmt --check` + `clippy --all-targets -D warnings` + `cargo test --lib`；lib 零漂移（无未提交 lib/ 变更）。
+- **隔离实例验证**：`DSH_HOME=%TEMP%\<sandbox>` 独立 + `DSH_HUB_PACKAGE_ROOT=<仓库>` 起 dev 实例；行为性 bug 以用户实操确认为准（按 BUG_FIX_SOP.md 全流程）。
+- **多实例/端口冲突**：dev 实例退出后 dev-server 可能残留（占用 17891）→ 启动失败 EADDRINUSE。处置：`netstat -ano | grep :17891` 找 LISTENING PID → `Stop-Process -Id <pid> -Force`；`taskkill //F //IM dsh-hub.exe` 清壳残留；再重启。
+- **验证收尾**：移除临时诊断探针（host 路由+页面打点）→ 门禁复跑 → 踩坑登记 → 提交 dev-v2（按指示推送/合并）。
+- **重打包**（已发布版本后的修复）：dev-v2 升版本（用户指定，如 rc.10 → 下个 rc）→ package.json/package-lock.json/tauri.conf.json 三处一致 → `node scripts/verify-release.mjs` ALL PASS → `npm run build:installer` → 更新打包记录 → 真机验证。
+
 ## 8. 相关文档
 
 - 全部踩坑记录：[docs/关键踩坑记录.md](docs/关键踩坑记录.md)
