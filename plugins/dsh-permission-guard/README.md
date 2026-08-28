@@ -15,7 +15,22 @@
 - **能力键**：shell 工具按命令粒度 `bash=<cmd>` / `pwsh=<cmd>`；非 shell 工具按工具名 `<toolname>`。支持 `*` 通配。
 - **内置工具**：
   - `permission_status`：查看当前白名单（tiers/rules/defaultTier）。
-  - `permission_reload`：重新加载配置并强制失效缓存（该操作本身受拦截策略约束，默认需确认——它可能改变策略本身）。
+  - `permission_reload`：重新加载配置并强制失效缓存（只读操作，auto 放行）。
+
+## 策略档位（policy）
+
+`permission-guard.json` 顶层 `policy` 字段（默认 `follow`）决定拦截松紧，与 dsh 官方权限预设联动：
+
+| 档位 | 行为 |
+|---|---|
+| `follow`（默认） | 跟随会话官方预设：`danger-full-access`（Full Access / approval=never）→ 除 `never` 红线外全部放行；`read-only` → 只放行只读操作；`workspace-write` → 按下方四级白名单 |
+| `strict` | 始终按四级白名单拦截，不跟随会话预设 |
+| `read-only` | 无条件只放行只读操作（auto 白名单条目），其余一律拦截 |
+
+`never` 红线在任何档位下都生效。档位可通过 HTTP 路由读写（供 dsh-hub 设置卡与会话左下角权限 chip）：
+
+- `GET /api/dsh-permission-guard/policy` → `{ ok, policy }`
+- `POST /api/dsh-permission-guard/policy` body `{ policy }`（值 ∈ follow/strict/read-only；带 loopback Host/Origin 校验）
 
 ## 挂载
 

@@ -35,7 +35,7 @@ import { join } from 'node:path'
 import { homedir } from 'node:os'
 
 export const name = '@dsh-external/dsh-permission-guard'
-export const inject = ['tools', 'systemPrompt']
+export const inject = ['tools', 'systemPrompt', 'webServer']
 
 const CONFIG_NAME = 'permission-guard.json'
 
@@ -46,6 +46,11 @@ const CONFIG_NAME = 'permission-guard.json'
 // Windows main platform; pure-Windows red-line commands live only under
 // `pwsh=` so no pattern is dead on every OS.
 const DEFAULT_CONFIG = {
+  // Policy tier: 'follow' (default) mirrors the session's official permission
+  // preset (danger-full-access -> only the never red lines stay; read-only ->
+  // read-only allowlist only); 'strict' always applies this allowlist; 
+  // 'read-only' unconditionally allows only the read-only allowlist.
+  policy: 'follow',
   defaultTier: 'confirm',
   rules: [
     { match: 'bash=*', tier: 'confirm' },
@@ -167,7 +172,79 @@ function capabilityKey(exec) {
   return String(execName || '')
 }
 
-// ── decision ──────────────────────────────────────────────
+// ── session permission state (zero-dependency fold from the session log) ──
+// dsh keeps sandbox/mode, approval/policy and permission/preset as log events;
+// the effective value is the LAST one written. agentless executions (no
+// session) yield undefined and fall back to the allowlist behaviour.
+function lastEventValue(exec, type) {
+  const events = exec?.agent?.session?.events
+  if (!Array.isArray(events)) return undefined
+  for (let i = events.length - 1; i >= 0; i--) {
+    const ev = events[i]
+    if (ev?.type === type) return ev?.data?.value ?? ev?.data?.mode ?? ev?.data?.policy
+  }
+  return undefined
+}
+
+// ── policy write (update only the policy field of the raw config) ────────
+function writePolicy(policy) {
+  const p = configPath()
+  let raw = {}
+  try { raw = JSON.parse(readFileSync(p, 'utf8')) } catch { /* missing/corrupt -> start fresh */ }
+  raw.policy = policy
+  writeFileSync(p, JSON.stringify(raw, null, 2) + '\n', 'utf8')
+  configCache = null
+  return raw
+}
+
+// ── policy HTTP route (read/write the policy tier from the dsh-hub UI) ───
+// DNS-rebinding / CSRF guards copied from dsh-hub's host-guard (loopback-only
+// Host, loopback-or-tauri Origin on state-changing requests).
+function isHostAllowed(req) {
+  const host = (req.headers.host ?? '').trim().toLowerCase()
+  const hostname = host.startsWith('[') ? host.slice(1, host.indexOf(']')) : host.split(':')[0]
+  return hostname === '127.0.0.1' || hostname === 'localhost' || hostname === '::1'
+}
+function rejectIfBadHost(req, res) {
+  if (isHostAllowed(req)) return false
+  res.writeHead(403, { 'content-type': 'application/json; charset=utf-8' })
+  res.end(JSON.stringify({ ok: false, error: 'host-not-allowed' }))
+  return true
+}
+function isOriginAllowed(req) {
+  const origin = (req.headers.origin ?? '').trim().toLowerCase()
+  if (origin === '') return false
+  try {
+    const u = new URL(origin)
+    if (u.protocol === 'tauri:') return u.hostname === 'localhost'
+    return u.hostname === '127.0.0.1' || u.hostname === 'localhost' || u.hostname === '::1'
+  } catch { return false }
+}
+function rejectIfBadOrigin(req, res) {
+  if (req.method === 'GET' || req.method === 'HEAD') return false
+  if (isOriginAllowed(req)) return false
+  res.writeHead(403, { 'content-type': 'application/json; charset=utf-8' })
+  res.end(JSON.stringify({ ok: false, error: 'origin-not-allowed' }))
+  return true
+}
+function readJsonBody(req) {
+  return new Promise((resolve) => {
+    const chunks = []
+    req.on('data', (c) => chunks.push(c))
+    req.on('end', () => {
+      try { resolve(JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}')) }
+      catch { resolve({}) }
+    })
+    req.on('error', () => resolve({}))
+  })
+}
+function json(res, status, body) {
+  res.writeHead(status, { 'content-type': 'application/json; charset=utf-8' })
+  res.end(JSON.stringify(body))
+}
+const POLICY_VALUES = ['follow', 'strict', 'read-only']
+
+// ── decision ──────────────────────────────────────────────────────────────
 // Precedence: explicit tier patterns (never > confirm > give-command > auto),
 // then ordered `rules` fallbacks, then defaultTier.
 function decide(config, key) {
@@ -190,7 +267,13 @@ function denialFor(tier, key) {
   }
 }
 
-const GUIDANCE = '## 权限分级（dsh-permission-guard）\n\n当前会话启用逐命令权限白名单（~/.dsh/permission-guard.json），四级能力边界：\n- auto         可自动执行（放行）\n- give-command 只给命令不代跑：被拦截时把命令原样给用户，让用户自己执行\n- confirm      先讲清等确认：被拦截时说明改什么/为什么/影响，等用户确认（默认层级，未列入白名单的操作一律需确认）\n- never        红线：绝不执行\n\nbash/pwsh 命令按逐命令匹配（Windows 会话为 pwsh）；未命中白名单的 shell 命令默认走 confirm。被拦截时不要绕过；按层级提示用户。可用 permission_status 查看白名单，permission_reload 重载配置（只读操作，auto 放行）。若用户修改了 permission-guard.json 中的放行条目，先 permission_reload 使新配置生效，再重试被拦截的操作。'
+/** Read-only allowlist test: only the auto tier entries may run. */
+function readonlyDenial(config, key, label) {
+  if (matchAny(key, config.tiers.auto)) return undefined
+  return '权限拦截（' + label + '）：此操作不在只读放行列表 → ' + key
+}
+
+const GUIDANCE = '## 权限分级（dsh-permission-guard）\n\n当前会话启用逐命令权限白名单（~/.dsh/permission-guard.json），策略档位（policy）决定拦截松紧：\n- follow（默认）跟随会话官方权限预设：danger-full-access（Full Access）→ 除 never 红线外全部放行；read-only → 只放行只读操作；workspace-write → 按下方白名单\n- strict        始终按白名单四级拦截（auto / give-command / confirm / never），不跟随会话预设\n- read-only     无条件只放行只读操作\n\n四级能力边界：auto 可自动执行；give-command 只给命令不代跑；confirm 先讲清等确认（默认层级，未列入白名单的操作一律需确认）；never 红线绝不执行。bash/pwsh 命令按逐命令匹配（Windows 会话为 pwsh）。被拦截时不要绕过；按层级提示用户。可用 permission_status 查看白名单，permission_reload 重载配置（只读操作，auto 放行）。若用户修改了 permission-guard.json 中的放行条目，先 permission_reload 使新配置生效，再重试被拦截的操作。'
 
 const OBJ = { type: 'object', additionalProperties: false, properties: { ok: { type: 'boolean' }, config: { type: 'object' }, error: { type: 'string' } } }
 
@@ -200,10 +283,58 @@ export function apply(ctx) {
 
   // Global guard: checked before every tool execution.
   disposers.push(ctx.tools.guard((exec) => {
+    const config = loadConfigCached(false)
     const key = capabilityKey(exec)
-    const tier = decide(loadConfigCached(false), key)
-    return denialFor(tier, key)
+    const policy = config.policy || 'follow'
+
+    // The never tier is absolute in every policy (including Full Access).
+    if (matchAny(key, config.tiers.never)) return denialFor('never', key)
+
+    if (policy === 'strict') return denialFor(decide(config, key), key)
+
+    if (policy === 'read-only') return readonlyDenial(config, key, 'read-only 档')
+
+    // follow: mirror the session's official permission preset.
+    const mode = lastEventValue(exec, 'sandbox/mode')
+    const approval = lastEventValue(exec, 'approval/policy')
+    if (mode === 'danger-full-access' || approval === 'never') return undefined
+    if (mode === 'read-only') return readonlyDenial(config, key, '只读会话')
+    // workspace-write (or no session state): the allowlist logic.
+    return denialFor(decide(config, key), key)
   }))
+
+  // Policy tier route for the dsh-hub settings card and composer chip.
+  const server = ctx.get('webServer')
+  if (server && typeof server.register === 'function') {
+    const disposeRoute = server.register({
+      kind: 'exact',
+      path: '/api/dsh-permission-guard/policy',
+      handler: (req, res) => {
+        if (rejectIfBadHost(req, res)) return Promise.resolve()
+        if (req.method === 'GET') {
+          json(res, 200, { ok: true, policy: (loadConfigCached(false).policy || 'follow') })
+          return Promise.resolve()
+        }
+        if (req.method === 'POST') {
+          if (rejectIfBadOrigin(req, res)) return Promise.resolve()
+          return readJsonBody(req).then((body) => {
+            const policy = body?.policy
+            if (!POLICY_VALUES.includes(policy)) {
+              json(res, 400, { ok: false, error: 'invalid policy; expected one of ' + POLICY_VALUES.join('/') })
+              return
+            }
+            writePolicy(policy)
+            config = loadConfigCached(true)
+            json(res, 200, { ok: true, policy })
+          })
+        }
+        json(res, 405, { ok: false, error: 'method-not-allowed' })
+        return Promise.resolve()
+      },
+    })
+    if (typeof disposeRoute === 'function') disposers.push(disposeRoute)
+    ctx.logger?.info?.('[dsh-permission-guard] policy route mounted at /api/dsh-permission-guard/policy')
+  }
 
   disposers.push(ctx.systemPrompt.section({ name: 'tool:permission-guard', order: 116, text: GUIDANCE }))
 

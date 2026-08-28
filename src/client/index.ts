@@ -36,6 +36,7 @@ import { applyBackground, fetchStoredBackground, hasUserPickedBackground } from 
 import { installPinnedConversations } from './pin-conversations.ts'
 import { installConversationRail, refreshConversationRailPalette } from './conversation-rail.ts'
 import { installModelSelect } from './model-select.tsx'
+import { PermissionPolicyChip, type PermissionPolicyChipProps } from './permission-policy-chip.tsx'
 import { SessionTabs } from './SessionTabs.tsx'
 import { bindPtyRuntime, fetchShells, ptyToggle } from './pty-store.ts'
 import { syncHostPrefs } from './terminal-prefs.ts'
@@ -57,6 +58,14 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
      * rc.7 起 slot 从 `list` 改为 `keyed`（卡片按 settings namespace key 派发）。
      */
     'settings.plugin.item': { kind: 'keyed'; scope: 'root'; owner: SettingsPluginItemOwnerProps }
+    /**
+     * Left end of the composer tool row, beside the official permission-preset
+     * chip — the seat for the dsh-hub permission-policy tier chip. Runtime
+     * owner share is ui-conversation's InputZone; this structural subset is
+     * all the chip reads (the session id), mirroring the local declare
+     * pattern above (the official package is not a compile-time dependency).
+     */
+    'conversation.input.left': { kind: 'list'; scope: 'session'; owner: PermissionPolicyChipProps }
   }
 }
 
@@ -305,6 +314,24 @@ export function apply(ctx: ClientContext): void {
   } catch (error) {
     // Card mounting must never take down the tray bridge.
     console.warn('[dsh-hub] settings card injection failed:', error)
+  }
+
+  // Permission-policy chip: a small control at the left end of the composer
+  // tool row (official `conversation.input.left` slot), beside the official
+  // permission-preset chip. Selects the dsh-permission-guard plugin's policy
+  // tier (follow/strict/read-only); the plugin's own route persists it.
+  try {
+    slots.inject('conversation.input.left', function* () {
+      yield slots.register({
+        name: 'conversation.input.left',
+        // list slot: identified by id (not the keyed card's key).
+        id: 'dsh-hub-permission-policy',
+        priority: 20,
+      }, (props: PermissionPolicyChipProps) => PermissionPolicyChip({ session: props.session }))
+    })
+  } catch (error) {
+    // A chip failure must never take down the tray bridge.
+    console.warn('[dsh-hub] permission-policy chip injection failed:', error)
   }
 
   // Right sidebar: mount a body portal like dsh-better-sidebar. This keeps

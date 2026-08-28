@@ -20,6 +20,7 @@
  * @module dsh-hub/client
  */
 import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client';
+import { type PermissionPolicyChipProps } from './permission-policy-chip.tsx';
 declare module '@deepseek-ai/dsh-client-ui-slots' {
     interface SlotMap {
         /**
@@ -31,6 +32,18 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
             kind: 'keyed';
             scope: 'root';
             owner: SettingsPluginItemOwnerProps;
+        };
+        /**
+         * Left end of the composer tool row, beside the official permission-preset
+         * chip — the seat for the dsh-hub permission-policy tier chip. Runtime
+         * owner share is ui-conversation's InputZone; this structural subset is
+         * all the chip reads (the session id), mirroring the local declare
+         * pattern above (the official package is not a compile-time dependency).
+         */
+        'conversation.input.left': {
+            kind: 'list';
+            scope: 'session';
+            owner: PermissionPolicyChipProps;
         };
     }
 }
