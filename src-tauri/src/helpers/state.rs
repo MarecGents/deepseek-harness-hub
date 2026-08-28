@@ -106,9 +106,17 @@ pub fn save_window_state(state: WindowState) -> Result<(), Box<dyn std::error::E
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
+
+    // Rust runs tests in parallel threads by default; the three dsh_home_*
+    // tests read/write the process-wide DSH_HOME env var, so they must be
+    // serialized or a concurrent remove_var/set_var from a sibling test makes
+    // them flaky (CI failure: dsh_home_custom saw the default home).
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     #[test]
     fn dsh_home_default() {
+        let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         // DSH_HOME 未设置时，返回 ~/.dsh。
         std::env::remove_var("DSH_HOME");
         let home = dsh_home();
@@ -117,6 +125,7 @@ mod tests {
 
     #[test]
     fn dsh_home_trim_empty() {
+        let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         // DSH_HOME=' ' 时，trim 后为空，应返回默认。
         std::env::set_var("DSH_HOME", "   ");
         let home = dsh_home();
@@ -126,6 +135,7 @@ mod tests {
 
     #[test]
     fn dsh_home_custom() {
+        let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         std::env::set_var("DSH_HOME", "/tmp/test_dsh");
         let home = dsh_home();
         assert_eq!(home, PathBuf::from("/tmp/test_dsh"));
