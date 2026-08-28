@@ -246,31 +246,6 @@ fn build_bgra_and_mask(rgba: &[u8]) -> (Vec<u8>, Vec<u8>) {
     (bgra, and_mask)
 }
 
-/// 解析桌面路径（FOLDERID_Desktop，处理 OneDrive 重定向）。
-/// 从 lib.rs 迁入（Controller→Helper）：update_shell_icon_sources 与
-/// create_toast_shortcuts（lib.rs）共用，保证两处改的是同一个 .lnk。
-#[cfg(target_os = "windows")]
-pub fn known_desktop_path() -> std::path::PathBuf {
-    use windows::Win32::System::Com::CoTaskMemFree;
-    use windows::Win32::UI::Shell::{FOLDERID_Desktop, SHGetKnownFolderPath, KNOWN_FOLDER_FLAG};
-    // SAFETY: SHGetKnownFolderPath returns memory allocated by the shell's
-    // task allocator — pairing the call with CoTaskMemFree (via the raw
-    // pointer before it is dropped) is the documented ownership contract.
-    unsafe {
-        if let Ok(p) = SHGetKnownFolderPath(&FOLDERID_Desktop, KNOWN_FOLDER_FLAG(0), None) {
-            let s = p.to_string().unwrap_or_default();
-            CoTaskMemFree(Some(p.as_ptr() as _));
-            if !s.is_empty() {
-                return std::path::PathBuf::from(s);
-            }
-        }
-    }
-    // 兜底：%USERPROFILE%\Desktop。
-    std::env::var_os("USERPROFILE")
-        .map(|u| std::path::Path::new(&u).join("Desktop"))
-        .unwrap_or_default()
-}
-
 #[cfg(test)]
 mod tests {
     use super::build_bgra_and_mask;
