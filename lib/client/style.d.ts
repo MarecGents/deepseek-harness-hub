@@ -52,3 +52,14 @@ export declare const CARD_CSS_CLASSES: {
 };
 /** Inject the card stylesheet once (idempotent; no-op when already present). */
 export declare function injectCardStyle(): void;
+/**
+ * Long-history rendering aid: browser-level `content-visibility` on the chat
+ * flow rows. dsh renders every loaded message node (no virtualizer); after
+ * paging through a long session the DOM grows to thousands of rows and
+ * scrolling/reflow slows. `content-visibility: auto` makes the browser skip
+ * layout/paint for off-screen rows; `contain-intrinsic-size` reserves an
+ * estimated row height so the scrollbar does not jump. Anchored on the
+ * official stable `data-chat-flow` column (direct children = message nodes).
+ * No dsh source change; injection only.
+ */
+export declare function injectChatVisibilityStyle(): void;
