@@ -58,7 +58,12 @@ const DEFAULT_CONFIG = {
       'pwsh=git *', 'pwsh=Get-ChildItem*', 'pwsh=Get-Content*', 'pwsh=Write-Output*',
       'pwsh=Get-Location*', 'pwsh=Set-Location*', 'pwsh=Select-String*', 'pwsh=node --check*',
       'pwsh=ls*', 'pwsh=cat*', 'pwsh=pwd*', 'pwsh=cd*', 'pwsh=echo*',
-      'read', 'glob', 'grep', 'permission_status'
+      'read', 'glob', 'grep', 'permission_status',
+      // Read-only, side-effect-free tools must never be confirm-gated: reload
+      // only re-reads the config (gating it deadlocks config updates), and
+      // ask_user_question IS the confirmation channel itself (gating it makes
+      // the confirm tier unusable). Real incident 2026-08-28 (#89).
+      'permission_reload', 'ask_user_question'
     ],
     'give-command': [
       'bash=rm*', 'bash=reg*', 'bash=shutdown*', 'bash=del /f*', 'bash=rd /s*', 'bash=taskkill*',
@@ -185,7 +190,7 @@ function denialFor(tier, key) {
   }
 }
 
-const GUIDANCE = '## 权限分级（dsh-permission-guard）\n\n当前会话启用逐命令权限白名单（~/.dsh/permission-guard.json），四级能力边界：\n- auto         可自动执行（放行）\n- give-command 只给命令不代跑：被拦截时把命令原样给用户，让用户自己执行\n- confirm      先讲清等确认：被拦截时说明改什么/为什么/影响，等用户确认（默认层级，未列入白名单的操作一律需确认）\n- never        红线：绝不执行\n\nbash/pwsh 命令按逐命令匹配（Windows 会话为 pwsh）；未命中白名单的 shell 命令默认走 confirm。被拦截时不要绕过；按层级提示用户。可用 permission_status 查看白名单，permission_reload 重载配置（该操作本身也受拦截策略约束，需确认）。'
+const GUIDANCE = '## 权限分级（dsh-permission-guard）\n\n当前会话启用逐命令权限白名单（~/.dsh/permission-guard.json），四级能力边界：\n- auto         可自动执行（放行）\n- give-command 只给命令不代跑：被拦截时把命令原样给用户，让用户自己执行\n- confirm      先讲清等确认：被拦截时说明改什么/为什么/影响，等用户确认（默认层级，未列入白名单的操作一律需确认）\n- never        红线：绝不执行\n\nbash/pwsh 命令按逐命令匹配（Windows 会话为 pwsh）；未命中白名单的 shell 命令默认走 confirm。被拦截时不要绕过；按层级提示用户。可用 permission_status 查看白名单，permission_reload 重载配置（只读操作，auto 放行）。若用户修改了 permission-guard.json 中的放行条目，先 permission_reload 使新配置生效，再重试被拦截的操作。'
 
 const OBJ = { type: 'object', additionalProperties: false, properties: { ok: { type: 'boolean' }, config: { type: 'object' }, error: { type: 'string' } } }
 
