@@ -61,11 +61,18 @@ const ROOT = {
   // fit when the bar overflows (Bug-4); no horizontal scroll.
   overflow: 'hidden', height: '100%', boxSizing: 'border-box', paddingLeft: 6,
   fontFamily: 'var(--dsw-font-family, system-ui)', fontSize: 12,
-  WebkitAppRegion: 'no-drag',
+  // The strip lives inside the titlebar's drag region (.tb-title); the
+  // container stays draggable so EMPTY strip space moves the window, while
+  // each tab below opts out (no-drag) and stays clickable. Previously the
+  // whole strip was no-drag and covered the titlebar, making the window
+  // undraggable (2026-08-29 report).
+  WebkitAppRegion: 'drag',
 } as CSSProperties
-const TAB: CSSProperties = {
+const TAB = {
   display: 'inline-flex', alignItems: 'center', gap: 5, padding: '0 8px', borderRadius: 6, cursor: 'pointer',
   background: 'transparent', border: 'none', color: 'var(--dsw-alias-label-tertiary, #9aa7bd)', whiteSpace: 'nowrap',
+  // Tab is interactive: opt out of the container drag region.
+  WebkitAppRegion: 'no-drag',
   // Browser-tab active indicator: a 2px brand underline hugging the titlebar's
   // bottom border (official tab pattern — selected accent + 2px bar); the
   // transparent placeholder keeps heights identical for inactive tabs.
@@ -78,7 +85,7 @@ const TAB: CSSProperties = {
   fontSize: 13,
   transition: 'background .12s ease, color .12s ease',
   userSelect: 'none',
-}
+} as CSSProperties
 const TAB_ACTIVE: CSSProperties = {
   ...TAB,
   background: 'var(--dsw-alias-interactive-bg-hover, rgba(128,128,128,.16))',
@@ -86,13 +93,14 @@ const TAB_ACTIVE: CSSProperties = {
   borderBottom: '2px solid var(--dsw-alias-brand-primary, #3964fe)',
 }
 const TAB_DRAGGING: CSSProperties = { ...TAB, opacity: 0.4 }
-const PLUS: CSSProperties = { border: 'none', background: 'transparent', color: 'inherit', cursor: 'pointer', fontSize: 15, padding: '0 7px', borderRadius: 6, flex: 'none', height: '100%' }
-const INLINE_INPUT: CSSProperties = {
+const PLUS = { border: 'none', background: 'transparent', color: 'inherit', cursor: 'pointer', fontSize: 15, padding: '0 7px', borderRadius: 6, flex: 'none', height: '100%', WebkitAppRegion: 'no-drag' } as CSSProperties
+const INLINE_INPUT = {
   // Official brand token (--dsw-accent is not part of the alias/specific set
   // the skins override, so the rename makes the editor follow the active skin).
   border: '1px solid var(--dsw-alias-brand-primary, #3964fe)', background: 'transparent', color: 'inherit',
   fontSize: 12, padding: '1px 4px', borderRadius: 4, outline: 'none', minWidth: 60, boxSizing: 'border-box',
-}
+  WebkitAppRegion: 'no-drag',
+} as CSSProperties
 
 export function SessionTabs({ ctx }: SessionTabsProps): ReactNode {
   const tabs = useTabs()
