@@ -280,4 +280,5 @@ npm publish --access public --tag rc --registry=https://registry.npmjs.org/
 ## 文档
 
 - [开发约束（AGENTS.md，开发前必读）](AGENTS.md) —— 全部开发 harness 总纲 + 分层子 harness 索引
+- [调试与修复技术路线手册](docs/调试与修复技术路线手册.md) —— 会话 zstd 修复 / 崩溃定位 / 插件契约 / 验证矩阵（反复出现问题的调查路线，避免重新调研）
 - [关键踩坑记录（勿重蹈）](docs/关键踩坑记录.md)
