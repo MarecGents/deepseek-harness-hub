@@ -98,7 +98,7 @@
 |---|---|---|---|
 | 31 | 进程身份 | 复制 node.exe + rcedit 打补丁为 dsh-hub.exe/dsh-hub-guard.exe（任务管理器显示产品名） | ➖ 不适用：Tauri exe 原生身份（dsh-hub.exe 已由 cargo 构建，含图标/版本信息） |
 | 32 | 安装脚本 | postinstall 建桌面快捷方式（VBS 隐藏控制台）；postuninstall 清理；install-local 本地打包 | ⚠️ postinstall 已简化（仅 dsh/pnpm 依赖检查，不再建 WebView2 快捷方式）；NSIS 安装器（M5）+ 快捷方式由壳 AUMID 注册生成 |
-| 33 | AppUserModelID | `SetCurrentProcessExplicitAppUserModelID` 保证任务栏归属/Toast 显示 | ✅ `register_toast_aumid`（注册表 + 开始菜单/桌面快捷方式 AUMID 属性） |
+| 33 | AppUserModelID | `SetCurrentProcessExplicitAppUserModelID` 保证任务栏归属/Toast 显示 | ✅ `register_toast_aumid`（注册表 + 开始菜单快捷方式 AUMID 属性；桌面快捷方式仅安装时创建，启动不重建） |
 | 34 | 模型嵌套菜单（PR #33） | composer 模型 seat 替换为 provider→model 两级菜单 + 独立 effort 触发器 | ✅ `src/client/model-select.tsx`：官方 slot `conversation.input.model` priority -1 阴影内置；复用官方 modelDirectories 服务；服务缺失降级内置 seat 不阻塞 |
 | 35 | findings-ledger 插件（PR #38） | baseline 快照 + 变更对账 + 覆盖度报告 | ✅ `plugins/dsh-findings-ledger/`：独立插件（双轨分发见 BUILD.md §7）；turn/end 自动出报告 |
 | 36 | 卸载快速通道 | 卸载器启动提速 + sidecar 强杀防残留 | ✅ installer-hooks.nsi PREUNINSTALL Get-Process（非 CIM）+ 去 Sleep；Job Object 随壳退出连带清理 sidecar |

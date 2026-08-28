@@ -441,7 +441,10 @@ fn restore_window_state(win: &tauri::WebviewWindow) {
 /// 三管齐下（幂等，失败仅告警；M5 打包后 NSIS 自带快捷方式）：
 ///   1. 注册表 HKCU\Software\Classes\AppUserModelId\{AUMID}（DisplayName/IconUri）
 ///   2. 开始菜单快捷方式 + AUMID 属性（微软文档最可靠的未打包 toast 显示方式）
-///   3. 桌面快捷方式（用户手动启动测试入口）
+///
+/// 桌面快捷方式**只在 NSIS 安装时创建**（安装完成页的「创建桌面快捷方式」
+/// 按钮，用户点击才创建）——启动不再创建/检查桌面 lnk：用户可能已把快捷
+/// 方式移到其它文件夹，启动重建会覆盖用户布局（2026-08-28 改进点）。
 #[cfg(target_os = "windows")]
 fn register_toast_aumid() {
     use std::os::windows::process::CommandExt;
@@ -469,11 +472,14 @@ fn register_toast_aumid() {
     add("DisplayName", "DeepSeek Harness Hub");
     add("IconUri", &exe_str);
 
-    // 2+3) 开始菜单 + 桌面快捷方式（带 AUMID 属性）。
+    // 2) 开始菜单快捷方式（带 AUMID 属性）。桌面快捷方式由 NSIS 安装器
+    //    负责（安装向导可取消勾选），启动不再创建。
     create_toast_shortcuts(&exe);
 }
 
-/// 用 IShellLink 创建开始菜单 + 桌面快捷方式并写入 AppUserModelID（Q3/Q4）。
+/// 用 IShellLink 创建开始菜单快捷方式并写入 AppUserModelID（Q3/Q4）。
+/// 桌面快捷方式不在启动时创建——安装期由 NSIS 负责，避免启动重建覆盖
+/// 用户移动过的快捷方式（2026-08-28 改进点）。
 #[cfg(target_os = "windows")]
 fn create_toast_shortcuts(exe: &std::path::Path) {
     use crate::winutil::{wide, ComInit};
@@ -500,11 +506,10 @@ fn create_toast_shortcuts(exe: &std::path::Path) {
         .join("Windows")
         .join("Start Menu")
         .join("Programs");
-    // 桌面路径（处理 OneDrive 重定向）：SHGetKnownFolderPath(FOLDERID_Desktop)。
-    let desktop = theme::known_desktop_path();
 
-    let targets: Vec<(std::path::PathBuf, &str)> =
-        vec![(start_menu, "start-menu"), (desktop, "desktop")];
+    // 只创建开始菜单快捷方式。桌面快捷方式由 NSIS 安装器负责（安装向导
+    // 可取消勾选）；启动不再创建，避免覆盖用户移动过的桌面 lnk。
+    let targets: Vec<(std::path::PathBuf, &str)> = vec![(start_menu, "start-menu")];
 
     for (dir, tag) in targets {
         if dir.as_os_str().is_empty() {
@@ -570,8 +575,8 @@ fn create_toast_shortcuts(exe: &std::path::Path) {
     }
 }
 
-// 解析桌面路径（FOLDERID_Desktop）已迁至 theme::known_desktop_path
-// （Helper 层，与 update_shell_icon_sources 共用）。宽字符串编码已迁至
+// 桌面快捷方式由 NSIS 安装器负责（安装完成页按钮，用户点击才创建），
+// 启动不再创建/更新桌面 lnk（2026-08-28 改进点）。宽字符串编码已迁至
 // helpers/winutil.rs 的 winutil::wide（单一实现）。
 
 /// --smoke 诊断模式标记（T4.4）：main.rs 解析参数后置位，

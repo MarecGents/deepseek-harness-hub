@@ -252,7 +252,9 @@ fn update_shell_icon_sources(_app: &AppHandle, icon_id: &str) {
         return; // 未置去重键——下次同 id 进入可重试（如 .ico 尚未就位）。
     };
 
-    // 定位两个 .lnk（与 lib.rs register_toast_aumid 相同路径）。
+    // 只更新开始菜单快捷方式图标（与 lib.rs create_toast_shortcuts 同路径）。
+    // 桌面快捷方式由 NSIS 安装器负责（安装向导可取消勾选），启动不再检查/
+    // 创建——用户可能已把快捷方式移到其它文件夹（2026-08-28 改进点）。
     let mut lnk_paths: Vec<std::path::PathBuf> = Vec::new();
     if let Some(appdata) = std::env::var_os("APPDATA") {
         let start_menu = std::path::Path::new(&appdata)
@@ -262,11 +264,6 @@ fn update_shell_icon_sources(_app: &AppHandle, icon_id: &str) {
             .join("Programs")
             .join("DeepSeek Harness Hub.lnk");
         lnk_paths.push(start_menu);
-    }
-    // 桌面：FOLDERID_Desktop（OneDrive 重定向安全）。
-    let desktop = crate::theme::known_desktop_path().join("DeepSeek Harness Hub.lnk");
-    if desktop.exists() {
-        lnk_paths.push(desktop);
     }
 
     let wide_ico = wide(&ico.to_string_lossy());

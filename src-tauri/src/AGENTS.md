@@ -31,7 +31,7 @@ src-tauri/src/
 | `managers/single_instance.rs` | **Manager** | 多实例防护插件（allowMultipleInstances=false 语义） |
 | `managers/icon.rs` | **Manager** | IconManager：图标 6 面编排（窗口 SMALL+BIG / 托盘 / 壳源 .lnk×2+AUMID+SHChangeNotify / 自绘标题栏）、面级幂等（去重键含 dark）、全局 apply_lock 串行、单 worker+pending 合并（Condvar）、BIG HICON 生命周期持有；apply / apply_theme_aware / sync_after_shortcuts（迁移自 helpers/theme.rs） |
 | `services/notify.rs` | **Services** | 系统 toast（NotificationExt + AUMID）+ focus-session：`notify_task_complete` 携带 session_id；点击 toast → wait_for_action（spawn_blocking）→ unminimize/show/set_focus + `mg:shell-command` focus-session 事件（`__mgShellReady` 300ms×20 重试）跳对应会话 |
-| `helpers/theme.rs` | **Helper** | 无状态纯函数：DWM 主题（apply_theme）+ desktop_icon_png + apply_window_icons（SMALL+BIG，BIG HICON 生命周期交调用方）+ known_desktop_path；图标编排迁至 managers/icon.rs |
+| `helpers/theme.rs` | **Helper** | 无状态纯函数：DWM 主题（apply_theme）+ desktop_icon_png + apply_window_icons（SMALL+BIG，BIG HICON 生命周期交调用方）；图标编排迁至 managers/icon.rs |
 | `helpers/state.rs` | **Helper** | `$DSH_HOME` 定位（dsh_home()）+ 窗口状态读写 |
 | `helpers/quit.rs` | **Helper** | quit.marker 语义（write_quit_marker） |
 | `helpers/os_theme.rs` | **Helper** | 系统深浅色探测 |
