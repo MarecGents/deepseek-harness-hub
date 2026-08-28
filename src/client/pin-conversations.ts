@@ -11,10 +11,12 @@
  *    `role="tree"`, `div[role="treeitem"]` (session rows; project rows carry
  *    `aria-expanded`, search-result rows are `<button>` and are excluded);
  *  - row → session mapping is **content-based**: a row is the session whose
- *    `displayTitle` text appears inside it. Duplicate titles → the whole
- *    title group is skipped (never mislabeled). Renamed sessions simply stop
- *    matching until the row re-renders with the new title — the pin itself
- *    survives (pins are keyed by session id);
+ *    `displayTitle` text appears inside it. Duplicate titles pick the most
+ *    recently updated candidate (2026-08-29: several untitled sessions in one
+ *    workspace share the cwd basename; skipping the whole group made the
+ *    right-click / ⋯ menus vanish once a session started). Renamed sessions
+ *    simply stop matching until the row re-renders with the new title — the
+ *    pin itself survives (pins are keyed by session id);
  *  - the pinned section is injected as a **sibling of `role="tree"`** inside
  *    the slot container (`role="group" aria-label="置顶会话"`), so the tree's
  *    aria structure is untouched; an independent scroll block (40vh);
@@ -68,6 +70,8 @@ interface SessionSummaryLike {
   displayTitle?: string
   title?: string
   blank?: boolean
+  /** Host summary timestamp — used to disambiguate duplicate display titles. */
+  updatedAt?: number
 }
 interface SessionsListLike {
   ids?: string[]
@@ -405,10 +409,24 @@ export function installPinnedConversations(ctx: unknown): () => void {
       const key = normalizeTitle(text)
       if (key === '') continue
       const ids = titleToIds.get(key)
-      if (ids === undefined || ids.length !== 1) continue
+      if (ids === undefined || ids.length === 0) continue
+      // Duplicate display titles (several untitled sessions in one workspace
+      // share the cwd basename): pick the most recently updated candidate —
+      // the row being operated on is almost always the freshest of the group
+      // (2026-08-29 fix: session rows fell back to the native ⋯ menu after a
+      // session started, because the whole title group was skipped as
+      // ambiguous).
+      let chosen = ids[0]
+      if (ids.length > 1) {
+        let best = -1
+        for (const id of ids) {
+          const at = byId[id]?.updatedAt ?? 0
+          if (at > best) { best = at; chosen = id }
+        }
+      }
       // First matching element per id wins (title + hoverTitle duplicates
       // collapse to the same candidate; the earlier element is the title).
-      if (!candidates.has(ids[0])) candidates.set(ids[0], { id: ids[0], el, title: key })
+      if (!candidates.has(chosen)) candidates.set(chosen, { id: chosen, el, title: key })
     }
     // Longest-match guard（refined）：仅当「更长的叶子文本」本身也是另一个会话
     // 标题（titleToIds 命中）时才算歧义跳过。此前对任意更长包含子串的叶子都跳过，

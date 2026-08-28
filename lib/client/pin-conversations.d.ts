@@ -11,10 +11,12 @@
  *    `role="tree"`, `div[role="treeitem"]` (session rows; project rows carry
  *    `aria-expanded`, search-result rows are `<button>` and are excluded);
  *  - row → session mapping is **content-based**: a row is the session whose
- *    `displayTitle` text appears inside it. Duplicate titles → the whole
- *    title group is skipped (never mislabeled). Renamed sessions simply stop
- *    matching until the row re-renders with the new title — the pin itself
- *    survives (pins are keyed by session id);
+ *    `displayTitle` text appears inside it. Duplicate titles pick the most
+ *    recently updated candidate (2026-08-29: several untitled sessions in one
+ *    workspace share the cwd basename; skipping the whole group made the
+ *    right-click / ⋯ menus vanish once a session started). Renamed sessions
+ *    simply stop matching until the row re-renders with the new title — the
+ *    pin itself survives (pins are keyed by session id);
  *  - the pinned section is injected as a **sibling of `role="tree"`** inside
  *    the slot container (`role="group" aria-label="置顶会话"`), so the tree's
  *    aria structure is untouched; an independent scroll block (40vh);
