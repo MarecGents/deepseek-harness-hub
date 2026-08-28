@@ -17,6 +17,7 @@ import { CARD_CSS_CLASSES as c } from './style.ts'
 import { SKINS, DEFAULT_SKIN_ID, applySkin, markSkinUserPicked, type DshSkin } from './skins.ts'
 import { t, useLocaleLang, type HubKey } from './locale.ts'
 import { BACKGROUNDS, DEFAULT_BACKGROUND_ID, applyBackground, markBackgroundUserPicked } from './backgrounds.ts'
+import { PERMISSION_POLICIES, permissionPolicyLabel, fetchPolicy, savePolicy, type PermissionPolicy } from './permission-policy-chip.tsx'
 import { refreshConversationRailPalette } from './conversation-rail.ts'
 import { DESKTOP_ICONS, DEFAULT_DESKTOP_ICON_ID } from './desktop-icons.ts'
 
@@ -131,6 +132,9 @@ export function DesktopSettingsCard(_props: DesktopSettingsCardProps): ReactNode
   const [backgroundMenuOpen, setBackgroundMenuOpen] = useState(false)
   const [desktopIconId, setDesktopIconId] = useState<string>(DEFAULT_DESKTOP_ICON_ID)
   const [desktopIconFailed, setDesktopIconFailed] = useState(false)
+  const [permissionPolicy, setPermissionPolicy] = useState<PermissionPolicy | null>(null)
+  const [permissionPolicyMenuOpen, setPermissionPolicyMenuOpen] = useState(false)
+  const [permissionPolicyFailed, setPermissionPolicyFailed] = useState(false)
   // Re-render on dsh language switch: skin names/descriptions are dictionary
   // driven and must follow Settings → General → Language immediately.
   useLocaleLang()
@@ -202,6 +206,12 @@ export function DesktopSettingsCard(_props: DesktopSettingsCardProps): ReactNode
       setBackgroundId(initial === null ? DEFAULT_BACKGROUND_ID : initial.background)
       setDesktopIconId(initial === null || typeof initial.desktopIcon !== 'string' ? DEFAULT_DESKTOP_ICON_ID : initial.desktopIcon)
       setLoading(false)
+    })
+    // Permission-policy tier comes from the dsh-permission-guard plugin route
+    // (independent of the shell config API); null stays hidden.
+    void fetchPolicy().then((p) => {
+      if (!alive) return
+      if (p !== null) setPermissionPolicy(p)
     })
     return () => { alive = false }
   }, [])
@@ -361,6 +371,21 @@ export function DesktopSettingsCard(_props: DesktopSettingsCardProps): ReactNode
         setDesktopIconId(previous)
         setDesktopIconFailed(true)
         setSaving(false)
+      }
+    })
+  }
+
+  /** Apply the permission-policy tier immediately via the plugin route. */
+  const onPickPermissionPolicy = (id: string): void => {
+    if (id === permissionPolicy) return
+    const previous = permissionPolicy
+    setPermissionPolicyFailed(false)
+    setPermissionPolicy(id as PermissionPolicy)
+    void savePolicy(id as PermissionPolicy).then((ok) => {
+      if (!ok) {
+        // Persist failed — restore the previous tier.
+        setPermissionPolicy(previous)
+        setPermissionPolicyFailed(true)
       }
     })
   }
@@ -613,6 +638,40 @@ export function DesktopSettingsCard(_props: DesktopSettingsCardProps): ReactNode
                         ))}
                       </div>
                       {desktopIconFailed ? <p className={c.failed} role="status">{COPY.desktopIconApplyFailed}</p> : null}
+                    </div>
+                  )}
+                  {/* Permission policy — plugin tier picker (dsh-permission-guard). */}
+                  {permissionPolicy !== null && (
+                    <div className={c.section}>
+                      <div className={c.fieldRow}>
+                        <span className={c.fieldLabel}>{t('settings.permissionLabel')}</span>
+                        <Menu
+                          open={permissionPolicyMenuOpen}
+                          onClose={() => { setPermissionPolicyMenuOpen(false) }}
+                          items={PERMISSION_POLICIES.map((id) => ({ id, label: permissionPolicyLabel(id) }))}
+                          selectedId={permissionPolicy}
+                          onSelect={(id) => {
+                            onPickPermissionPolicy(id)
+                            setPermissionPolicyMenuOpen(false)
+                          }}
+                          align="end"
+                          portal
+                          anchor={(
+                            <button
+                              type="button"
+                              className={c.selectPill}
+                              aria-haspopup="menu"
+                              aria-expanded={permissionPolicyMenuOpen}
+                              onClick={() => { setPermissionPolicyMenuOpen((v) => !v) }}
+                            >
+                              {permissionPolicyLabel(permissionPolicy)}
+                              <IconChevronDownOutline14 />
+                            </button>
+                          )}
+                        />
+                      </div>
+                      <div className={c.hint}>{t('settings.permissionHint')}</div>
+                      {permissionPolicyFailed ? <p className={c.failed} role="status">{t('settings.permissionApplyFailed')}</p> : null}
                     </div>
                   )}
                 </>

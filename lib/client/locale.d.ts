@@ -86,6 +86,18 @@ export declare const zh: {
     'settings.saving': string;
     'settings.saveFailed': string;
     'settings.saved': string;
+    'settings.permissionSection': string;
+    'settings.permissionLabel': string;
+    'settings.permissionHint': string;
+    'settings.permissionFollow': string;
+    'settings.permissionFollowDesc': string;
+    'settings.permissionStrict': string;
+    'settings.permissionStrictDesc': string;
+    'settings.permissionReadOnly': string;
+    'settings.permissionReadOnlyDesc': string;
+    'settings.permissionApplyFailed': string;
+    'permissionPolicy.title': string;
+    'permissionPolicy.aria': string;
     'menu.openSession': string;
     'menu.pin': string;
     'menu.unpin': string;
