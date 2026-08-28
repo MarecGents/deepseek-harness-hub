@@ -206,7 +206,7 @@ export function apply(ctx) {
     name: 'permission_status',
     description: '查看当前权限白名单（四级：auto / give-command / confirm / never）、rules 兜底规则与默认层级。',
     parameters: {},
-    output: { schema: OBJ, render: (_a, v) => v.ok ? JSON.stringify(v.config, null, 2) : (v.error || '') },
+    output: { schema: OBJ, render: (_a, v) => [{ type: 'text', text: v.ok ? JSON.stringify(v.config, null, 2) : (v.error || '') }] },
     execute: () => Promise.resolve({ ok: true, config }),
     presentCall: () => ({ card: 'generic', title: 'View permission allowlist', description: 'Show the current permission-guard tiers, rules, and default tier.' }),
   })))
@@ -215,7 +215,7 @@ export function apply(ctx) {
     name: 'permission_reload',
     description: '重新加载 ~/.dsh/permission-guard.json 权限白名单（改配置后调用生效，强制刷新缓存）。',
     parameters: {},
-    output: { schema: OBJ, render: (_a, v) => v.ok ? '已重载权限白名单' : (v.error || '') },
+    output: { schema: OBJ, render: (_a, v) => [{ type: 'text', text: v.ok ? '已重载权限白名单' : (v.error || '') }] },
     execute: () => { config = loadConfigCached(true); return Promise.resolve({ ok: true, config }) },
     presentCall: () => ({ card: 'generic', title: 'Reload permission allowlist', description: 'Re-read ~/.dsh/permission-guard.json and invalidate the config cache.' }),
   })))

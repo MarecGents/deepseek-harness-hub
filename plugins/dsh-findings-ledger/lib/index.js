@@ -163,7 +163,7 @@ export function apply(ctx) {
     name: 'findings_baseline',
     description: '捕获/重捕获当前工作区的文件快照基线（跳过 node_modules/.git 等）。会话首次 turn 也会自动捕获。返回快照文件数。',
     parameters: {},
-    output: { schema: OBJ, render: (_a, v) => v.ok ? ('已捕获基线，共 ' + v.count + ' 个文件') : (v.error || '') },
+    output: { schema: OBJ, render: (_a, v) => [{ type: 'text', text: v.ok ? ('已捕获基线，共 ' + v.count + ' 个文件') : (v.error || '') }] },
     execute: (_a, exec) => {
       const cwd = cwdOf(exec.agent)
       if (!cwd) return Promise.resolve({ ok: false, error: '无法确定工作区' })
@@ -181,7 +181,7 @@ export function apply(ctx) {
       target_file: { type: 'string', description: '该发现对应的目标文件相对路径' },
       tag: { type: 'string', description: '标签，如 fix / bug / lesson' }
     },
-    output: { schema: OBJ, render: (_a, v) => v.ok ? '已记录 finding' : (v.error || '') },
+    output: { schema: OBJ, render: (_a, v) => [{ type: 'text', text: v.ok ? '已记录 finding' : (v.error || '') }] },
     execute: (args, exec) => {
       const cwd = cwdOf(exec.agent)
       if (!cwd) return Promise.resolve({ ok: false, error: '无法确定工作区' })
@@ -195,7 +195,7 @@ export function apply(ctx) {
     name: 'findings_report',
     description: '生成并查看当前覆盖度报告：基线是否存在、改动文件数、每条 finding 是否被改动文件对账、coverage 状态（complete/partial/incomplete）。',
     parameters: {},
-    output: { schema: OBJ, render: (_a, v) => v.ok ? JSON.stringify(v.report, null, 2) : (v.error || '') },
+    output: { schema: OBJ, render: (_a, v) => [{ type: 'text', text: v.ok ? JSON.stringify(v.report, null, 2) : (v.error || '') }] },
     execute: (_a, exec) => {
       const cwd = cwdOf(exec.agent)
       if (!cwd) return Promise.resolve({ ok: false, error: '无法确定工作区' })
