@@ -399,7 +399,30 @@ const providerLabel = (p) => {
           });
         const modelCardStyle = { border: '1px solid var(--dsw-alias-border-l2,#333)', borderRadius: 10, padding: '10px 12px', marginBottom: 8, background: 'var(--dsw-alias-bg-layer-1,#1a1a1a)' };
         const modelLine1 = { fontSize: 14, fontWeight: 600, color: 'var(--dsw-alias-label-primary,#eee)', marginBottom: 4 };
-        const modelLine2 = { display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0,1fr))', gap: '4px 10px', fontSize: 12, color: 'var(--dsw-alias-label-tertiary,#888)' };
+        // Grid styling goes through a <style> class instead of inline styles.
+        // The shell's background-image feature keys its frame selector on
+        // `[style*="grid-template-columns"]`, so ANY element carrying that
+        // inline declaration — including these tables — gets the user's
+        // background image painted over it (2026-08-29 report: the per-model
+        // grid and the per-day table showed the skin image directly). Class
+        // rules never match that attribute selector; the dynamic column count
+        // rides in via the --mg-us-cols custom property, whose inline
+        // assignment also carries no "grid-template-columns" substring.
+        const ensureGridStyle = () => {
+          if (document.getElementById('mg-usage-stats-style') !== null) return;
+          const tag = document.createElement('style');
+          tag.id = 'mg-usage-stats-style';
+          tag.textContent = [
+            '.mg-us-grid{display:grid;}',
+            '.mg-us-model-line2{grid-template-columns:repeat(3,minmax(0,1fr));gap:4px 10px;font-size:12px;color:var(--dsw-alias-label-tertiary,#888);}',
+            '.mg-us-day-head{grid-template-columns:var(--mg-us-cols);gap:10px;padding:10px 0;color:var(--dsw-alias-label-tertiary,#888);font-size:12px;border-bottom:1px solid var(--dsw-alias-border-l2,#333);}',
+            '.mg-us-day-row{grid-template-columns:var(--mg-us-cols);gap:10px;padding:10px 6px;align-items:center;border-bottom:1px solid var(--dsw-alias-border-l2,#222);color:var(--dsw-alias-label-primary,#eee);font-size:13px;}',
+          ].join('\n');
+          document.head.appendChild(tag);
+        };
+        ensureGridStyle();
+        const modelLine2 = { };
+        const modelLine2Class = 'mg-us-grid mg-us-model-line2';
         const pinBtnStyle = (active) => ({ display: 'inline-flex', alignItems: 'center', gap: 4, border: '1px solid var(--dsw-alias-border-l2,#333)', background: active ? 'var(--dsw-alias-brand-primary,#4f7cff)' : 'var(--dsw-alias-bg-layer-1,#1a1a1a)', color: 'var(--dsw-alias-label-primary,#eee)', borderRadius: 14, padding: '4px 10px', cursor: 'pointer', fontSize: 12, fontWeight: 600 });
         const providerBlocks = providerList.map(({ provider, models, total, cost, top }) => {
           const expanded = expandedProviders.has(provider);
@@ -418,7 +441,7 @@ const providerLabel = (p) => {
             createElement('div', { style: { maxHeight: expanded ? 320 : undefined, overflowY: expanded ? 'auto' : 'visible', paddingRight: expanded ? 4 : 0 } },
               shown.map((m) => createElement('div', { key: m.provider + '/' + m.model, style: modelCardStyle },
                 createElement('div', { style: modelLine1 }, m.model || 'unknown'),
-                createElement('div', { style: modelLine2 },
+                createElement('div', { className: modelLine2Class },
                   createElement('span', {}, t('ui.req') + fmt(m.requests)),
                   ...activeBuckets(m).map(([key]) => createElement('span', { key: key }, (key === 'input' && !(m.cacheRead > 0) ? t('ui.headInput') : bucketLabel('bucket.' + key)) + ' ' + fmt(m[key] || 0))),
                   createElement('span', {}, t('ui.total') + ' ' + fmt(sumTokens(m))),
@@ -433,12 +456,12 @@ const providerLabel = (p) => {
         const daySum = filteredDays.reduce((a, d) => { a.input += d.input; a.output += d.output; a.cacheRead += d.cacheRead; a.cacheWrite += d.cacheWrite; return a; }, { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 });
         const dayBuckets = activeBuckets(daySum);
         const dayGridCols = 'minmax(0,1.2fr) repeat(' + (dayBuckets.length + 2) + ',minmax(0,1fr))';
-        const dayHead = createElement('div', { style: { display: 'grid', gridTemplateColumns: dayGridCols, gap: 10, padding: '10px 0', color: 'var(--dsw-alias-label-tertiary,#888)', fontSize: 12, borderBottom: '1px solid var(--dsw-alias-border-l2,#333)' } },
+        const dayHead = createElement('div', { className: 'mg-us-grid mg-us-day-head', style: { '--mg-us-cols': dayGridCols } },
           createElement('span', {}, t('ui.date')),
           createElement('span', {}, t('ui.reqCount')),
           ...dayBuckets.map(([key]) => createElement('span', { key: key }, bucketLabel('bucket.' + key))),
           createElement('span', {}, t('ui.total')));
-        const dayRows = filteredDays.map((d) => createElement('div', { key: d.date, style: { display: 'grid', gridTemplateColumns: dayGridCols, gap: 10, padding: '10px 6px', alignItems: 'center', borderBottom: '1px solid var(--dsw-alias-border-l2,#222)', color: 'var(--dsw-alias-label-primary,#eee)', fontSize: 13 } },
+        const dayRows = filteredDays.map((d) => createElement('div', { key: d.date, className: 'mg-us-grid mg-us-day-row', style: { '--mg-us-cols': dayGridCols } },
           createElement('span', {}, d.date),
           createElement('span', {}, fmt(d.requests)),
           ...dayBuckets.map(([key]) => createElement('span', { key: key }, fmt(d[key] || 0))),

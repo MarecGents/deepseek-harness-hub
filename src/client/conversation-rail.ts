@@ -198,7 +198,7 @@ export function installConversationRail(ctx: unknown): () => void {
     const slotEl = findSlot()
     if (root === null || slotEl === null) return null
     const surface = parseCssColor(getComputedStyle(slotEl).backgroundColor)
-    const frame = document.querySelector<HTMLElement>('#root div[style*="grid-template-columns"]')
+    const frame = document.querySelector<HTMLElement>('#root > div > div[style*="grid-template-columns"]')
     const bgCss = frame === null ? '' : getComputedStyle(frame).backgroundImage
     const urlMatch = /url\("([^"]+)"\)/.exec(bgCss)
     if (surface === null && urlMatch === null) return null

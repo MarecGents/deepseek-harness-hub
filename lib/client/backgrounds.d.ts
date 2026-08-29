@@ -30,9 +30,12 @@ export declare function findBackground(id: string): DshBackground | undefined;
  *
  * The image must land on the app FRAME layer, not `body`: dsh's AppFrame
  * paints an opaque base over the whole viewport, so a body-level image is
- * invisible. The frame is the only `#root` descendant carrying an inline
+ * invisible. The frame is the only SECOND-level `#root` grandchild carrying an inline
  * `grid-template-columns` (stable structure, no CSS-module hash — see
- * docs/关键踩坑记录.md #32).
+ * docs/关键踩坑记录.md #32). The selector is deliberately the child-combinator
+ * chain `#root > div > div[...]`: a bare `#root div[...]` also matches every
+ * in-page grid that carries inline columns (e.g. the usage-stats tables),
+ * which got the user's background image painted over them (踩坑 #96).
  *
  * The frame's columns then cover the image with opaque surfaces, so the
  * injected rules ALSO give each column's surface a translucent base color:
