@@ -170,6 +170,40 @@ async function writePerSession(obj) {
   } catch { /* non-fatal: next scan recomputes */ }
 }
 
+// ── Unit-price overrides ──
+// Persisted at $DSH_HOME/storages/dsh-usage-stats-prices.json. Missing or
+// corrupt file → defaults (no per-model overrides + 7.2 CNY per USD,
+// mirroring the settings UI's initial state). computeOverview embeds this in
+// the overview payload and POST /api/prices persists the editor draft — both
+// call sites predate these definitions (PR #34 shipped without them, which
+// made every /api/overview request fail with `loadPrices is not defined`).
+const DEFAULT_PRICES = Object.freeze({ modelPrices: {}, exchangeRate: 7.2 })
+
+async function loadPrices() {
+  try {
+    const parsed = JSON.parse(await readFile(PRICE_FILE, 'utf8'))
+    if (parsed && typeof parsed === 'object' && typeof parsed.exchangeRate === 'number' && parsed.exchangeRate > 0) {
+      return {
+        modelPrices: parsed.modelPrices && typeof parsed.modelPrices === 'object' ? parsed.modelPrices : {},
+        exchangeRate: parsed.exchangeRate,
+      }
+    }
+  } catch { /* missing or corrupt price file → defaults */ }
+  return { ...DEFAULT_PRICES }
+}
+
+async function savePrices(obj) {
+  const clean = {
+    modelPrices: obj && obj.modelPrices && typeof obj.modelPrices === 'object' ? obj.modelPrices : {},
+    exchangeRate: obj && typeof obj.exchangeRate === 'number' && obj.exchangeRate > 0
+      ? obj.exchangeRate
+      : DEFAULT_PRICES.exchangeRate,
+  }
+  await mkdir(dirname(PRICE_FILE), { recursive: true })
+  await writeFile(PRICE_FILE, JSON.stringify(clean, null, 2), 'utf8')
+  return clean
+}
+
 // Fold a single session's events into a serializable per-session record.
 function foldSession(events) {
   const totals = zero()
