@@ -22,3 +22,6 @@
         height: 720
         tray: true
         theme: system
+    - id: dsh-usage-stats
+      name: '@dsh-external/dsh-usage-stats'
+      disabled: !!js process.env.DSH_HUB_LAUNCHED !== '1'
