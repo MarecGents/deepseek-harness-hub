@@ -34,6 +34,7 @@ import { injectRightSidebarStyle } from './right-sidebar-style.ts'
 import { applySkin, fetchStoredSkin, hasUserPickedSkin } from './skins.ts'
 import { applyBackground, fetchStoredBackground, hasUserPickedBackground } from './backgrounds.ts'
 import { installPinnedConversations } from './pin-conversations.ts'
+import { installWorkspaceDragGuard } from './workspace-drag-guard.ts'
 import { installConversationRail, refreshConversationRailPalette } from './conversation-rail.ts'
 import { installModelSelect } from './model-select.tsx'
 import { PermissionPolicyChip, type PermissionPolicyChipProps } from './permission-policy-chip.tsx'
@@ -505,6 +506,19 @@ export function apply(ctx: ClientContext): void {
     }, 'dsh-hub: context menu (refresh-only)')
   } catch (error) {
     console.warn('[dsh-hub] context menu install failed:', error)
+  }
+
+  // Workspace-row drag guard（官方工作区行拖拽的插件层兜底；主根因 =
+  // Tauri 默认 dragDropEnabled 在 Windows 上由 wry 覆盖 WebView2 IDropTarget，
+  // 已在 window.rs 用 .disable_drag_drop_handler() 修复——见踩坑记录 #94）。
+  // 此处保留两件无侵入兜底：B watchdog（上次拖拽 dragend 被官方 flip-OFF
+  // 重建吞掉时，下次 dragstart 合成 dragend 自愈官方 workspaceDrag）+ G2
+  // （拖拽中收缩置顶区，消除横穿 40vh 死区的放大因素；同时驱动
+  // pin-conversations 拖拽中挂起 sync）。
+  try {
+    ctx.effect(() => installWorkspaceDragGuard(), 'dsh-hub: workspace drag guard')
+  } catch (error) {
+    console.warn('[dsh-hub] workspace drag guard install failed:', error)
   }
 
   // Pinned conversations (置顶会话): augment the official session list with

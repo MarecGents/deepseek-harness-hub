@@ -44,6 +44,7 @@ import { PIN_CSS_CLASSES as c, injectPinStyle } from './pin-conversations-style.
 import { injectSessionMenuStyle } from './session-menu-style.ts'
 import { closeSessionMenu, openSessionMenu } from './session-menu.ts'
 import { openWorkspaceMenu } from './workspace-menu.ts'
+import { DRAG_ACTIVE_CLASS } from './workspace-drag-guard.ts'
 
 /** Route prefix of the host pins API (mirrors server/pins-api.ts). */
 const PINS_API = '/api/dsh-hub/pins'
@@ -679,6 +680,10 @@ export function installPinnedConversations(ctx: unknown): () => void {
   /** Full idempotent pass over the current list DOM. */
   function sync(): void {
     if (!alive) return
+    // Workspace-row drag in flight（workspace-drag-guard 的 DRAG_ACTIVE_CLASS）：
+    // 挂起本轮刷新——拖拽中写入会话行 DOM / 重贴置顶区只会放大官方 DnD 的
+    // 卡顿（官方列表重建会在 dragend 后重新触发 observer，补刷不丢状态）。
+    if (document.body.classList.contains(DRAG_ACTIVE_CLASS)) return
     const slot = findSlot()
     const tree = findTree()
     if (slot === null || tree === null) {

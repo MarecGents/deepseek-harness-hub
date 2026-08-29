@@ -129,6 +129,18 @@ pub fn build_main_window(app: &App) -> Result<WebviewWindow, Box<dyn std::error:
         .center()
         .decorations(false)
         .transparent(false)
+        // Disable wry's DragDropController: on Windows it enumerates every
+        // WebView2 child HWND and replaces the OS IDropTarget with a
+        // files-only one (RevokeDragDrop + RegisterDragDrop +
+        // SetAllowExternalDrop(false)), which kills ALL in-page HTML5
+        // drag-and-drop — the official workspace/session row reorder
+        // (dragstart → dragover → drop) never fires inside the shell while
+        // the same page works in a plain browser. Dropping the override
+        // restores WebView2's default IDropTarget, so the page's own DnD
+        // behaves like Chrome. The shell consumes no tauri drag-drop events
+        // (grep-verified), so nothing is lost; external file drops get their
+        // navigate guard from shell-init.js (Files-only preventDefault).
+        .disable_drag_drop_handler()
         .additional_browser_args("--autoplay-policy=no-user-gesture-required")
         .initialization_script(include_str!("../shell-init.js"))
         .build()?;

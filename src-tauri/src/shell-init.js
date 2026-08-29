@@ -1,7 +1,8 @@
 // shell-init.js — dsh-hub Tauri 壳初始化脚本（include_str! 注入 webview）
 //
 // 职责：自绘标题栏（42px，皮肤 token 同向配色 + 外壳主题覆盖白/黑）、
-//       浏览器侧声音播放（__mgPlaySound）、页面→Rust 命令桥（invoke）。
+//       浏览器侧声音播放（__mgPlaySound）、页面→Rust 命令桥（invoke）、
+//       Files-only 拖放兜底（防无 drop 处理器的页面把拖入文件当 file:// 导航）。
 //
 // 通道决策（D-2 实测）：`__TAURI_INTERNALS__` 只注入 invoke/transformCallback/
 //   runCallback/plugins，**没有 `.event` 对象**（事件 API 在 @tauri-apps/api 包里，
@@ -393,3 +394,42 @@ window.__mgPlaySound = mgPlaySound;
 //    菜单事件在 tray.rs 处理：显示/隐藏主界面 → window_toggle_visible；
 //    打开工作区/新建会话 → win.eval 派发 CustomEvent（同页，client 监听）；
 //    退出 → tray_quit。不再需要自绘 HTML 菜单。
+
+// ── Files-only 拖放兜底（window.rs disable_drag_drop_handler 的配套）──
+// 撤掉 wry DragDropController 后，文件拖放回归 WebView2 原生行为。官方
+// ComposerAttachments 在 composer 挂载时会自己 preventDefault（冒泡阶段）；
+// 但在占位页、设置页、composer 卸载的空窗期等「页面无 drop 处理器」的时刻，
+// WebView2 的默认动作是把拖入文件当 file:// 导航——整窗跳走。此处在 document
+// capture 阶段兜住：
+//   - 只认 dataTransfer.types 含 'Files' 的拖拽（会话/工作区行等页内 HTML5
+//     拖拽不含 'Files'，对官方逻辑零打扰）；
+//   - 只 preventDefault，绝不 stopPropagation（capture 先于官方冒泡监听，
+//     preventDefault 幂等，官方 dragenter/dragover/drop 链路原样收到事件）；
+//   - 绝不动 dropEffect（光标效果由页面处理器决定——官方设 copy/none/move）。
+// 注入时机：本脚本是 Tauri initialization_script（AddScriptToExecuteOnDocument-
+// Created），每次导航的新文档在解析前执行——document 已存在，可直接挂监听；
+// 此刻 head/body 尚为 null，但本函数不访问 DOM。占位页与 dsh 页同样生效。
+function installFilesDndFallback() {
+  // 幂等保险：每次导航都是全新 global，正常只执行一次；此标志仅防同一文档
+  // 被二次注入的极端情况。
+  if (window.__mgFilesDndFallbackInstalled) return;
+  window.__mgFilesDndFallbackInstalled = true;
+  var isFileDrag = function (event) {
+    try {
+      return event.dataTransfer !== null
+        && event.dataTransfer.types != null
+        && event.dataTransfer.types.indexOf('Files') !== -1;
+    } catch (e) {
+      // 受保护模式的 dataTransfer 读取可能抛错——按非文件处理，不拦截。
+      return false;
+    }
+  };
+  // capture=true：必须先于官方（冒泡阶段）监听执行，确保默认动作被取消。
+  document.addEventListener('dragover', function (event) {
+    if (isFileDrag(event)) event.preventDefault();
+  }, true);
+  document.addEventListener('drop', function (event) {
+    if (isFileDrag(event)) event.preventDefault();
+  }, true);
+}
+installFilesDndFallback();

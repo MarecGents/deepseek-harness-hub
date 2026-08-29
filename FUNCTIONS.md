@@ -113,6 +113,7 @@
 | 40 | rail 数据源修复（M1，修 #35） | 时间窗真实 kind 预览：hover 按 turnTimings 时间窗 [startTime, endTime) + node.turn 对齐真实节点 kind（user/steering/context/assistant/command/compaction）提取开场文本，替换 turn-tail 死代码 | ✅ `client/conversation-rail.ts`：extractNodeText + extractTurnSummaries（命令轮次回退助手回复；空槽 tooltip 保留「第 N 段对话」） |
 | 41 | S0 安全（M3） | Origin 白名单校验：POST/PUT 等状态变更请求校验 Origin（loopback / `tauri:`），缺失 Origin 拒绝；GET/HEAD 跳过（DNS-rebinding 已由 Host 校验覆盖） | ✅ `server/host-guard.ts`：`isOriginAllowed` / `rejectIfBadOrigin`，路由工厂共享（pty / workspace/open 等状态变更路由已接） |
 | 42 | 工作区（M2+M4） | 壳 capability 放行 `dialog:allow-open`（M2）+ `POST /api/dsh-hub/workspace/open`（M4：文件/文件夹 OS 默认打开，Windows explorer.exe） | ✅ `src-tauri/capabilities/default.json` + `server/workspace-api.ts`（open 路由带 host+origin+token 三重守卫，路径校验同 list/git） |
+| 47 | 壳内拖放（rc.17，修 #94） | ① `window.rs` builder 加 `disable_drag_drop_handler`——撤掉 wry DragDropController 对 WebView2 IDropTarget 的文件专用覆盖，恢复页内 HTML5 DnD（官方工作区行/会话行拖拽排序在壳内可用，浏览器同语义）；② 拖文件到聊天输入区 = 官方附件上传（ComposerAttachments 自行 preventDefault）；③ 其他区域/空窗期由 `shell-init.js` Files-only 兜底安全忽略（杜绝拖入文件被当 file:// 导航）；④ `workspace-drag-guard.ts` watchdog 合成 dragend + 拖拽时收缩置顶区（兜底官方 flip-OFF 重建吞 dragend 的次生缺陷） | ✅ 真实鼠标实测：dragstart→dragover→drop→dragend 全链 trusted，排序提交并持久化 |
 
 ---
 

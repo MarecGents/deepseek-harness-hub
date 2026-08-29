@@ -19,7 +19,7 @@
 |---|---|---|
 | `main` | 发布分支（**唯一合并目标**） | registry latest = `0.0.2-rc.14`（rc.4–rc.14 已发布） |
 | `dev-v1` | **永久冻结**（WebView2 时代存档） | 不再接收任何更新/同步；历史收尾 = `0.0.1-rc.13/rc.14`（WebView2 最终版） |
-| `dev-v2` | **唯一开发分支**（Tauri 2.x 壳） | 所有更新在此开发，merge 只到 main；当前 = `0.0.2-rc.16`（打包分发；**未 merge main**；npm 未发布，latest/rc 仍 rc.15） |
+| `dev-v2` | **唯一开发分支**（Tauri 2.x 壳） | 所有更新在此开发，merge 只到 main；当前 = `0.0.2-rc.17`（打包分发；**未 merge main**；npm 未发布，latest/rc 仍 rc.15） |
 
 ---
 
