@@ -1,184 +1,164 @@
 # dsh-hub 功能清单（FUNCTIONS）
 
-> 基线：`main` 分支 `v0.0.1-rc.14`（WebView2 时代最终版）。
-> 更新：2026-08-28 · 当前开发分支 `dev-v2`（Tauri 2.x 壳 + dsh web 插件层）。本轮（08-28）rc.12 修复：`dsh-permission-guard` / `dsh-findings-ledger` 插件工具 `output.render` 返回字符串而非 `ContentBlock[]` 数组 → 会话整轮崩溃（`content.some is not a function`）。（08-24 文档同步 M1-M4：会话标签栏（M2）、交互终端（M4）、notify focus-session（M1）、rail 数据源修复（M1）、S0 Origin 校验（M3）、工作区 dialog:allow-open（M2）+ workspace/open（M4），见 §13）
-> 状态标记：✅ 已覆盖（Tauri 壳或插件层等价实现）· ⚠️ 部分/待补（M4/M5 收口项）· ➖ 不适用（被 Tauri 原生能力替代）。
-> 依据：`git show main:<path>` 源码 + `docs/` 发布记录（rc10–rc14）。
+> 当前版本：`0.0.2-rc.17`（dev-v2，Tauri 2.x 壳 + dsh web 插件层）。基线对照：官方 dsh（deepseek-harness）。
+> 本清单收录 **dsh-hub 相对官方 dsh 新增/改变的全部功能**，分门别类，每项带【来源】（PR 号 / 版本）与【测试状态】。
+> 测试状态标记：✅ = 真机或隔离环境实测通过 · 🔶 = 代码就绪、未系统真机验证 · ⚠️ = 部分/待收口 · ➖ = 历史（dev-v1 WebView2 时代，Tauri 后不适用）。
+> 更新：2026-08-29 · 依据全量 PR 清点（#1–#51）+ 源码盘点。
 
 ---
 
-## 1. 桌面壳 / 窗口管理
+## A. 壳层与窗口
 
-| # | 功能 | 说明（rc.14 行为） | 当前状态 |
-|---|---|---|---|
-| 1 | 原生窗口承载 dsh SPA | webserver ACTIVE 即开窗（早于 Loader 全量就绪），`--port 0` 随机端口 | ✅ Tauri 无边框窗口 + `WebviewUrl::External`（lib.rs），READY 先验证再导航 |
-| 2 | 品牌化 Splash | 300ms 主题色 + dsh logo + spinner 覆盖到 SPA 首绘，无白/黑闪 | ✅ shell-init.js 注入覆盖层（鲸鱼 logo + spinner，load 或 3s 后淡出） |
-| 3 | 窗口状态记忆 | 仅持久化 maximized（`dsh-hub-window-state.json`）；退出最大化恢复保存尺寸或 3/4 屏；最小 480×360 | ✅ `helpers/state.rs`（restore_window_state / resize 保存） |
-| 4 | 默认尺寸策略 | 无保存尺寸 = 启动屏 3/4（光标所在屏，multi-monitor aware）；恰好默认值 1280×720 不算用户显式保存 | ✅ `managers/window.rs`（primary_monitor 3/4，上限 1600×1000） |
-| 5 | 关闭/最小化到托盘 | closeToTray=true 关窗保进程+托盘；minimizeToTray 最小化即隐藏；行为实时读配置 | ✅ lib.rs `CloseRequested`（prevent_close+hide）/ `Resized+is_minimized` 检测 |
-| 6 | 设置实时应用 | 主题/尺寸保存后即时 applyTheme/applySize；最大化时保存尺寸先退最大化再套用 | ✅ DSH_CMD 上行即时应用；最大化时先退再 set_size（2026-08-19 第十轮） |
+| # | 功能 | 描述 | 来源 | 测试 |
+|---|------|------|------|------|
+| A1 | 原生窗口承载 dsh SPA | 无边框 Tauri 窗口；webserver ACTIVE 即开窗（占位页先显示），READY 验证后再导航到 dsh web，不弹浏览器 | rc.1+ | ✅ |
+| A2 | 品牌化 Splash | 启动覆盖层（鲸鱼 logo + spinner + 主题色），盖住 SPA 首绘，load 或 3s 后淡出，无白/黑闪 | — | ✅ |
+| A3 | 窗口状态记忆 | 最大化状态持久化；退出最大化恢复保存尺寸或 3/4 屏；最小 480×360 | — | ✅ |
+| A4 | **分辨率与多屏策略** | 无保存尺寸时按**光标所在显示器**取 3/4 屏（multi-monitor aware，上限 1600×1000）；窗口尺寸钳制到所在屏；`window-size scaling`（DPI 缩放适配，PR #6 一并落地） | PR #6 | 🔶 单屏实测、多屏组合未系统测 |
+| A5 | 关闭/最小化到托盘 | closeToTray 关窗保进程；minimizeToTray 最小化即隐藏；实时读配置 | — | ✅ |
+| A6 | 标题栏主题跟随/强制 | `system` 监听页面深浅切换（DWM immersive dark + webview 背景 + 窗口图标翻转，MutationObserver）；可强制浅/深（按当前皮肤色板解析） | — | ✅ |
+| A7 | 设置实时应用 | 主题/尺寸保存后 DSH_CMD 上行即时应用；最大化时先退最大化再套用 | — | ✅ |
+| A8 | 壳内 HTML5 拖放恢复 | `disable_drag_drop_handler` 撤掉 wry 文件专用 IDropTarget 覆盖——页内 HTML5 拖拽（工作区/会话行排序、标签排序）在壳内恢复浏览器同款行为 | rc.17 | ✅ 工作区行实测；会话行/标签排序 🔶 |
+| A9 | Files 拖放兜底 | document capture 阶段对 Files 拖放 preventDefault：拖文件到输入区 = 官方附件上传；其他区域/空窗期安全忽略（杜绝 file:// 导航） | rc.17 | 🔶 行为变化未真机全面回归 |
+| A10 | 拖拽状态守卫 | watchdog 合成 dragend 自愈官方拖拽状态卡死 + 拖拽中收缩置顶区 + 拖拽中挂起置顶刷新 | rc.17 | ✅ 合成链实测 |
 
-## 2. 主题与外观
+## B. 标题栏与会话标签
 
-| # | 功能 | 说明（rc.14 行为） | 当前状态 |
-|---|---|---|---|
-| 7 | 标题栏主题跟随 | 'system' 监听页面 `data-ds-dark-theme`；DWM immersive dark；同步 webview 背景防帧错位 | ✅ apply_page_theme：DWM + webview 背景 + 窗口图标随 `data-ds-dark-theme`（MutationObserver） |
-| 8 | 标题栏浅/深强制模式 | 主题选项「浅色/深色」强制 chrome 色；跟随 dsh 走 token | ✅ 增强：按当前皮肤浅/深色板解析（`#mg-dsh-skin` 样式表），皮肤切换自动重读；回退黑白 |
-| 9 | 桌面图标（6 面同步） | 设置卡可选 5 鲸鱼娘/默认主题翻转；切换同步窗口 SMALL+BIG/托盘/.lnk×2/AUMID/自绘标题栏 | ✅ `managers/icon.rs` IconManager 6 面统一编排：面级幂等（去重键含 dark）+ 全局串行锁 + 单 worker/pending 合并（快速切换不卡死）；BIG 用 PostMessageW 异步；标题栏与任务栏/托盘同源真实 PNG（`/api/dsh-hub/icons/*.png`） |
+| # | 功能 | 描述 | 来源 | 测试 |
+|---|------|------|------|------|
+| B1 | 自绘标题栏 | 42px 标题栏（皮肤 token 配色 + 深浅跟随）+ 可拖窗口区 + 最小化/最大化/关闭 | — | ✅ |
+| B2 | 会话标签栏 | 标题栏内多页会话切换：状态点（等待琥珀/后台完成绿/运行蓝+脉冲）、右键菜单（复用会话菜单）、拖拽排序、内联重命名、自动滚动、归档自动移除；localStorage 持久化；F1-F8 边角（空快照不剪枝/blank 占位/blur 兜底/IME 不误提交） | PR #39/#40/#41 | ✅ 切换/重命名/状态点；拖拽排序 🔶（修复前 DnD 全灭，未真机复测） |
 
-## 3. 托盘
+## C. 左侧栏增强
 
-| # | 功能 | 说明（rc.14 行为） | 当前状态 |
-|---|---|---|---|
-| 10 | 常驻系统托盘 | 菜单：显示/隐藏主界面（动态标签）、打开工作区、新建会话、退出 | ✅ `managers/tray.rs` 原生菜单 + 左键单击显示 + `sync_toggle_label` 动态标签 |
-| 11 | 打开工作区 | 打开**当前聚焦会话**所在工作区目录 | ✅ 修复（2026-08-19）：改走 client 聚焦会话解析 → `open_workspace_path` |
-| 12 | 新建会话 | 派发页面事件 → 官方 `workspaces.startSession()`（当前会话→最近工作区）；SPA 未就绪重试不丢命令 | ✅ stdin 管道 → host → 页面事件（带 `__mgShellReady` 300ms×20 重试） |
-| 13 | 托盘退出 | 写 `quit.marker` 后正常退出，不误判崩溃重启 | ✅ `helpers/quit.rs` + `tray_quit` 命令 |
+| # | 功能 | 描述 | 来源 | 测试 |
+|---|------|------|------|------|
+| C1 | 置顶会话 | hover 注入 pin 按钮；内容匹配行→会话 id（同名取最近 updatedAt）；置顶区为树兄弟节点（40vh 滚动块）；搜索态隐藏 | PR #4 | ✅ |
+| C2 | 置顶持久化 | `pins.json` 原子写 + localStorage 兜底；ready 门控/boot 合并/连缺 2 次剪枝/MAX 200 | PR #4 | ✅ |
+| C3 | 会话右键菜单（11 动作） | 打开会话、置顶/取消、重命名（内嵌表单）、分叉 fork、归档、在资源管理器打开、复制工作区路径/日志路径/会话 ID、打开配置文件 | PR #27 | ✅ |
+| C4 | 工作区右键菜单 | 工作区行右键 = 新建任务 / 在资源管理器打开（替代原生刷新菜单） | — | ✅ |
+| C5 | 拖拽排序守卫 | 工作区行拖拽排序的 watchdog 兜底 + 拖拽中置顶区收缩（见 A10） | rc.17 | ✅ |
 
-## 4. 通知与声音
+## D. 对话与输入
 
-| # | 功能 | 说明（rc.14 行为） | 当前状态 |
-|---|---|---|---|
-| 14 | 任务完成 Toast | depth-0 会话 turn/end completed\|error 弹原生通知；30s 冷却；聚焦会话只响音不弹 | ✅ notify-rust 直弹 + 点击回窗口（wait_for_action）+ 30s 冷却 + 聚焦抑制 |
-| 15 | 四段事件提示音 | 提问 start/完成 success/需批准 attention/出错 error，独立开关；隐藏到托盘仍可闻 | ✅ DSH_CMD `play_sound` → Rust eval → 页面 HTMLAudio（sounds-api 伺服 WAV，autoplay 放行） |
-| 16 | 原创音效 | `scripts/synthesize-sounds.mjs` 合成四段 44.1kHz WAV（无第三方素材） | ✅ 保留（assets + sounds-api 路由） |
+| # | 功能 | 描述 | 来源 | 测试 |
+|---|------|------|------|------|
+| D1 | 对话定位条（rail） | 对话列左侧 20px 悬浮条：每轮对话一根可点击刻度，点击滚动定位到该轮；hover 显示该轮开场文本预览（时间窗真实 kind：user/steering/context/assistant/command/compaction） | PR #27/#35 | 🔶 点击跳转实测；hover 预览未系统回归 |
+| D2 | rail 自适应配色 | 刻度条配色按当前皮肤/背景图自动推导（per-skin/background 调色板，非两套固定色）；皮肤/背景切换自动重读 | PR #30 | 🔶 抽查个别皮肤 |
+| D3 | 模型嵌套菜单 | composer 模型 seat 替换为 provider→model 两级菜单（官方 slot `conversation.input.model` priority -1 阴影；服务缺失降级内置） | PR #33 | 🔶 |
+| D4 | 权限策略 chip | 会话左下角（官方权限 chip 旁）快捷切换 dsh-permission-guard 档位，带档位色点（蓝=跟随/橙=严格/绿=只读） | rc.14 | 🔶 |
+| D5 | 右键菜单语义 | WebView2 原生右键禁用，DOM 全量接管：对象行→专属菜单；空白→刷新菜单；输入要素不干预；全量 zh/en i18n（~120 键，语言源 = dsh 设置 Language） | — | ✅ |
 
-## 5. 会话与工作区
+## E. 外观系统
 
-| # | 功能 | 说明（rc.14 行为） | 当前状态 |
-|---|---|---|---|
-| 17 | 活动 cwd 追踪 | session/event + agent/created 维护 activeCwd 兜底 | ✅ `controllers/session-runtime.ts` |
-| 18 | 工作区 API | `/api/dsh-hub/workspace/list`（目录优先、1000 条截断）+ `/git`（branch/短哈希/porcelain 变更） | ✅ `server/workspace-api.ts` 保留 |
+| # | 功能 | 描述 | 来源 | 测试 |
+|---|------|------|------|------|
+| E1 | 皮肤系统（15 套） | 内置 5 自绘（午夜蓝/旧纸张/终端绿/ZCode/极光紫）+ Reasonix 官方主题直移 8（rx-*）+ opencode 配方 2（oc-*）；全部覆盖 `--dsw-alias-*`+`--dsw-specific-*`，浅深双色板跟随主题；150ms 切换过渡；每套文档 docs/skins/ | PR #3 | ✅ 切换链实测；15×浅深全矩阵 🔶 |
+| E2 | 背景图 | 内置 3 张（远航/八犬/DS-vs-GPT）；frame 层双层蒙版+图，三栏半透明透出；none 清空；防路径穿越白名单 | PR #6 | ✅（与皮肤组合的透明误伤 #96 已修） |
+| E3 | 桌面图标六面同步 | 设置卡选 5 鲸鱼娘/默认；窗口大图标/任务栏/托盘/开始菜单 lnk/桌面 lnk/自绘标题栏六面统一编排（幂等 + 快速切换合并）；深浅翻转 | PR #25 | ✅ |
+| E4 | 主题浅/深强制 | 见 A6（外观侧：按皮肤色板解析 chrome 色） | — | ✅ |
+| E5 | 分辨率/DPI 适配 | 见 A4（窗口尺寸缩放、多屏 3/4 策略、DPI 修复） | PR #6 | 🔶 |
 
-## 6. 置顶会话
+## F. 设置中心
 
-| # | 功能 | 说明（rc.14 行为） | 当前状态 |
-|---|---|---|---|
-| 19 | 会话行置顶 | hover 注入 pin 按钮；内容匹配行→会话 id（零 CSS-module hash，同名整组跳过）；置顶区 = role=tree 兄弟 + 40vh 滚动块；搜索态隐藏 | ✅ `client/pin-conversations.ts` 保留（2026-08-19 加锚点/行匹配诊断，待复测确认） |
-| 20 | 置顶持久化 | `pins.json` 原子写 + localStorage 兜底；phase='ready' 写门控、boot 合并、连缺 2 次剪枝、MAX 200；PUT 串行 | ✅ `server/pins-api.ts` + 客户端状态机保留 |
+| # | 功能 | 描述 | 来源 | 测试 |
+|---|------|------|------|------|
+| F1 | DSH HUB 设置卡 | 官方设置→插件页：窗口尺寸/主题（跟随·浅·深）/托盘行为/通知/声音/多实例开关/皮肤画廊/背景图/桌面图标；仅提交变更字段 + saveSeq 防旧响应覆盖；皮肤/背景点击即应用 | — | ✅ |
+| F2 | 权限策略档位（设置页） | 「权限策略」区三档 Menu：follow（跟随会话官方预设）/strict（始终白名单）/read-only（只读放行）；即时保存到插件路由 | rc.14 | 🔶 切换实测、真实拦截效果未会话内验证 |
 
-## 7. 右侧栏
+## G. 托盘与通知声音
 
-| # | 功能 | 说明（rc.14 行为） | 当前状态 |
-|---|---|---|---|
-| 21 | body portal 右侧栏 | 独立于官方详情栏；360px/56px 收起窄栏，`--mg-sidebar-width` 占位 | ✅ `client/right-sidebar.tsx` + `right-sidebar-style.ts` 保留 |
-| 22 | 三页内容 | 概览（上下文 Token 环形图/会话统计/本轮 Token 差分）、文件树（懒加载）、Git（分支/变更徽章） | ✅ 保留 |
+| # | 功能 | 描述 | 来源 | 测试 |
+|---|------|------|------|------|
+| G1 | 常驻托盘 | 菜单：显示/隐藏主界面（动态标签）/打开工作区/新建会话/退出；左键单击显示 | — | ✅ |
+| G2 | 托盘打开工作区 | 打开当前聚焦会话所在工作区目录 | — | ✅ |
+| G3 | 托盘新建会话 | 派发官方 `workspaces.startSession()`（SPA 未就绪 300ms×20 重试不丢命令） | — | ✅ |
+| G4 | 托盘退出 | 写 quit.marker 正常退出，不误判崩溃重启 | — | ✅ |
+| G5 | 任务完成 Toast | depth-0 会话完成/出错弹原生通知（30s 冷却、聚焦抑制）；**点击回窗口并跳到对应会话** | PR #1 | ✅ 弹窗；点击跳转 🔶 |
+| G6 | 四段事件提示音 | 提问/完成/需批准/出错独立开关；原创合成 WAV；隐藏到托盘仍可闻 | PR #1 | 🔶 真机听感未系统回归 |
 
-## 8. 设置卡片
+## H. 交互终端
 
-| # | 功能 | 说明（rc.14 行为） | 当前状态 |
-|---|---|---|---|
-| 23 | DSH HUB 设置卡 | 官方设置→插件页；窗口尺寸/主题/托盘/通知/声音/多实例/皮肤/背景图；仅提交变更字段；saveSeq 防旧响应覆盖；皮肤/背景点击即应用 | ✅ `client/settings-card.tsx` + `/api/dsh-hub/config` 保留 |
+| # | 功能 | 描述 | 来源 | 测试 |
+|---|------|------|------|------|
+| H1 | 交互终端 dock | Ctrl+J 开关底部 dock；每 tab 一个真实 node-pty 会话；多 tab；指针捕获拖拽调高；composer 列压缩 | PR #39/#40 | ✅ |
+| H2 | 自定义 Shell | bash / cmd / PowerShell 5.1 / pwsh 可选，先探测可用性、未安装不列出；默认 shell 持久化 | PR #40 | ✅ |
+| H3 | 终端安全 | SSE JSON 信封 + Bearer/`?token=` 常量时间比较 + Host/Origin 白名单；危险命令 UX 护栏 | rc.8 | ✅ |
 
-## 9. 皮肤
+## I. 独立插件（双轨分发：随 hub NSIS + 独立 npm `@dsh-external/*`）
 
-| # | 功能 | 说明（rc.14 行为） | 当前状态 |
-|---|---|---|---|
-| 24 | 皮肤系统 | **15 套**：内置 5 自绘（午夜蓝/旧纸张/终端绿/ZCode/极光紫）+ 移植 8（`rx-*`，Reasonix 官方主题包直移 + 统一推导规则）+ 移植 2（`oc-*`，opencode 配方）；全部覆盖 `--dsw-alias-*`+`--dsw-specific-*`，浅深双色板跟随 `data-ds-dark-theme`；default 清空；boot 恢复不覆盖用户选择；更换皮肤带 150ms 全局色过渡（`mg-skin-switching`） | ✅ `client/skins.ts` + 设置卡官方 Menu（菜单项品牌/浅深色块预览）+ `docs/skins/*.md`（每套文档，移植皮肤改色走生成器规则，禁手改） |
+| # | 插件 | 描述 | 来源 | 测试 |
+|---|------|------|------|------|
+| I1 | dsh-usage-stats | 全会话 token 用量统计：扫描全部会话日志按 provider/model/天聚合，设置页可视化（汇总/各模型卡片/按天表格/趋势图/单价与费用估算/汇率），HTTP API（overview/prices，后台预热 + stale-while-revalidate） | PR #34 | ✅（#95/#96 修复后全链实测） |
+| I2 | dsh-permission-guard | 逐命令权限白名单 + 四级拦截（auto/give-command/confirm/never）+ **policy 档位**（follow 联动会话官方预设：Full Access 只留 never 红线；read-only；strict）+ HTTP 路由 + systemPrompt 指南 | PR #37 | 🔶 决策矩阵模拟验证；真机会话拦截 🔶 |
+| I3 | dsh-project-memory | 每项目持久记忆（FACT.md + JOURNAL.jsonl 自动注入 systemPrompt.context）+ `memory_read`/`memory_log`/`memory_fact` 工具 | PR #36 | 🔶 |
+| I4 | dsh-findings-ledger | baseline 快照 + 变更对账 + 覆盖度报告（turn/end 自动出报告） | PR #38 | 🔶 |
 
-## 10. 背景图
+## J. 工作区与会话数据
 
-| # | 功能 | 说明（rc.14 行为） | 当前状态 |
-|---|---|---|---|
-| 25 | 背景图 | 内置「远航」boat；`/api/dsh-hub/backgrounds/*` 白名单防穿越；frame 层双层蒙层+图，三栏半透明透出；none 清空 | ✅ `client/backgrounds.ts` + `server/backgrounds-api.ts` 保留 |
+| # | 功能 | 描述 | 来源 | 测试 |
+|---|------|------|------|------|
+| J1 | 活动 cwd 追踪 | session/event + agent/created 维护 activeCwd 兜底 | — | ✅ |
+| J2 | 工作区 API | `/workspace/list`（目录列表）+ `/git`（分支/变更）+ `/workspace/open`（OS 默认打开，explorer.exe） | rc.4+ | ✅ |
+| J3 | 会话预热 | 启动 8s 后台预热最近 3 会话到 LRU（长会话冷开 2057ms→225ms，约 9×）；关闭会话重预热 | PR #51 | ✅ 日志验证 |
 
-## 11. 启动与多实例
+## K. 启动·安装·安全
 
-| # | 功能 | 说明（rc.14 行为） | 当前状态 |
-|---|---|---|---|
-| 26 | 启动门控 | 仅 `DSH_HUB_LAUNCHED=1`（壳启动）装配 host+client；普通 `dsh web` 连插件都不挂载 | ✅ cordis.patch.yml `disabled` + index.ts `launchedByShortcut()` |
-| 27 | 单实例 PID 锁 | `launcher.lock`（wx 原子、死 PID 接管、争用后验） | ✅ 替换为 `tauri-plugin-single-instance`（二次启动聚焦已有窗口） |
-| 28 | 多实例防护 | 检测运行中 dsh web 实例（netstat+CIM 命令行匹配）；默认拒绝（无"继续"出口）；勾选后仍需 Yes 确认 | ✅ lib.rs 双通道门禁 + dialog；已加 dev 豁免（debug + 隔离 DSH_HOME 放行）。⚠️ CIM 通道失败会静默放行 |
-| 29 | 崩溃自动重启 | 非 0 退出且无 quit.marker：≤3 次重启（1.2s 间隔）；0 退出/quit.marker 不重启 | ✅ supervisor 线程已接线（≤3 次 + READY 后 re-navigate；quit.marker 启动时清除） |
-| 30 | 装配自愈 | 每次启动注册 web profile scoped bundle + junction 校验/重指、清理 bare 遗留；`--assemble-only` 诊断；dsh 缺失自动安装 | ⚠️ scoped 装配/junction 自愈/诊断均通；「dsh 缺失自动安装」仅 postinstall（npm 路径），运行期缺失只回退临时页 |
+| # | 功能 | 描述 | 来源 | 测试 |
+|---|------|------|------|------|
+| K1 | 启动门控 | 仅壳启动（DSH_HUB_LAUNCHED=1）装配插件；裸 `dsh web` 完全干净 | — | ✅ |
+| K2 | 单实例 | tauri-plugin-single-instance：二次启动聚焦已有窗口 | — | ✅ |
+| K3 | 多实例防护 | 检测运行中 dsh 实例，默认拒绝；勾选多实例后仍需确认；dev+隔离 home 豁免 | — | ✅ |
+| K4 | 崩溃自动重启 | 非 0 退出且无 quit.marker：≤3 次重启（1.2s 间隔）+ READY 后 re-navigate | — | 🔶 接线确认，未真机演练 |
+| K5 | 装配自愈 | scoped bundle 注册/junction 校验重指/bare 遗留清理；dsh 缺失走 npm 安装路径，运行期缺失回退临时页 | — | ⚠️ |
+| K6 | NSIS 安装器 | 安装完成页可选桌面快捷方式（仅安装时创建）；卸载快速通道 + sidecar 强杀；Job Object 随壳清理 | — | ✅ |
+| K7 | S0 安全 | Host 白名单（loopback）+ Origin 校验（POST/PUT）+ per-process token | — | ✅ |
+| K8 | AppUserModelID | 注册表 + 快捷方式 AUMID，任务栏归属/Toast 正常 | — | ✅ |
 
-## 12. 安装与身份
+## 自动更新（M5）
 
-| # | 功能 | 说明（rc.14 行为） | 当前状态 |
-|---|---|---|---|
-| 31 | 进程身份 | 复制 node.exe + rcedit 打补丁为 dsh-hub.exe/dsh-hub-guard.exe（任务管理器显示产品名） | ➖ 不适用：Tauri exe 原生身份（dsh-hub.exe 已由 cargo 构建，含图标/版本信息） |
-| 32 | 安装脚本 | postinstall 建桌面快捷方式（VBS 隐藏控制台）；postuninstall 清理；install-local 本地打包 | ⚠️ postinstall 已简化（仅 dsh/pnpm 依赖检查，不再建 WebView2 快捷方式）；NSIS 安装器（M5）+ 快捷方式由壳 AUMID 注册生成 |
-| 33 | AppUserModelID | `SetCurrentProcessExplicitAppUserModelID` 保证任务栏归属/Toast 显示 | ✅ `register_toast_aumid`（注册表 + 开始菜单快捷方式 AUMID 属性；桌面快捷方式仅安装时创建，启动不重建） |
-| 34 | 模型嵌套菜单（PR #33） | composer 模型 seat 替换为 provider→model 两级菜单 + 独立 effort 触发器 | ✅ `src/client/model-select.tsx`：官方 slot `conversation.input.model` priority -1 阴影内置；复用官方 modelDirectories 服务；服务缺失降级内置 seat 不阻塞 |
-| 35 | findings-ledger 插件（PR #38） | baseline 快照 + 变更对账 + 覆盖度报告 | ✅ `plugins/dsh-findings-ledger/`：独立插件（双轨分发见 BUILD.md §7）；turn/end 自动出报告 |
-| 36 | 卸载快速通道 | 卸载器启动提速 + sidecar 强杀防残留 | ✅ installer-hooks.nsi PREUNINSTALL Get-Process（非 CIM）+ 去 Sleep；Job Object 随壳退出连带清理 sidecar |
-
-## 13. 会话标签栏 / 交互终端 / 安全（M1-M4，2026-08-24 同步）
-
-| # | 功能 | 说明（rc.14 行为） | 当前状态 |
-|---|---|---|---|
-| 37 | 会话标签栏（M2，C41） | 标题栏多页切换：状态点（等待琥珀 / 后台完成绿 / 运行蓝 + 脉冲）、右键菜单（复用 session-menu）、拖拽排序、内联重命名、自动滚动、归档自动移除 | ✅ `client/SessionTabs.tsx`（createPortal 渲染进 `#dsh-hub-titlebar .tb-title`）+ `client/session-tabs.ts`（localStorage `dsh-hub.session-tabs` 持久化）；F1-F8 修复（空快照不剪枝 / blank「新会话」占位 / 拖拽中断 blur 兜底 / IME 组合输入不误提交重命名） |
-| 38 | 交互终端（M4，D 切片） | Ctrl+J 开关底部 dock；每 tab 一个真实 node-pty 会话；多 tab；危险命令拦截（UX 护栏，非安全边界）；SSE JSON 信封 + 进程 token 鉴权；**自定义 Shell（2026-08-26）：bash / cmd / PowerShell 5.1 / pwsh 可选，先探测可用性、未安装的不列出** | ✅ host：`services/pty-manager.ts`（`detectShells` 探测 + `createPty(shell)`，shell 白名单） + `server/terminal-pty-api.ts`（POST create/write/resize/close + GET list/**shells**/stream，host+origin+token 三重守卫）+ `server/token.ts`（Bearer / `?token=`，常量时间比较；token 经 `webserver/index-inject` 以 global `__DSH_HUB_TOKEN__` 注入 src/index.ts）；client：`pty-store.ts`（fetchShells / createTab(shell)）+ `terminal-dock.tsx`（xterm.js 6.0.0，懒挂载 / 指针捕获拖拽 / composer 列压缩 / 设置面板 Shell 选择器）+ `terminal-prefs.ts`（默认 shell 持久化）+ `xterm-css.ts` |
-| 39 | 通知点击跳会话（M1） | toast 点击回窗口并跳到对应会话 | ✅ `src-tauri/src/services/notify.rs`：wait_for_action 点击 → unminimize/show/set_focus + `mg:shell-command` focus-session 事件（`__mgShellReady` 300ms×20 重试，与 node.rs dispatch_page_event 一致） |
-| 40 | rail 数据源修复（M1，修 #35） | 时间窗真实 kind 预览：hover 按 turnTimings 时间窗 [startTime, endTime) + node.turn 对齐真实节点 kind（user/steering/context/assistant/command/compaction）提取开场文本，替换 turn-tail 死代码 | ✅ `client/conversation-rail.ts`：extractNodeText + extractTurnSummaries（命令轮次回退助手回复；空槽 tooltip 保留「第 N 段对话」） |
-| 41 | S0 安全（M3） | Origin 白名单校验：POST/PUT 等状态变更请求校验 Origin（loopback / `tauri:`），缺失 Origin 拒绝；GET/HEAD 跳过（DNS-rebinding 已由 Host 校验覆盖） | ✅ `server/host-guard.ts`：`isOriginAllowed` / `rejectIfBadOrigin`，路由工厂共享（pty / workspace/open 等状态变更路由已接） |
-| 42 | 工作区（M2+M4） | 壳 capability 放行 `dialog:allow-open`（M2）+ `POST /api/dsh-hub/workspace/open`（M4：文件/文件夹 OS 默认打开，Windows explorer.exe） | ✅ `src-tauri/capabilities/default.json` + `server/workspace-api.ts`（open 路由带 host+origin+token 三重守卫，路径校验同 list/git） |
-| 47 | 壳内拖放（rc.17，修 #94） | ① `window.rs` builder 加 `disable_drag_drop_handler`——撤掉 wry DragDropController 对 WebView2 IDropTarget 的文件专用覆盖，恢复页内 HTML5 DnD（官方工作区行/会话行拖拽排序在壳内可用，浏览器同语义）；② 拖文件到聊天输入区 = 官方附件上传（ComposerAttachments 自行 preventDefault）；③ 其他区域/空窗期由 `shell-init.js` Files-only 兜底安全忽略（杜绝拖入文件被当 file:// 导航）；④ `workspace-drag-guard.ts` watchdog 合成 dragend + 拖拽时收缩置顶区（兜底官方 flip-OFF 重建吞 dragend 的次生缺陷） | ✅ 真实鼠标实测：dragstart→dragover→drop→dragend 全链 trusted，排序提交并持久化 |
-
----
-
-## 14. 独立插件（plugins/，双轨分发）
-
-| # | 插件（PR） | 职责 | 分发 |
-|---|---|---|---|
-| 43 | dsh-findings-ledger（PR #38） | baseline 快照 + 改动对账 + 覆盖度报告（turn/end 自动出报告） | 双轨：随 hub resources + 独立 npm（`@dsh-external/dsh-findings-ledger`） |
-| 44 | dsh-permission-guard（PR #37） | 逐命令权限白名单 + 四级能力拦截（auto / give-command / confirm / never） | 双轨：`@dsh-external/dsh-permission-guard` |
-| 45 | dsh-project-memory（PR #36） | 每项目持久记忆（FACT.md + JOURNAL.jsonl 自动注入 systemPrompt.context + `memory_read`/`memory_log`/`memory_fact` 工具） | 双轨：`@dsh-external/dsh-project-memory` |
-| 46 | dsh-usage-stats（PR #34） | 全会话 token 用量统计（按 provider/model 聚合 + 设置页可视化 + HTTP API） | 双轨：`@dsh-external/dsh-usage-stats` |
-
-> 双轨分发 = 独立 npm（package.json `private:false` + `publishConfig.access:public`）+ 随 hub NSIS resources（tauri.conf.json `bundle.resources` 含 `../plugins/**/*`，assemble-profile 装配进 profile），见 BUILD.md §7 与 AGENTS.md §1.1 铁律 8。各插件说明见 `plugins/<name>/README.md`。
+**未实现**——唯一剩余的大项（NSIS/卸载/防残留已闭环）。更新器需要 updater 插件 + 签名密钥 + 更新服务器，待立项。
 
 ---
 
-## 配置项
+## 附：PR 清点对照（@dustinmoon78 的 17 个 PR，#26 除外）
 
-### 插件 Config（`cordis.patch.yml` / schema，默认值）
-`title='DeepSeek Harness Hub'` · `width/height=1280/720` · `minimizeToTray=true` · `closeToTray=false` · `theme='system'|'light'|'dark'` · `notifyOnTaskComplete=true` · `soundEnabled=true`
+| PR | 功能 | 落地情况 | FUNCTIONS |
+|----|------|----------|-----------|
+| #1 | 会话完成原生通知 + 构建修复 | ✅ 已落地（后经 rc.1+ 增强：点击跳会话） | G5 |
+| #2 | 任务栏身份/OS 主题图标/独立 WebView2 数据目录 | ✅ dev-v1 落地；Tauri 后原生身份 | K8（数据目录 ➖ 历史） |
+| #3 | 皮肤系统（自写色板） | ✅ 已落地并扩展到 15 套 | E1 |
+| #4 | 置顶会话 | ✅ 已落地（rc.10 重构 + 持久化状态机） | C1/C2 |
+| #6 | 背景图 + 窗口尺寸缩放 | ✅ 已落地（dev-v1 时代，Tauri 后重新实现） | E2/A4 |
+| #24 | cmd.exe 僵尸锁回退 + 排障文档 | ✅ 已修复并沉淀（踩坑史） | 覆盖缺口·已修复 |
+| #25 | 桌面图标鲸鱼娘预设 | ✅ 已落地（扩展为六面同步系统） | E3 |
+| #27 | 对话定位条 + 置顶内联重命名 | ✅ 已落地 | D1/C3 |
+| #33 | composer 模型嵌套菜单 | ✅ 已落地 | D3 |
+| #34 | dsh-usage-stats 插件 | ✅ 已落地 | I1 |
+| #35 | rail hover 开场文本预览 | ✅ 已落地（M1 数据源修复） | D1 |
+| #36 | dsh-project-memory 插件 | ✅ 已落地 | I3 |
+| #37 | dsh-permission-guard 插件 | ✅ 已落地 | I2 |
+| #38 | dsh-findings-ledger 插件 | ✅ 已落地 | I4 |
+| #39 | ZCode 式交互终端 + 会话标签条 + 工作区选择 | ✅ 已落地 | H1/B2 |
+| #40 | 终端/标签条/工作区/定位条/外观中心 | ✅ 已落地（外观中心即 #26 的前置，以设置卡实现） | H1/D1/F1 |
+| #41 | 顶部会话标签栏完整版 | ✅ 已落地 | B2 |
+| #26 | 设置卡统一外观中心（**OPEN，本次排除**） | 未合并；其能力已由 F1 设置卡分节实现 | —（按指示排除） |
 
-### ShellConfig（持久化 `$DSH_HOME/dsh-hub/config.json`）
-`windowOpen='auto'` · `width/height`（钳制 [480,屏宽]/[360,屏高]） · `theme='system'` · `minimizeToTray=true` · `closeToTray=false` · `notifyOnTaskComplete=true` · `soundEnabled=true` · `allowMultipleInstances=false` · `skin='default'` · `background='none'` · `desktopIcon='default'`（5 鲸鱼娘 sad/happy/duo/maid/blue）
+> 结论：**@dustinmoon78 提交的全部功能均已落地并收录本清单**——无遗漏项；此前 FUNCTIONS.md 缺「对话定位条（rail）本体」独立条目（只有 hover 预览与数据源修复），本次已补为 D1/D2。
 
-## 覆盖缺口（⚠️ 待收口）
+---
 
-### 已修复（2026-08-23 更新）
-- sidecar 崩溃自动重启循环（supervisor 线程 ≤3 次 + READY 后 re-navigate）
-- cmd-shim 兜底孤儿 node（resolve 硬化 + taskkill /T /F）+ **Job Object KILL_ON_JOB_CLOSE 根治 sidecar 残留**（`assign_sidecar_to_kill_job` + SyncHandle）
-- 插件 fiber 拆除硬杀进程（dispose 不再退出宿主进程；退出语义归 Rust 壳 `helpers/quit.rs`）
-- peerDependencies 区间（^0.0.1-rc.1 → ^0.1.0-rc.6，当前 dsh 0.1.1-rc.2）
-- config 写入非原子（renameSync）、settings 永久 dirty、皮肤/背景失败回滚、workspace 双 decode
-- 提示音双响、closeToTray 首启默认不一致
-- bridge 死代码移除 + config/pins/workspace 路由 Host 白名单
-- 多实例门禁 dev 豁免（隔离 DSH_HOME）
-- **图标系统模块化重构**（managers/icon.rs 6 面编排 + theme.rs 无状态化）
-- **图标快速切换卡死**（worker + pending 合并，快速切换只保留最新）
-- **卸载提速**（PREUNINSTALL Get-Process + Defender 排除 Add-MpPreference）
-- **build:installer 完整性预检**（assertSourceCompleteness/assertLibClean）
-- **NSIS 安装器闭环**（rc.3 起真机验证，当前 rc.8；卸载快速通道 rc.5-rc.8）
+## 未测试功能清单（🔶/⚠️ 汇总，建议按序真机验证）
 
-### 已实现（2026-08-24 · M1-M4 同步）
-- 会话标签栏（M2，C41 移植 + F1-F8 修复：标题栏多页 / 状态点 / 右键菜单 / 拖拽排序 / 内联重命名 / 自动滚动 / 归档移除）
-- 交互终端（M4，D 切片：node-pty PowerShell + xterm.js dock + SSE JSON 信封 + token 鉴权 + 危险命令 UX 护栏）
-- notify focus-session（M1：toast 点击回窗口并跳对应会话）
-- rail 数据源修复（M1，修 #35 turn-tail 死代码：时间窗真实 kind 预览）
-- S0 Origin 白名单（M3：POST/PUT 状态变更校验）
-- 工作区 dialog:allow-open（M2）+ POST /api/dsh-hub/workspace/open（M4）
-
-### 已实现（2026-08-19 第十轮）
-- Splash 启动画面（shell-init.js 覆盖层，覆盖 SPA 白屏）
-- system 主题跟随（apply_page_theme：DWM + webview 背景 + 窗口图标随 `body[data-ds-dark-theme]`）
-- 通知点击回到窗口（notify-rust 直弹 + wait_for_action）
-- 窗口图标深浅翻转（icon-dark/icon-light 鲸鱼 PNG）
-- 托盘命令 boot 重试（`__mgShellReady` 300ms×20 轮询）
-- 窗口尺寸管理：最大化先退再套用、退出最大化恢复保存尺寸、光标所在屏 3/4（去上限）
-
-### 仍待收口（M5）
-1. **自动更新**（M5 仅剩项：NSIS 安装器 / 卸载快速通道 / Job Object 防残留已随 rc.3–rc.8 闭环，见打包记录）
-
-
-## 11. 右键菜单语义与 i18n
-
-| # | 功能 | 说明 | 当前状态 |
-|---|---|---|---|
-| 26 | 右键菜单语义 | WebView2 原生右键菜单 Rust 侧禁用（SetAreDefaultContextMenusEnabled(false)）；DOM 全量接管：对象行（会话树 `div[role=treeitem]`）→ 会话/工作区专属菜单（preventDefault + stopPropagation 双保险）；空白（含左栏空态）→ 刷新菜单（单一刷新源，index.ts context menu (refresh-only)）；文本编辑要素（textarea/input/select/contenteditable）不干预 | ✅ `src/client/index.ts` + `pin-conversations.ts` + `workspace-menu.ts` |
-| 28 | 会话右键「重命名任务」 | 左栏会话行右键菜单内嵌改名表单（当前标题 input+保存/取消，Enter/Esc/外点关闭），确定调官方 `session.rename`（同源数据联动；官方 ⋯ 弹层本环境不可用——踩坑#85） | ✅ `pin-conversations.ts` openRenameForm |
-| 27 | 全量 i18n（zh/en） | hub 界面文案（设置卡/会话菜单/工作区菜单/皮肤名/空白右键等）与 usage-stats 插件文案全部词典化；语言源 = dsh 设置（General → Language，官方 locale 插件写 `<html lang>`）；React 用 useSyncExternalStore 订阅、DOM 菜单打开时求值 | ✅ `src/client/locale.ts`（~120 键）+ usage-stats 自带词典；皮肤名/描述随语言切换 |
+1. **会话行拖拽排序**（C 区内的会话行）——rc.17 修复后只实测了工作区行
+2. **标题栏标签拖拽排序**（B2）——DnD 修复前不可能工作过，未真机复测
+3. **拖文件到输入区 = 附件上传**（A9）——rc.17 新行为，未真机回归；含拖到侧栏/设置页的安全忽略
+4. **权限策略三档真实拦截**（F2/I2）——rc.14 仅模拟了 guard 决策矩阵，未在真实会话验证 follow/strict/read-only 的实际放行/拦截
+5. **project-memory 记忆注入**（I3）——FACT/JOURNAL 是否按预期注入 systemPrompt.context 未验证
+6. **findings-ledger 会话报告**（I4）——真实多轮会话的 baseline/对账/覆盖度报告未验证
+7. **rail 自适应配色全矩阵**（D2）——15 皮肤 × 浅深 × 背景图组合仅抽查
+8. **多显示器/分辨率策略**（A4/E5）——3/4 屏、光标所在屏、DPI 缩放未系统测
+9. **四段提示音真机回归**（G6）——含隐藏到托盘后可闻性
+10. **通知点击跳会话**（G5）——真机点击链未复测
+11. **崩溃自动重启演练**（K4）——强杀 sidecar 后 ≤3 次重启未真机演练
+12. **标签栏拖拽排序中断恢复**（B2 F5）——拖拽中 alt-tab 后 blur 兜底未复测
