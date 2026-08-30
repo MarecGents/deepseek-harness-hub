@@ -142,6 +142,12 @@ pub fn build_main_window(app: &App) -> Result<WebviewWindow, Box<dyn std::error:
         // navigate guard from shell-init.js (Files-only preventDefault).
         .disable_drag_drop_handler()
         .additional_browser_args("--autoplay-policy=no-user-gesture-required")
+        // Boot theme BEFORE shell-init.js: Splash colors come from the user's
+        // persisted skin/theme (helpers/boot_theme.rs) so the loading screen
+        // matches the post-boot UI instead of a fixed dark gray (2026-08-29
+        // startup-polish report). Multiple initialization_script calls
+        // accumulate in WebviewAttributes and run in registration order.
+        .initialization_script(&crate::boot_theme::boot_theme_script())
         .initialization_script(include_str!("../shell-init.js"))
         .build()?;
 

@@ -43,6 +43,8 @@ mod single_instance;
 mod state;
 #[path = "helpers/theme.rs"]
 mod theme;
+#[path = "helpers/boot_theme.rs"]
+mod boot_theme;
 #[path = "managers/tray.rs"]
 mod tray;
 #[path = "managers/window.rs"]

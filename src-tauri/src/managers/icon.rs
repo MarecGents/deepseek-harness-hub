@@ -227,10 +227,37 @@ fn desktop_icon_ico_path(icon_id: &str) -> Option<std::path::PathBuf> {
     None
 }
 
+/// 固定图标锚点：`current.ico`（exe 相邻 icons\ 下）。所有 .lnk 的
+/// IconLocation 与 AUMID IconUri 统一指向它——切换图标时只重写这一个
+/// 文件并通知 Explorer，**任何位置**的快捷方式（含被用户移走的桌面 lnk）
+/// 都会立即跟随，无需找到每个 .lnk 逐个改写（2026-08-29 用户反馈：
+/// 桌面 lnk 移走后切换图标，lnk 与任务栏图标不再跟随）。
+/// dev 态落在仓库 icons\（.gitignore）。
+#[cfg(target_os = "windows")]
+fn current_ico_path() -> Option<std::path::PathBuf> {
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            return Some(dir.join("icons").join("current.ico"));
+        }
+    }
+    Some(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("icons")
+            .join("current.ico"),
+    )
+}
+
 /// 更新 Windows 壳图标源：开始菜单 + 桌面 .lnk 的 IconLocation、
 /// AUMID 注册 IconUri，并广播 SHCNE_ASSOCCHANGED 让 Explorer 重读。
 /// .ico 缺失时直接返回（调用方不置去重键 → 下次同 id 可重试）。
 /// 失败仅 warn（不得破坏图标设置链路）。由 IconManager::apply_shell_face 调用。
+///
+/// 图标指向策略（2026-08-29 重构）：lnk/AUMID 不再指向随选择变化的
+/// `{icon_id}.ico`，而是统一指向固定的 `current.ico`——切换时把选中的
+/// .ico **复制**为 current.ico。这样快捷方式（无论被移到哪里）都经由
+/// 稳定路径取图标；旧机制下移走的 lnk 停在旧 `{icon_id}.ico` 上不再
+/// 跟随（找不到它）。已存在的 lnk 在本次更新中一并把 IconLocation
+/// 改写为 current.ico，从此永久跟随。
 #[cfg(target_os = "windows")]
 fn update_shell_icon_sources(_app: &AppHandle, icon_id: &str) {
     use crate::winutil::{wide, ComInit};
@@ -251,6 +278,26 @@ fn update_shell_icon_sources(_app: &AppHandle, icon_id: &str) {
         );
         return; // 未置去重键——下次同 id 进入可重试（如 .ico 尚未就位）。
     };
+
+    // 把选中的 .ico 复制为固定锚点 current.ico；lnk/AUMID 全部指向它。
+    let Some(current) = current_ico_path() else {
+        log::warn!("icon: no current.ico anchor path");
+        return;
+    };
+    if let Some(parent) = current.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    if let Err(e) = std::fs::copy(&ico, &current) {
+        log::warn!(
+            "icon: copy {} -> {} failed: {} (shell icon sources not updated)",
+            ico.display(),
+            current.display(),
+            e
+        );
+        return;
+    }
+    let ico = current;
+    log::info!("icon: anchor current.ico refreshed from '{}'", icon_id);
 
     // 更新开始菜单快捷方式图标（与 lib.rs create_toast_shortcuts 同路径）；
     // 桌面快捷方式**存在时才更新**图标（安装时由 NSIS 创建、用户未移走时

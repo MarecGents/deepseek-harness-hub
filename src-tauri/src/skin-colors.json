@@ -1,0 +1,152 @@
+{
+ "midnight": {
+  "light": {
+   "bg": "#eef1f8",
+   "fg": "#1c2333"
+  },
+  "dark": {
+   "bg": "#0a1222",
+   "fg": "#dbe6ff"
+  }
+ },
+ "paper": {
+  "light": {
+   "bg": "#f4eee1",
+   "fg": "#3d3527"
+  },
+  "dark": {
+   "bg": "#211d15",
+   "fg": "#e8dcc0"
+  }
+ },
+ "terminal": {
+  "light": {
+   "bg": "#eef5ec",
+   "fg": "#1d301c"
+  },
+  "dark": {
+   "bg": "#0a130b",
+   "fg": "#a9f0a9"
+  }
+ },
+ "zcode": {
+  "light": {
+   "bg": "#ffffff",
+   "fg": "#262626"
+  },
+  "dark": {
+   "bg": "#2b2b2b",
+   "fg": "#dcdcdc"
+  }
+ },
+ "aurora": {
+  "light": {
+   "bg": "#f1eefb",
+   "fg": "#241f3d"
+  },
+  "dark": {
+   "bg": "#0e0d1d",
+   "fg": "#e2dcff"
+  }
+ },
+ "rx-noir-gold": {
+  "light": {
+   "bg": "#FDFAF2",
+   "fg": "#2A241B"
+  },
+  "dark": {
+   "bg": "#131009",
+   "fg": "#F8F1DF"
+  }
+ },
+ "rx-crimson-horizon": {
+  "light": {
+   "bg": "#FFFBFA",
+   "fg": "#301D1D"
+  },
+  "dark": {
+   "bg": "#201116",
+   "fg": "#FFF1F2"
+  }
+ },
+ "rx-cyan-stage": {
+  "light": {
+   "bg": "#F6FDFE",
+   "fg": "#173238"
+  },
+  "dark": {
+   "bg": "#0A2027",
+   "fg": "#E9FCFF"
+  }
+ },
+ "rx-fortune-forge": {
+  "light": {
+   "bg": "#FFFBF1",
+   "fg": "#382116"
+  },
+  "dark": {
+   "bg": "#231A11",
+   "fg": "#FFF2D1"
+  }
+ },
+ "rx-rose-dawn": {
+  "light": {
+   "bg": "#FFFCFC",
+   "fg": "#3A252C"
+  },
+  "dark": {
+   "bg": "#231820",
+   "fg": "#FFF3F6"
+  }
+ },
+ "rx-sage-breeze": {
+  "light": {
+   "bg": "#FAFAF4",
+   "fg": "#26332D"
+  },
+  "dark": {
+   "bg": "#151E19",
+   "fg": "#EEF6F0"
+  }
+ },
+ "rx-spark-notebook": {
+  "light": {
+   "bg": "#FFFCF4",
+   "fg": "#2B2F35"
+  },
+  "dark": {
+   "bg": "#191D21",
+   "fg": "#F8F5E9"
+  }
+ },
+ "rx-violet-starlight": {
+  "light": {
+   "bg": "#FAF8FF",
+   "fg": "#251F3C"
+  },
+  "dark": {
+   "bg": "#111630",
+   "fg": "#F4F2FF"
+  }
+ },
+ "oc-classic": {
+  "light": {
+   "bg": "#FCFCFD",
+   "fg": "#141517"
+  },
+  "dark": {
+   "bg": "#0B0C0E",
+   "fg": "#F0F2F5"
+  }
+ },
+ "oc-graphite": {
+  "light": {
+   "bg": "#F8F8F6",
+   "fg": "#1B1B1A"
+  },
+  "dark": {
+   "bg": "#101214",
+   "fg": "#E9ECEF"
+  }
+ }
+}

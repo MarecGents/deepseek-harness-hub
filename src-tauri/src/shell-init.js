@@ -56,13 +56,16 @@ function ensureShellStyles() {
     // 右侧栏（body portal, top:0/bottom:0）整体下移标题栏高度，底对齐不变。
     '#dsh-hub-right-sidebar-root .mg-rs-root{top:42px;}',
     // ── Splash 启动覆盖层（覆盖 SPA 白屏；z-index 高于标题栏 99999）──
+    // 配色：window.__MG_BOOT_THEME（Rust 注入 = 用户皮肤 bg-base/label-primary
+    // + 深浅，见 helpers/boot_theme.rs）优先；无注入时回退下方深/浅两板。
     '#dsh-hub-splash{position:fixed;inset:0;z-index:100000;display:flex;flex-direction:column;',
     'align-items:center;justify-content:center;gap:14px;background:#18181b;color:#ffffff;',
     'font-family:system-ui,sans-serif;-webkit-user-select:none;user-select:none;',
-    'transition:opacity .4s ease;pointer-events:none;}',
+    'transition:opacity .45s ease;pointer-events:none;}',
     '#dsh-hub-splash .splash-logo{width:48px;height:48px;display:block;',
     'animation:splash-pulse 2s ease-in-out infinite;}',
     '#dsh-hub-splash .splash-title{font-size:15px;font-weight:600;letter-spacing:.3px;color:#e4e4e7;}',
+    '#dsh-hub-splash .splash-stage{font-size:12px;color:#9aa0aa;letter-spacing:.2px;}',
     '#dsh-hub-splash .splash-spinner{width:22px;height:22px;border:2px solid rgba(255,255,255,.18);',
     'border-top-color:#ffffff;border-radius:50%;animation:splash-spin .8s linear infinite;}',
     // System light mode: near-white splash + brand spinner (the page predates
@@ -203,26 +206,67 @@ function injectSplash() {
   title.className = 'splash-title';
   title.textContent = 'DeepSeek Harness';
 
+  // 阶段文案：占位页 = 启动服务（node sidecar READY 前常驻）；dsh 页 = 加载界面。
+  const stage = document.createElement('div');
+  stage.className = 'splash-stage';
+  stage.textContent = location.hostname === 'tauri.localhost' ? '正在启动服务…' : '正在加载界面…';
+
   const spinner = document.createElement('div');
   spinner.className = 'splash-spinner';
 
-  splash.append(logo, title, spinner);
+  splash.append(logo, title, spinner, stage);
   document.body.appendChild(splash);
 
-  // 淡出移除：window load 优先，最迟 3s 兜底（SPA 长连接不阻塞 load，双保险）。
+  // 配色：Rust 注入的启动主题（皮肤 bg-base/label-primary）优先；spinner
+  // 前景/外圈随 fg 推导（hex 加 alpha——皮肤 token 均为 #hex 字面量）。
+  // body/html 背景同步成 Splash 色，导航间隙不再闪白（此前"加载不流畅"
+  // 的重要来源：placeholder 淡出后到 dsh 首绘之间是系统白背景）。
+  const boot = window.__MG_BOOT_THEME || null;
+  const dark = boot ? !!boot.dark : !window.matchMedia('(prefers-color-scheme: light)').matches;
+  const bg = (boot && boot.bg) || (dark ? '#18181b' : '#f7f7f8');
+  const fg = (boot && boot.fg) || (dark ? '#ffffff' : '#1c1f24');
+  splash.style.background = bg;
+  splash.style.color = fg;
+  spinner.style.border = '2px solid ' + fg + '2e';
+  spinner.style.borderTopColor = fg;
+  stage.style.color = fg + '99';
+  title.style.color = fg;
+  document.documentElement.style.background = bg;
+  document.body.style.background = bg;
+
+  // 淡出移除：
+  //  - 占位页（tauri.localhost）：**常驻**——此前 load 后即淡出，READY 前的
+  //    数秒窗口只剩系统白背景（"加载不流畅"的另一来源）；导航到 dsh web
+  //    会整体换文档，本层的 Splash 自然让位。30s 兜底防孤儿。
+  //  - dsh web 页：load 后轮询 #root 等待 SPA 首绘（内容就位）再淡出，
+  //    避免早于首绘淡出闪白；8s 兜底。
   let removed = false;
   const dismiss = () => {
     if (removed) return;
     removed = true;
     splash.style.opacity = '0';
-    setTimeout(() => splash.remove(), 400);
+    setTimeout(() => splash.remove(), 450);
+  };
+  if (location.hostname === 'tauri.localhost') {
+    setTimeout(dismiss, 30000);
+    return;
+  }
+  let waited = 0;
+  const waitFirstPaint = () => {
+    const root = document.getElementById('root');
+    if ((root && root.childElementCount > 0) || waited >= 8000) {
+      dismiss();
+      return;
+    }
+    waited += 120;
+    setTimeout(waitFirstPaint, 120);
   };
   if (document.readyState === 'complete') {
-    dismiss();
+    waitFirstPaint();
   } else {
-    window.addEventListener('load', dismiss);
+    window.addEventListener('load', waitFirstPaint);
   }
-  setTimeout(dismiss, 3000);
+  setTimeout(dismiss, 10000);
 }
 
 // ── 页面主题跟随（项 2）：body[data-ds-dark-theme] 变化 → invoke('apply_page_theme')
