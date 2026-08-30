@@ -377,12 +377,25 @@ fn update_shell_icon_sources(_app: &AppHandle, icon_id: &str) {
         }
     }
 
-    // 广播变更让 Explorer 重读（任务栏/快捷方式图标刷新）。
+    // 广播变更让 Explorer 重读。任务栏对 AUMID 关联 lnk 的图标有缓存，且
+    // 按 **文件路径** 缓存图标内容——UPDATEITEM 发 current.ico 压不住缓存
+    // （rc.18 实测任务栏不变），所以：
+    //   1. UPDATEITEM 逐个发 **lnk 路径**（lnk 本身被改写，让 shell 重解析
+    //      它的 IconLocation）+ current.ico；
+    //   2. `ie4uinit.exe -show` 刷新 shell 图标缓存（Windows 官方轻量手段，
+    //      无需重启 Explorer）；ASSOCCHANGED 兜底全局刷新。
     unsafe {
-        // SAFETY: wide_ico0 is a NUL-terminated UTF-16 buffer that lives for
-        // the duration of the SHChangeNotify call; SHCNF_PATHW consumes it
-        // synchronously. The ASSOCCHANGED broadcast passes null items, which
-        // the API documents as acceptable for this event.
+        // SAFETY: 每个 wide 缓冲都是存活到 SHChangeNotify 同步调用结束的
+        // NUL 结尾 UTF-16 缓冲；ASSOCCHANGED 传 null 为 API 认可的用法。
+        for lnk in &lnk_paths {
+            let wide_lnk = wide(&lnk.to_string_lossy());
+            SHChangeNotify(
+                SHCNE_UPDATEITEM,
+                SHCNF_PATHW,
+                Some(wide_lnk.as_ptr() as *const _),
+                None,
+            );
+        }
         let wide_ico0 = wide(&ico.to_string_lossy());
         SHChangeNotify(
             SHCNE_UPDATEITEM,
@@ -391,6 +404,19 @@ fn update_shell_icon_sources(_app: &AppHandle, icon_id: &str) {
             None,
         );
         SHChangeNotify(SHCNE_ASSOCCHANGED, SHCNF_IDLIST, None, None);
+    }
+
+    // 刷新 Windows 图标缓存（任务栏/桌面图标按路径缓存，内容变了缓存不自动
+    // 失效）。`ie4uinit -show` 是官方轻量刷新手段（Win10+），失败仅 warn。
+    {
+        use std::os::windows::process::CommandExt;
+        let mut c = std::process::Command::new("ie4uinit.exe");
+        c.args(["-show"]);
+        c.creation_flags(0x08000000);
+        match c.output() {
+            Ok(_) => log::info!("icon: ie4uinit -show issued (icon cache refresh)"),
+            Err(e) => log::warn!("icon: ie4uinit spawn failed: {}", e),
+        }
     }
 }
 
