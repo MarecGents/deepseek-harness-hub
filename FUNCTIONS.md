@@ -1,6 +1,6 @@
 # dsh-hub 功能清单（FUNCTIONS）
 
-> 当前版本：`0.0.2-rc.17`（dev-v2，Tauri 2.x 壳 + dsh web 插件层）。基线对照：官方 dsh（deepseek-harness）。
+> 当前版本：`0.1.0` **正式版**（dev-v2 已 merge main，Tauri 2.x 壳 + dsh web 插件层）。基线对照：官方 dsh（deepseek-harness）。
 > 本清单收录 **dsh-hub 相对官方 dsh 新增/改变的全部功能**，分门别类，每项带【来源】（PR 号 / 版本）与【测试状态】。
 > 测试状态标记：✅ = 真机或隔离环境实测通过 · 🔶 = 代码就绪、未系统真机验证 · ⚠️ = 部分/待收口 · ➖ = 历史（dev-v1 WebView2 时代，Tauri 后不适用）。
 > 更新：2026-08-29 · 依据全量 PR 清点（#1–#51）+ 源码盘点。
