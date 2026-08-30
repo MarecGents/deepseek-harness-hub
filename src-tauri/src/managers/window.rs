@@ -147,7 +147,7 @@ pub fn build_main_window(app: &App) -> Result<WebviewWindow, Box<dyn std::error:
         // matches the post-boot UI instead of a fixed dark gray (2026-08-29
         // startup-polish report). Multiple initialization_script calls
         // accumulate in WebviewAttributes and run in registration order.
-        .initialization_script(&crate::boot_theme::boot_theme_script())
+        .initialization_script(crate::boot_theme::boot_theme_script().as_str())
         .initialization_script(include_str!("../shell-init.js"))
         .build()?;
 

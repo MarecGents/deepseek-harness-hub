@@ -24,6 +24,8 @@
 //   services/ = 领域 Services（notify）
 //   commands/ = Tauri 命令薄胶水（Callback 层）
 // #[path] 保留模块名（crate::tray 等），避免引用链改动。
+#[path = "helpers/boot_theme.rs"]
+mod boot_theme;
 #[path = "commands/commands.rs"]
 mod commands;
 #[cfg(debug_assertions)]
@@ -43,8 +45,6 @@ mod single_instance;
 mod state;
 #[path = "helpers/theme.rs"]
 mod theme;
-#[path = "helpers/boot_theme.rs"]
-mod boot_theme;
 #[path = "managers/tray.rs"]
 mod tray;
 #[path = "managers/window.rs"]
