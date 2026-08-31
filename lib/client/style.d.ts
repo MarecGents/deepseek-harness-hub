@@ -26,6 +26,8 @@ export declare const CARD_CSS_CLASSES: {
     readonly readOnly: "mg-card-readonly";
     readonly section: "mg-card-section";
     readonly sectionTitle: "mg-card-section-title";
+    readonly group: "mg-card-group";
+    readonly groupTitle: "mg-card-group-title";
     readonly field: "mg-card-field";
     readonly fieldLabel: "mg-card-field-label";
     readonly fieldRow: "mg-card-field-row";

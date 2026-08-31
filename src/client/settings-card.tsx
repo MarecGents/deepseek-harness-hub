@@ -127,6 +127,13 @@ export function DesktopSettingsCard(_props: DesktopSettingsCardProps): ReactNode
   const [skinId, setSkinId] = useState<string>(DEFAULT_SKIN_ID)
   const [skinFailed, setSkinFailed] = useState(false)
   const [skinMenuOpen, setSkinMenuOpen] = useState(false)
+  // Collapsible setting groups：分辨率 / 常规设置 / 外观设置（三类下拉框），
+  // 权限策略等无法归类的选项单独列出不折叠（2026-08-30 用户策略）。
+  const [groupOpen, setGroupOpen] = useState<Record<string, boolean>>({
+    resolution: true,
+    general: true,
+    appearance: true,
+  })
   const [backgroundId, setBackgroundId] = useState<string>(DEFAULT_BACKGROUND_ID)
   const [backgroundFailed, setBackgroundFailed] = useState(false)
   const [backgroundMenuOpen, setBackgroundMenuOpen] = useState(false)
@@ -146,6 +153,9 @@ export function DesktopSettingsCard(_props: DesktopSettingsCardProps): ReactNode
     description: t('settings.description'),
     unsaved: t('settings.unsaved'),
     readOnly: t('settings.readOnly'),
+    resolutionSection: t('settings.resolutionSection'),
+    generalSection: t('settings.generalSection'),
+    appearanceSection: t('settings.appearanceSection'),
     windowSection: t('settings.windowSection'),
     widthLabel: t('settings.widthLabel'),
     heightLabel: t('settings.heightLabel'),
@@ -413,10 +423,20 @@ export function DesktopSettingsCard(_props: DesktopSettingsCardProps): ReactNode
               ? <div className={c.loading} role="status" aria-label="读取配置…" />
               : (
                 <>
-                  {/* Window settings */}
+                  {/* 分辨率组：窗口宽高（2026-08-30 分组策略） */}
                   {draft !== null && (
-                    <div className={c.section}>
-                      <div className={c.sectionTitle}>{COPY.windowSection}</div>
+                    <div className={c.group}>
+                      <button
+                        type="button"
+                        className={c.groupTitle}
+                        aria-expanded={groupOpen.resolution}
+                        onClick={() => setGroupOpen((g) => ({ ...g, resolution: !g.resolution }))}
+                      >
+                        <span>{COPY.resolutionSection}</span>
+                        <IconChevronDownOutline14 className={clsx(c.chevron, groupOpen.resolution && c.chevronOpen)} />
+                      </button>
+                      {groupOpen.resolution && (
+                        <div className={c.section}>
                       <div className={c.field}>
                         <span className={c.fieldLabel}>{COPY.widthLabel}</span>
                         <input
@@ -447,23 +467,24 @@ export function DesktopSettingsCard(_props: DesktopSettingsCardProps): ReactNode
                           }}
                         />
                       </div>
-                      <div className={c.field}>
-                        <span className={c.fieldLabel}>{COPY.themeLabel}</span>
-                        <select
-                          className={c.select}
-                          aria-label={COPY.themeLabel}
-                          value={draft.theme}
-                          onChange={(event) => {
-                            const theme = event.target.value as ShellConfig['theme']
-                            if (theme === 'system' || theme === 'light' || theme === 'dark') patchDraft({ theme })
-                          }}
-                        >
-                          <option value="system">{COPY.themeOptions.system}</option>
-                          <option value="light">{COPY.themeOptions.light}</option>
-                          <option value="dark">{COPY.themeOptions.dark}</option>
-                        </select>
-                        <div className={c.hint}>{COPY.themeHint}</div>
-                      </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {/* 常规设置组：托盘/通知/声音/多实例勾选项 */}
+                  {draft !== null && (
+                    <div className={c.group}>
+                      <button
+                        type="button"
+                        className={c.groupTitle}
+                        aria-expanded={groupOpen.general}
+                        onClick={() => setGroupOpen((g) => ({ ...g, general: !g.general }))}
+                      >
+                        <span>{COPY.generalSection}</span>
+                        <IconChevronDownOutline14 className={clsx(c.chevron, groupOpen.general && c.chevronOpen)} />
+                      </button>
+                      {groupOpen.general && (
+                        <div className={c.section}>
                       <label className={c.checkboxRow}>
                         <input
                           type="checkbox"
@@ -511,14 +532,41 @@ export function DesktopSettingsCard(_props: DesktopSettingsCardProps): ReactNode
                       {draft.allowMultipleInstances
                         ? <div className={c.dangerHint} role="alert">{COPY.multiInstanceDanger}</div>
                         : <div className={c.hint}>{COPY.multiInstanceHint}</div>}
+                        </div>
+                      )}
                     </div>
                   )}
-                  {/* Skin picker — official Setting-Cell row: label left, menu pill right
-                      (rows carry a light|dark skin dot in the official Menu
-                      icon slot), live description below. Copy follows the
-                      active dsh language (locale.ts dictionary). */}
+                  {/* 外观设置组：主题 / 皮肤 / 背景图 / 桌面图标 */}
                   {draft !== null && (
-                    <div className={c.section}>
+                    <div className={c.group}>
+                      <button
+                        type="button"
+                        className={c.groupTitle}
+                        aria-expanded={groupOpen.appearance}
+                        onClick={() => setGroupOpen((g) => ({ ...g, appearance: !g.appearance }))}
+                      >
+                        <span>{COPY.appearanceSection}</span>
+                        <IconChevronDownOutline14 className={clsx(c.chevron, groupOpen.appearance && c.chevronOpen)} />
+                      </button>
+                      {groupOpen.appearance && (
+                        <div className={c.section}>
+                      <div className={c.field}>
+                        <span className={c.fieldLabel}>{COPY.themeLabel}</span>
+                        <select
+                          className={c.select}
+                          aria-label={COPY.themeLabel}
+                          value={draft.theme}
+                          onChange={(event) => {
+                            const theme = event.target.value as ShellConfig['theme']
+                            if (theme === 'system' || theme === 'light' || theme === 'dark') patchDraft({ theme })
+                          }}
+                        >
+                          <option value="system">{COPY.themeOptions.system}</option>
+                          <option value="light">{COPY.themeOptions.light}</option>
+                          <option value="dark">{COPY.themeOptions.dark}</option>
+                        </select>
+                        <div className={c.hint}>{COPY.themeHint}</div>
+                      </div>
                       <div className={c.fieldRow}>
                         <span className={c.fieldLabel}>{t('settings.skinLabel')}</span>
                         <Menu
@@ -559,11 +607,7 @@ export function DesktopSettingsCard(_props: DesktopSettingsCardProps): ReactNode
                         {' — '}{t('settings.skinHint')}
                       </div>
                       {skinFailed ? <p className={c.failed} role="status">{t('settings.skinApplyFailed')}</p> : null}
-                    </div>
-                  )}
-                  {/* Background picker — official Setting-Cell row like the skin picker. */}
-                  {draft !== null && (
-                    <div className={c.section}>
+                      {/* Background picker — official Setting-Cell row like the skin picker. */}
                       <div className={c.sectionTitle}>{COPY.backgroundSection}</div>
                       <div className={c.fieldRow}>
                         <span className={c.fieldLabel}>{COPY.backgroundLabel}</span>
@@ -604,14 +648,10 @@ export function DesktopSettingsCard(_props: DesktopSettingsCardProps): ReactNode
                         {' — '}{COPY.backgroundHint}
                       </div>
                       {backgroundFailed ? <p className={c.failed} role="status">{COPY.backgroundApplyFailed}</p> : null}
-                    </div>
-                  )}
-                  {/* Desktop icon picker — visual grid of preview thumbnails
-                      (S6). One click applies + persists; the native window and
-                      taskbar glyph switch immediately via the Tauri invoke
-                      down-link, unknown ids fall back to the white whale. */}
-                  {draft !== null && (
-                    <div className={c.section}>
+                      {/* Desktop icon picker — visual grid of preview thumbnails
+                          (S6). One click applies + persists; the native window
+                          and taskbar glyph switch immediately via the Tauri
+                          invoke down-link; unknown ids fall back to the whale. */}
                       <div className={c.sectionTitle}>{COPY.desktopIconSection}</div>
                       <div className={c.hint}>{COPY.desktopIconHint}</div>
                       <div className={c.iconGrid} role="radiogroup" aria-label={COPY.desktopIconSection}>
@@ -638,9 +678,11 @@ export function DesktopSettingsCard(_props: DesktopSettingsCardProps): ReactNode
                         ))}
                       </div>
                       {desktopIconFailed ? <p className={c.failed} role="status">{COPY.desktopIconApplyFailed}</p> : null}
+                        </div>
+                      )}
                     </div>
                   )}
-                  {/* Permission policy — plugin tier picker (dsh-permission-guard). */}
+                  {/* Permission policy — plugin tier picker (dsh-permission-guard). 无法归入以上分组的选项，单独列出。 */}
                   {permissionPolicy !== null && (
                     <div className={c.section}>
                       <div className={c.fieldRow}>

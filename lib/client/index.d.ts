@@ -45,7 +45,22 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
             scope: 'session';
             owner: PermissionPolicyChipProps;
         };
+        /**
+         * One top-level page of the settings dialog (nav rail). Declared at
+         * runtime by ui-settings-general; mirrors its contract (order sorts the
+         * nav, label renders the nav cell, inject supplies section props).
+         */
+        'settings.section': {
+            kind: 'list';
+            scope: 'root';
+            owner: SettingsSectionOwnerProps;
+        };
     }
+}
+/** Owner share of a settings section (the dialog supplies close). */
+export interface SettingsSectionOwnerProps {
+    /** Close the settings dialog (rendered by the section's own chrome). */
+    close?: () => void;
 }
 /** Owner share of a plugin card (the section supplies nothing). */
 export interface SettingsPluginItemOwnerProps {
