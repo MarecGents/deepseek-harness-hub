@@ -117,7 +117,6 @@ function SkinDot({ skin }: { skin: DshSkin | undefined }): ReactNode {
 
 /** Render the desktop-shell settings card. */
 export function DesktopSettingsCard(_props: DesktopSettingsCardProps): ReactNode {
-  const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(true)
   const [config, setConfig] = useState<ShellConfig | null>(null)
   const [draft, setDraft] = useState<ShellConfig | null>(null)
@@ -400,337 +399,293 @@ export function DesktopSettingsCard(_props: DesktopSettingsCardProps): ReactNode
     })
   }
 
-  return (
-    <li className={clsx(c.card, open && c.cardOpen)}>
+  // 三个独立下拉卡片（分辨率 / 常规设置 / 外观设置）+ 权限策略单列 + 底部保存栏。
+  // 与「设置→插件」页的终端/Agent循环/网页搜索同构：每个卡片独立折叠，
+  // 卡片头 = 名称 + 描述两行（官方 PluginCard 同款），列表 gap 10px。
+  const groupCard = (key: 'resolution' | 'general' | 'appearance', title: string, description: string, body: ReactNode): ReactNode => (
+    <li className={clsx(c.card, groupOpen[key] && c.cardOpen)}>
       <button
         type="button"
         className={c.header}
-        aria-expanded={open}
-        aria-label={`${open ? '收起' : '展开'}: ${COPY.title}`}
-        onClick={() => { setOpen(!open) }}
+        aria-expanded={groupOpen[key]}
+        aria-label={`${groupOpen[key] ? '收起' : '展开'}: ${title}`}
+        onClick={() => setGroupOpen((g) => ({ ...g, [key]: !g[key] }))}
       >
         <span className={c.headText}>
-          <span className={c.name}>{COPY.title}</span>
-          <span className={c.description}>{COPY.description}</span>
+          <span className={c.name}>{title}</span>
+          <span className={c.description}>{description}</span>
         </span>
         {dirty ? <span className={c.pending}>{COPY.unsaved}</span> : null}
-        <IconChevronDownOutline14 className={clsx(c.chevron, open && c.chevronOpen)} />
+        <IconChevronDownOutline14 className={clsx(c.chevron, groupOpen[key] && c.chevronOpen)} />
       </button>
-      {open
-        ? (
-          <div className={c.body}>
-            {loading
-              ? <div className={c.loading} role="status" aria-label="读取配置…" />
-              : (
-                <>
-                  {/* 分辨率组：窗口宽高（2026-08-30 分组策略） */}
-                  {draft !== null && (
-                    <div className={c.group}>
-                      <button
-                        type="button"
-                        className={c.groupTitle}
-                        aria-expanded={groupOpen.resolution}
-                        onClick={() => setGroupOpen((g) => ({ ...g, resolution: !g.resolution }))}
-                      >
-                        <span>{COPY.resolutionSection}</span>
-                        <IconChevronDownOutline14 className={clsx(c.chevron, groupOpen.resolution && c.chevronOpen)} />
-                      </button>
-                      {groupOpen.resolution && (
-                        <div className={c.section}>
-                      <div className={c.field}>
-                        <span className={c.fieldLabel}>{COPY.widthLabel}</span>
-                        <input
-                          className={c.input}
-                          type="number"
-                          min={480}
-                          max={Math.floor(window.screen.width)}
-                          aria-label={COPY.widthLabel}
-                          value={draft.width}
-                          onChange={(event) => {
-                            const width = Number(event.target.value)
-                            patchDraft({ width: Number.isFinite(width) ? Math.floor(width) : draft.width })
-                          }}
-                        />
-                      </div>
-                      <div className={c.field}>
-                        <span className={c.fieldLabel}>{COPY.heightLabel}</span>
-                        <input
-                          className={c.input}
-                          type="number"
-                          min={360}
-                          max={Math.floor(window.screen.height)}
-                          aria-label={COPY.heightLabel}
-                          value={draft.height}
-                          onChange={(event) => {
-                            const height = Number(event.target.value)
-                            patchDraft({ height: Number.isFinite(height) ? Math.floor(height) : draft.height })
-                          }}
-                        />
-                      </div>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                  {/* 常规设置组：托盘/通知/声音/多实例勾选项 */}
-                  {draft !== null && (
-                    <div className={c.group}>
-                      <button
-                        type="button"
-                        className={c.groupTitle}
-                        aria-expanded={groupOpen.general}
-                        onClick={() => setGroupOpen((g) => ({ ...g, general: !g.general }))}
-                      >
-                        <span>{COPY.generalSection}</span>
-                        <IconChevronDownOutline14 className={clsx(c.chevron, groupOpen.general && c.chevronOpen)} />
-                      </button>
-                      {groupOpen.general && (
-                        <div className={c.section}>
-                      <label className={c.checkboxRow}>
-                        <input
-                          type="checkbox"
-                          checked={draft.minimizeToTray}
-                          onChange={(event) => patchDraft({ minimizeToTray: event.target.checked })}
-                        />
-                        <span>{COPY.minimizeLabel}</span>
-                      </label>
-                      <div className={c.hint}>{COPY.minimizeHint}</div>
-                      <label className={c.checkboxRow}>
-                        <input
-                          type="checkbox"
-                          checked={draft.closeToTray}
-                          onChange={(event) => patchDraft({ closeToTray: event.target.checked })}
-                        />
-                        <span>{COPY.closeLabel}</span>
-                      </label>
-                      <div className={c.hint}>{COPY.closeHint}</div>
-                      <label className={c.checkboxRow}>
-                        <input
-                          type="checkbox"
-                          checked={draft.notifyOnTaskComplete}
-                          onChange={(event) => patchDraft({ notifyOnTaskComplete: event.target.checked })}
-                        />
-                        <span>{COPY.notifyLabel}</span>
-                      </label>
-                      <div className={c.hint}>{COPY.notifyHint}</div>
-                      <label className={c.checkboxRow}>
-                        <input
-                          type="checkbox"
-                          checked={draft.soundEnabled}
-                          onChange={(event) => patchDraft({ soundEnabled: event.target.checked })}
-                        />
-                        <span>{COPY.soundLabel}</span>
-                      </label>
-                      <div className={c.hint}>{COPY.soundHint}</div>
-                      <label className={c.checkboxRow}>
-                        <input
-                          type="checkbox"
-                          checked={draft.allowMultipleInstances}
-                          onChange={(event) => patchDraft({ allowMultipleInstances: event.target.checked })}
-                        />
-                        <span>{COPY.multiInstanceLabel}</span>
-                      </label>
-                      {draft.allowMultipleInstances
-                        ? <div className={c.dangerHint} role="alert">{COPY.multiInstanceDanger}</div>
-                        : <div className={c.hint}>{COPY.multiInstanceHint}</div>}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                  {/* 外观设置组：主题 / 皮肤 / 背景图 / 桌面图标 */}
-                  {draft !== null && (
-                    <div className={c.group}>
-                      <button
-                        type="button"
-                        className={c.groupTitle}
-                        aria-expanded={groupOpen.appearance}
-                        onClick={() => setGroupOpen((g) => ({ ...g, appearance: !g.appearance }))}
-                      >
-                        <span>{COPY.appearanceSection}</span>
-                        <IconChevronDownOutline14 className={clsx(c.chevron, groupOpen.appearance && c.chevronOpen)} />
-                      </button>
-                      {groupOpen.appearance && (
-                        <div className={c.section}>
-                      <div className={c.field}>
-                        <span className={c.fieldLabel}>{COPY.themeLabel}</span>
-                        <select
-                          className={c.select}
-                          aria-label={COPY.themeLabel}
-                          value={draft.theme}
-                          onChange={(event) => {
-                            const theme = event.target.value as ShellConfig['theme']
-                            if (theme === 'system' || theme === 'light' || theme === 'dark') patchDraft({ theme })
-                          }}
-                        >
-                          <option value="system">{COPY.themeOptions.system}</option>
-                          <option value="light">{COPY.themeOptions.light}</option>
-                          <option value="dark">{COPY.themeOptions.dark}</option>
-                        </select>
-                        <div className={c.hint}>{COPY.themeHint}</div>
-                      </div>
-                      <div className={c.fieldRow}>
-                        <span className={c.fieldLabel}>{t('settings.skinLabel')}</span>
-                        <Menu
-                          open={skinMenuOpen}
-                          onClose={() => { setSkinMenuOpen(false) }}
-                          items={[
-                            { id: DEFAULT_SKIN_ID, label: t('settings.skinDefaultName'), icon: <SkinDot skin={undefined} /> },
-                            ...SKINS.map((skin) => ({ id: skin.id, label: skinName(skin.id), icon: <SkinDot skin={skin} /> })),
-                          ]}
-                          selectedId={skinId}
-                          onSelect={(id) => {
-                            onPickSkin(id)
-                            setSkinMenuOpen(false)
-                          }}
-                          align="end"
-                          portal
-                          anchor={(
-                            <button
-                              type="button"
-                              className={c.selectPill}
-                              aria-haspopup="menu"
-                              aria-expanded={skinMenuOpen}
-                              onClick={() => { setSkinMenuOpen(v => !v) }}
-                            >
-                              <SkinDot skin={SKINS.find((skin) => skin.id === skinId)} />
-                              {skinId === DEFAULT_SKIN_ID
-                                ? t('settings.skinDefaultName')
-                                : skinName(skinId)}
-                              <IconChevronDownOutline14 />
-                            </button>
-                          )}
-                        />
-                      </div>
-                      <div className={c.hint}>
-                        {skinId === DEFAULT_SKIN_ID
-                          ? t('settings.skinDefaultDesc')
-                          : skinDesc(skinId)}
-                        {' — '}{t('settings.skinHint')}
-                      </div>
-                      {skinFailed ? <p className={c.failed} role="status">{t('settings.skinApplyFailed')}</p> : null}
-                      {/* Background picker — official Setting-Cell row like the skin picker. */}
-                      <div className={c.sectionTitle}>{COPY.backgroundSection}</div>
-                      <div className={c.fieldRow}>
-                        <span className={c.fieldLabel}>{COPY.backgroundLabel}</span>
-                        <Menu
-                          open={backgroundMenuOpen}
-                          onClose={() => { setBackgroundMenuOpen(false) }}
-                          items={[
-                            { id: DEFAULT_BACKGROUND_ID, label: COPY.backgroundDefaultName },
-                            ...BACKGROUNDS.map((background) => ({ id: background.id, label: background.name })),
-                          ]}
-                          selectedId={backgroundId}
-                          onSelect={(id) => {
-                            onPickBackground(id)
-                            setBackgroundMenuOpen(false)
-                          }}
-                          align="end"
-                          portal
-                          anchor={(
-                            <button
-                              type="button"
-                              className={c.selectPill}
-                              aria-haspopup="menu"
-                              aria-expanded={backgroundMenuOpen}
-                              onClick={() => { setBackgroundMenuOpen(v => !v) }}
-                            >
-                              {backgroundId === DEFAULT_BACKGROUND_ID
-                                ? COPY.backgroundDefaultName
-                                : (BACKGROUNDS.find((background) => background.id === backgroundId)?.name ?? backgroundId)}
-                              <IconChevronDownOutline14 />
-                            </button>
-                          )}
-                        />
-                      </div>
-                      <div className={c.hint}>
-                        {backgroundId === DEFAULT_BACKGROUND_ID
-                          ? COPY.backgroundDefaultDesc
-                          : (BACKGROUNDS.find((background) => background.id === backgroundId)?.description ?? '')}
-                        {' — '}{COPY.backgroundHint}
-                      </div>
-                      {backgroundFailed ? <p className={c.failed} role="status">{COPY.backgroundApplyFailed}</p> : null}
-                      {/* Desktop icon picker — visual grid of preview thumbnails
-                          (S6). One click applies + persists; the native window
-                          and taskbar glyph switch immediately via the Tauri
-                          invoke down-link; unknown ids fall back to the whale. */}
-                      <div className={c.sectionTitle}>{COPY.desktopIconSection}</div>
-                      <div className={c.hint}>{COPY.desktopIconHint}</div>
-                      <div className={c.iconGrid} role="radiogroup" aria-label={COPY.desktopIconSection}>
-                        {DESKTOP_ICONS.map((icon) => (
-                          <button
-                            key={icon.id}
-                            type="button"
-                            role="radio"
-                            aria-checked={desktopIconId === icon.id}
-                            className={clsx(c.iconCell, desktopIconId === icon.id && c.iconSelected)}
-                            onClick={() => { onPickDesktopIcon(icon.id) }}
-                            title={`${icon.name} — ${icon.description}`}
-                          >
-                            <img
-                              className={c.iconPreview}
-                              src={icon.url}
-                              alt={icon.name}
-                              width={56}
-                              height={56}
-                              draggable={false}
-                            />
-                            <span className={c.iconName}>{icon.name}</span>
-                          </button>
-                        ))}
-                      </div>
-                      {desktopIconFailed ? <p className={c.failed} role="status">{COPY.desktopIconApplyFailed}</p> : null}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                  {/* Permission policy — plugin tier picker (dsh-permission-guard). 无法归入以上分组的选项，单独列出。 */}
-                  {permissionPolicy !== null && (
-                    <div className={c.section}>
-                      <div className={c.fieldRow}>
-                        <span className={c.fieldLabel}>{t('settings.permissionLabel')}</span>
-                        <Menu
-                          open={permissionPolicyMenuOpen}
-                          onClose={() => { setPermissionPolicyMenuOpen(false) }}
-                          items={PERMISSION_POLICIES.map((id) => ({ id, label: permissionPolicyLabel(id) }))}
-                          selectedId={permissionPolicy}
-                          onSelect={(id) => {
-                            onPickPermissionPolicy(id)
-                            setPermissionPolicyMenuOpen(false)
-                          }}
-                          align="end"
-                          portal
-                          anchor={(
-                            <button
-                              type="button"
-                              className={c.selectPill}
-                              aria-haspopup="menu"
-                              aria-expanded={permissionPolicyMenuOpen}
-                              onClick={() => { setPermissionPolicyMenuOpen((v) => !v) }}
-                            >
-                              {permissionPolicyLabel(permissionPolicy)}
-                              <IconChevronDownOutline14 />
-                            </button>
-                          )}
-                        />
-                      </div>
-                      <div className={c.hint}>{t('settings.permissionHint')}</div>
-                      {permissionPolicyFailed ? <p className={c.failed} role="status">{t('settings.permissionApplyFailed')}</p> : null}
-                    </div>
-                  )}
-                </>
-              )}
-            <div className={c.footer}>
-              {failed ? <p className={c.failed} role="status">{COPY.saveFailed}</p> : null}
-              {saved ? <p className={c.saved} role="status">{COPY.saved}</p> : null}
-              <button type="button" className={c.discard} disabled={blocked} onClick={onDiscard}>
-                {COPY.discard}
-              </button>
-              <button type="button" className={c.save} disabled={blocked} onClick={onSave}>
-                {COPY[saving ? 'saving' : 'save']}
-              </button>
-            </div>
-          </div>
-        )
-        : null}
+      {groupOpen[key] ? <div className={c.body}>{body}</div> : null}
     </li>
+  )
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      {loading
+        ? <div className={c.loading} role="status" aria-label="读取配置…" />
+        : (
+          <>
+            {draft !== null && groupCard('resolution', COPY.resolutionSection, t('settings.resolutionDesc'), (
+              <div className={c.section}>
+                <div className={c.field}>
+                  <span className={c.fieldLabel}>{COPY.widthLabel}</span>
+                  <input
+                    className={c.input}
+                    type="number"
+                    min={480}
+                    max={Math.floor(window.screen.width)}
+                    aria-label={COPY.widthLabel}
+                    value={draft.width}
+                    onChange={(event) => {
+                      const width = Number(event.target.value)
+                      patchDraft({ width: Number.isFinite(width) ? Math.floor(width) : draft.width })
+                    }}
+                  />
+                </div>
+                <div className={c.field}>
+                  <span className={c.fieldLabel}>{COPY.heightLabel}</span>
+                  <input
+                    className={c.input}
+                    type="number"
+                    min={360}
+                    max={Math.floor(window.screen.height)}
+                    aria-label={COPY.heightLabel}
+                    value={draft.height}
+                    onChange={(event) => {
+                      const height = Number(event.target.value)
+                      patchDraft({ height: Number.isFinite(height) ? Math.floor(height) : draft.height })
+                    }}
+                  />
+                </div>
+              </div>
+            ))}
+            {draft !== null && groupCard('general', COPY.generalSection, t('settings.generalDesc'), (
+              <div className={c.section}>
+                <label className={c.checkboxRow}>
+                  <input
+                    type="checkbox"
+                    checked={draft.minimizeToTray}
+                    onChange={(event) => patchDraft({ minimizeToTray: event.target.checked })}
+                  />
+                  <span>{COPY.minimizeLabel}</span>
+                </label>
+                <div className={c.hint}>{COPY.minimizeHint}</div>
+                <label className={c.checkboxRow}>
+                  <input
+                    type="checkbox"
+                    checked={draft.closeToTray}
+                    onChange={(event) => patchDraft({ closeToTray: event.target.checked })}
+                  />
+                  <span>{COPY.closeLabel}</span>
+                </label>
+                <div className={c.hint}>{COPY.closeHint}</div>
+                <label className={c.checkboxRow}>
+                  <input
+                    type="checkbox"
+                    checked={draft.notifyOnTaskComplete}
+                    onChange={(event) => patchDraft({ notifyOnTaskComplete: event.target.checked })}
+                  />
+                  <span>{COPY.notifyLabel}</span>
+                </label>
+                <div className={c.hint}>{COPY.notifyHint}</div>
+                <label className={c.checkboxRow}>
+                  <input
+                    type="checkbox"
+                    checked={draft.soundEnabled}
+                    onChange={(event) => patchDraft({ soundEnabled: event.target.checked })}
+                  />
+                  <span>{COPY.soundLabel}</span>
+                </label>
+                <div className={c.hint}>{COPY.soundHint}</div>
+                <label className={c.checkboxRow}>
+                  <input
+                    type="checkbox"
+                    checked={draft.allowMultipleInstances}
+                    onChange={(event) => patchDraft({ allowMultipleInstances: event.target.checked })}
+                  />
+                  <span>{COPY.multiInstanceLabel}</span>
+                </label>
+                {draft.allowMultipleInstances
+                  ? <div className={c.dangerHint} role="alert">{COPY.multiInstanceDanger}</div>
+                  : <div className={c.hint}>{COPY.multiInstanceHint}</div>}
+              </div>
+            ))}
+            {draft !== null && groupCard('appearance', COPY.appearanceSection, t('settings.appearanceDesc'), (
+              <div className={c.section}>
+                <div className={c.field}>
+                  <span className={c.fieldLabel}>{COPY.themeLabel}</span>
+                  <select
+                    className={c.select}
+                    aria-label={COPY.themeLabel}
+                    value={draft.theme}
+                    onChange={(event) => {
+                      const theme = event.target.value as ShellConfig['theme']
+                      if (theme === 'system' || theme === 'light' || theme === 'dark') patchDraft({ theme })
+                    }}
+                  >
+                    <option value="system">{COPY.themeOptions.system}</option>
+                    <option value="light">{COPY.themeOptions.light}</option>
+                    <option value="dark">{COPY.themeOptions.dark}</option>
+                  </select>
+                  <div className={c.hint}>{COPY.themeHint}</div>
+                </div>
+                <div className={c.fieldRow}>
+                  <span className={c.fieldLabel}>{t('settings.skinLabel')}</span>
+                  <Menu
+                    open={skinMenuOpen}
+                    onClose={() => { setSkinMenuOpen(false) }}
+                    items={[
+                      { id: DEFAULT_SKIN_ID, label: t('settings.skinDefaultName'), icon: <SkinDot skin={undefined} /> },
+                      ...SKINS.map((skin) => ({ id: skin.id, label: skinName(skin.id), icon: <SkinDot skin={skin} /> })),
+                    ]}
+                    selectedId={skinId}
+                    onSelect={(id) => {
+                      onPickSkin(id)
+                      setSkinMenuOpen(false)
+                    }}
+                    align="end"
+                    portal
+                    anchor={(
+                      <button
+                        type="button"
+                        className={c.selectPill}
+                        aria-haspopup="menu"
+                        aria-expanded={skinMenuOpen}
+                        onClick={() => { setSkinMenuOpen(v => !v) }}
+                      >
+                        <SkinDot skin={SKINS.find((skin) => skin.id === skinId)} />
+                        {skinId === DEFAULT_SKIN_ID
+                          ? t('settings.skinDefaultName')
+                          : skinName(skinId)}
+                        <IconChevronDownOutline14 />
+                      </button>
+                    )}
+                  />
+                </div>
+                <div className={c.hint}>
+                  {skinId === DEFAULT_SKIN_ID
+                    ? t('settings.skinDefaultDesc')
+                    : skinDesc(skinId)}
+                  {' — '}{t('settings.skinHint')}
+                </div>
+                {skinFailed ? <p className={c.failed} role="status">{t('settings.skinApplyFailed')}</p> : null}
+                <div className={c.sectionTitle}>{COPY.backgroundSection}</div>
+                <div className={c.fieldRow}>
+                  <span className={c.fieldLabel}>{COPY.backgroundLabel}</span>
+                  <Menu
+                    open={backgroundMenuOpen}
+                    onClose={() => { setBackgroundMenuOpen(false) }}
+                    items={[
+                      { id: DEFAULT_BACKGROUND_ID, label: COPY.backgroundDefaultName },
+                      ...BACKGROUNDS.map((background) => ({ id: background.id, label: background.name })),
+                    ]}
+                    selectedId={backgroundId}
+                    onSelect={(id) => {
+                      onPickBackground(id)
+                      setBackgroundMenuOpen(false)
+                    }}
+                    align="end"
+                    portal
+                    anchor={(
+                      <button
+                        type="button"
+                        className={c.selectPill}
+                        aria-haspopup="menu"
+                        aria-expanded={backgroundMenuOpen}
+                        onClick={() => { setBackgroundMenuOpen(v => !v) }}
+                      >
+                        {backgroundId === DEFAULT_BACKGROUND_ID
+                          ? COPY.backgroundDefaultName
+                          : (BACKGROUNDS.find((background) => background.id === backgroundId)?.name ?? backgroundId)}
+                        <IconChevronDownOutline14 />
+                      </button>
+                    )}
+                  />
+                </div>
+                <div className={c.hint}>
+                  {backgroundId === DEFAULT_BACKGROUND_ID
+                    ? COPY.backgroundDefaultDesc
+                    : (BACKGROUNDS.find((background) => background.id === backgroundId)?.description ?? '')}
+                  {' — '}{COPY.backgroundHint}
+                </div>
+                {backgroundFailed ? <p className={c.failed} role="status">{COPY.backgroundApplyFailed}</p> : null}
+                <div className={c.sectionTitle}>{COPY.desktopIconSection}</div>
+                <div className={c.hint}>{COPY.desktopIconHint}</div>
+                <div className={c.iconGrid} role="radiogroup" aria-label={COPY.desktopIconSection}>
+                  {DESKTOP_ICONS.map((icon) => (
+                    <button
+                      key={icon.id}
+                      type="button"
+                      role="radio"
+                      aria-checked={desktopIconId === icon.id}
+                      className={clsx(c.iconCell, desktopIconId === icon.id && c.iconSelected)}
+                      onClick={() => { onPickDesktopIcon(icon.id) }}
+                      title={`${icon.name} — ${icon.description}`}
+                    >
+                      <img
+                        className={c.iconPreview}
+                        src={icon.url}
+                        alt={icon.name}
+                        width={56}
+                        height={56}
+                        draggable={false}
+                      />
+                      <span className={c.iconName}>{icon.name}</span>
+                    </button>
+                  ))}
+                </div>
+                {desktopIconFailed ? <p className={c.failed} role="status">{COPY.desktopIconApplyFailed}</p> : null}
+              </div>
+            ))}
+            {/* Permission policy — plugin tier picker (dsh-permission-guard). 无法归入以上分组的选项，单独列出。 */}
+            {permissionPolicy !== null && (
+              <div className={c.section}>
+                <div className={c.fieldRow}>
+                  <span className={c.fieldLabel}>{t('settings.permissionLabel')}</span>
+                  <Menu
+                    open={permissionPolicyMenuOpen}
+                    onClose={() => { setPermissionPolicyMenuOpen(false) }}
+                    items={PERMISSION_POLICIES.map((id) => ({ id, label: permissionPolicyLabel(id) }))}
+                    selectedId={permissionPolicy}
+                    onSelect={(id) => {
+                      onPickPermissionPolicy(id)
+                      setPermissionPolicyMenuOpen(false)
+                    }}
+                    align="end"
+                    portal
+                    anchor={(
+                      <button
+                        type="button"
+                        className={c.selectPill}
+                        aria-haspopup="menu"
+                        aria-expanded={permissionPolicyMenuOpen}
+                        onClick={() => { setPermissionPolicyMenuOpen((v) => !v) }}
+                      >
+                        {permissionPolicyLabel(permissionPolicy)}
+                        <IconChevronDownOutline14 />
+                      </button>
+                    )}
+                  />
+                </div>
+                <div className={c.hint}>{t('settings.permissionHint')}</div>
+                {permissionPolicyFailed ? <p className={c.failed} role="status">{t('settings.permissionApplyFailed')}</p> : null}
+              </div>
+            )}
+          </>
+        )}
+      <div className={c.footer}>
+        {failed ? <p className={c.failed} role="status">{COPY.saveFailed}</p> : null}
+        {saved ? <p className={c.saved} role="status">{COPY.saved}</p> : null}
+        <button type="button" className={c.discard} disabled={blocked} onClick={onDiscard}>
+          {COPY.discard}
+        </button>
+        <button type="button" className={c.save} disabled={blocked} onClick={onSave}>
+          {COPY[saving ? 'saving' : 'save']}
+        </button>
+      </div>
+    </div>
   )
 }

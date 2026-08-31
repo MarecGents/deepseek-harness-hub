@@ -54,8 +54,11 @@ export declare const zh: {
     'settings.unsaved': string;
     'settings.readOnly': string;
     'settings.resolutionSection': string;
+    'settings.resolutionDesc': string;
     'settings.generalSection': string;
+    'settings.generalDesc': string;
     'settings.appearanceSection': string;
+    'settings.appearanceDesc': string;
     'settings.windowSection': string;
     'settings.widthLabel': string;
     'settings.heightLabel': string;
