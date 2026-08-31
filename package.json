@@ -1,6 +1,6 @@
 {
   "name": "@marecgents/dsh-hub",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "DeepSeek Harness desktop hub — Tauri 2.x shell + dsh web plugin layer. This npm package ships the plugin half (client UI + HTTP routes + cordis.patch.yml); the desktop shell ships as the NSIS installer (see build/).",
   "license": "MIT",
   "type": "module",
