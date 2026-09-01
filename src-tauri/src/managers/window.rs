@@ -84,6 +84,15 @@ fn fallback_screen_size(app: &tauri::AppHandle) -> (f64, f64) {
     }
 }
 
+/// 纯函数：给定屏幕逻辑尺寸，返回「3/4 屏」逻辑尺寸（round，下限 480×360）。
+/// 抽离以便单测（2026-09-01 audit 单测补齐）。
+pub fn three_quarter_logical(sw: f64, sh: f64) -> (f64, f64) {
+    (
+        (sw * 0.75).round().max(MIN_WIDTH),
+        (sh * 0.75).round().max(MIN_HEIGHT),
+    )
+}
+
 /// 「启动屏 3/4」逻辑尺寸：光标所在屏（Windows）3/4（round），下限 480×360，无上限。
 /// lib.rs 退出最大化恢复（项 6）与 build_main_window 共用。
 pub fn default_three_quarter_size(app: &tauri::AppHandle) -> (f64, f64) {
@@ -91,10 +100,7 @@ pub fn default_three_quarter_size(app: &tauri::AppHandle) -> (f64, f64) {
     let (sw, sh) = cursor_monitor_logical_size().unwrap_or_else(|| fallback_screen_size(app));
     #[cfg(not(target_os = "windows"))]
     let (sw, sh) = fallback_screen_size(app);
-    (
-        (sw * 0.75).round().max(MIN_WIDTH),
-        (sh * 0.75).round().max(MIN_HEIGHT),
-    )
+    three_quarter_logical(sw, sh)
 }
 
 /// 构建主窗口（T2.1）。
@@ -152,4 +158,29 @@ pub fn build_main_window(app: &App) -> Result<WebviewWindow, Box<dyn std::error:
         .build()?;
 
     Ok(win)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::three_quarter_logical;
+
+    // 2026-09-01 audit: 启动尺寸策略纯函数单测（3/4 取整 + 下限 480×360）。
+    #[test]
+    fn three_quarter_respects_75_percent_rounding() {
+        assert_eq!(three_quarter_logical(1920.0, 1080.0), (1440.0, 810.0));
+        assert_eq!(three_quarter_logical(1000.0, 1000.0), (750.0, 750.0));
+    }
+
+    #[test]
+    fn three_quarter_enforces_minimums() {
+        // 600×400 的 3/4 = 450×300 → 被下限抬到 480×360。
+        assert_eq!(three_quarter_logical(600.0, 400.0), (480.0, 360.0));
+        assert_eq!(three_quarter_logical(480.0, 360.0), (480.0, 360.0));
+    }
+
+    #[test]
+    fn three_quarter_rounds_not_truncates() {
+        // 奇数宽 3/4 需要 .round()（半舍入），不能 floor。
+        assert_eq!(three_quarter_logical(1001.0, 1001.0), (751.0, 751.0));
+    }
 }

@@ -403,8 +403,12 @@ export function installPinnedConversations(ctx: unknown): () => void {
       if (text === undefined || text === '') continue
       const raw = text.trim()
       if (raw !== '') leafTexts.push(normalizeTitle(raw))
-      const style = getComputedStyle(el)
-      if (style.position === 'absolute') continue
+      // 2026-09-01 audit P2: 拖拽/重渲染中候选元素可能已脱离文档，getComputedStyle
+      // 对 detached 节点抛异常会整行跳过——加守卫后按"未知样式"继续（仅影响
+      // position/fontSize 过滤，标题匹配不受影响）。
+      let style: CSSStyleDeclaration | null = null
+      try { style = getComputedStyle(el) } catch { /* detached during drag */ }
+      if (style === null || style.position === 'absolute') continue
       const fontSize = parseFloat(style.fontSize)
       if (Number.isFinite(fontSize) && fontSize < 13) continue
       const key = normalizeTitle(text)

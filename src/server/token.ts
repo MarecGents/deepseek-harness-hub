@@ -34,7 +34,8 @@ export function getToken(): string {
  * @returns the transformed body.
  */
 export function injectTokenToHtml(html: string): string {
-  return html.replace('<head>', `<head><meta name="dsh-hub-token" content="${getToken()}">`)
+  // 2026-09-01 audit P2-3: match any <head ...> variant (uppercase/attrs)
+  return html.replace(/<head[^>]*>/i, `<head><meta name="dsh-hub-token" content="${getToken()}">`)
 }
 
 /** Constant-time string comparison (length mismatch fails first). */

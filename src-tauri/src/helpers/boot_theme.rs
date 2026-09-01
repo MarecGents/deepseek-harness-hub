@@ -28,11 +28,29 @@ pub fn boot_theme_script() -> String {
 }
 
 /// 解析 (是否深色, splash 背景, splash 前景)。
+/// 2026-09-01 audit P2：config/皮肤查表失败仅静默回退会让启动配色错配难排查，
+/// 解析失败分支补 log::warn 打点（Splash 属于启动期 UI，出错需可观测）。
 fn resolve() -> (bool, String, String) {
-    let cfg = std::fs::read_to_string(config_path())
-        .ok()
-        .and_then(|s| serde_json::from_str::<Value>(&s).ok())
-        .unwrap_or(Value::Null);
+    let raw_cfg = std::fs::read_to_string(config_path());
+    let cfg = match raw_cfg {
+        Ok(c) => match serde_json::from_str::<Value>(&c) {
+            Ok(v) => v,
+            Err(e) => {
+                log::warn!("boot_theme: config parse failed, using defaults: {}", e);
+                Value::Null
+            }
+        },
+        Err(e) => {
+            log::debug!("boot_theme: no config yet, using defaults: {}", e);
+            Value::Null
+        }
+    };
+    resolve_from_config(&cfg)
+}
+
+/// 纯推导：config JSON → (dark, bg, fg)。抽离以便单测（theme 显式 deep/light
+/// 时不查系统注册表；'system' 分支调用 system_dark）。
+fn resolve_from_config(cfg: &Value) -> (bool, String, String) {
     let theme = cfg
         .get("theme")
         .and_then(|v| v.as_str())
@@ -57,11 +75,18 @@ fn resolve() -> (bool, String, String) {
         ("#f7f7f8".to_string(), "#1c1f24".to_string())
     };
     if skin != "default" {
-        if let Some(entry) = serde_json::from_str::<Value>(SKIN_COLORS)
-            .ok()
-            .and_then(|v| v.get(skin.as_str()).cloned())
-            .and_then(|colors| colors.get(if dark { "dark" } else { "light" }).cloned())
-        {
+        let parsed: Result<Value, _> = serde_json::from_str(SKIN_COLORS);
+        let lookup = match parsed {
+            Ok(root) => root
+                .get(skin.as_str())
+                .cloned()
+                .and_then(|colors| colors.get(if dark { "dark" } else { "light" }).cloned()),
+            Err(e) => {
+                log::error!("boot_theme: skin-colors.json corrupt: {}", e);
+                None
+            }
+        };
+        if let Some(entry) = lookup {
             if let Some(v) = entry.get("bg").and_then(|v| v.as_str()) {
                 bg = v.to_string();
             }
@@ -87,10 +112,53 @@ fn system_dark() -> bool {
             "/v",
             "AppsUseLightTheme",
         ])
-        .creation_flags(0x08000000)
+        .creation_flags(crate::CREATE_NO_WINDOW)
         .output()
         .ok()
         .and_then(|o| String::from_utf8(o.stdout).ok())
         .map(|s| s.contains("0x0"))
         .unwrap_or(true)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::resolve_from_config;
+    use serde_json::json;
+
+    // 2026-09-01 audit: boot_theme.resolve 纯函数单测（之前零覆盖）。
+    #[test]
+    fn explicit_dark_uses_default_fallback_palette() {
+        let cfg = json!({ "theme": "dark" });
+        let (dark, bg, fg) = resolve_from_config(&cfg);
+        assert!(dark);
+        assert_eq!(bg, "#18181b");
+        assert_eq!(fg, "#ffffff");
+    }
+
+    #[test]
+    fn explicit_light_uses_default_fallback_palette() {
+        let cfg = json!({ "theme": "light" });
+        let (dark, bg, fg) = resolve_from_config(&cfg);
+        assert!(!dark);
+        assert_eq!(bg, "#f7f7f8");
+        assert_eq!(fg, "#1c1f24");
+    }
+
+    #[test]
+    fn known_skin_dark_applies_skin_palette() {
+        // rx-sage-breeze 深色 bg-base=#151E19 fg(label) 来自 skins.ts 生成表。
+        let cfg = json!({ "theme": "dark", "skin": "rx-sage-breeze" });
+        let (dark, bg, fg) = resolve_from_config(&cfg);
+        assert!(dark);
+        assert_eq!(bg, "#151E19");
+        assert_eq!(fg, "#EEF6F0");
+    }
+
+    #[test]
+    fn unknown_skin_falls_back_to_default_palette() {
+        let cfg = json!({ "theme": "dark", "skin": "definitely-not-a-skin" });
+        let (dark, bg, _fg) = resolve_from_config(&cfg);
+        assert!(dark);
+        assert_eq!(bg, "#18181b");
+    }
 }

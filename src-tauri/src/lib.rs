@@ -58,6 +58,10 @@ use log::{info, warn};
 use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::{Listener, Manager};
 
+/// CREATE_NO_WINDOW = 0x08000000：console 子进程（netstat/powershell/reg）不闪
+/// 命令行窗口（2026-09-01 audit：魔法数抽常量，全仓 9 处统一）。
+pub const CREATE_NO_WINDOW: u32 = 0x08000000;
+
 /// M1 IPC 冒烟命令。
 #[tauri::command]
 fn ping() -> String {
@@ -204,7 +208,7 @@ fn detect_running_dsh_instances() -> InstanceScan {
     #[cfg(target_os = "windows")]
     {
         use std::os::windows::process::CommandExt;
-        netstat.creation_flags(0x08000000);
+        netstat.creation_flags(crate::CREATE_NO_WINDOW);
     }
     let netstat_pids: Option<std::collections::HashSet<u32>> =
         match run_command_with_timeout(&mut netstat, DETECT_TIMEOUT) {
@@ -246,7 +250,7 @@ fn detect_running_dsh_instances() -> InstanceScan {
     #[cfg(target_os = "windows")]
     {
         use std::os::windows::process::CommandExt;
-        ps.creation_flags(0x08000000);
+        ps.creation_flags(crate::CREATE_NO_WINDOW);
     }
     let cim_pids: Option<Vec<u32>> = match run_command_with_timeout(&mut ps, DETECT_TIMEOUT) {
         Ok(out) if out.status.success() => {
@@ -458,7 +462,7 @@ fn register_toast_aumid() {
     let add = |name: &str, value: &str| {
         let mut c = std::process::Command::new("reg");
         c.args(["add", key, "/v", name, "/t", "REG_SZ", "/d", value, "/f"]);
-        c.creation_flags(0x08000000); // CREATE_NO_WINDOW
+        c.creation_flags(crate::CREATE_NO_WINDOW); // CREATE_NO_WINDOW
         match c.output() {
             Ok(out) if out.status.success() => {
                 info!("notify: AUMID {} = {} registered", name, value)

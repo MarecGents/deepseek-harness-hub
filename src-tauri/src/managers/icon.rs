@@ -374,7 +374,7 @@ fn update_shell_icon_sources(_app: &AppHandle, icon_id: &str) {
         c.args([
             "add", key, "/v", "IconUri", "/t", "REG_SZ", "/d", &ico_str, "/f",
         ]);
-        c.creation_flags(0x08000000);
+        c.creation_flags(crate::CREATE_NO_WINDOW);
         match c.output() {
             Ok(out) if out.status.success() => log::info!("icon: AUMID IconUri → {}", ico_str),
             Ok(out) => log::warn!(
@@ -420,7 +420,7 @@ fn update_shell_icon_sources(_app: &AppHandle, icon_id: &str) {
         use std::os::windows::process::CommandExt;
         let mut c = std::process::Command::new("ie4uinit.exe");
         c.args(["-show"]);
-        c.creation_flags(0x08000000);
+        c.creation_flags(crate::CREATE_NO_WINDOW);
         match c.output() {
             Ok(_) => log::info!("icon: ie4uinit -show issued (icon cache refresh)"),
             Err(e) => log::warn!("icon: ie4uinit spawn failed: {}", e),

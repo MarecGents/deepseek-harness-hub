@@ -241,7 +241,7 @@ fn find_dsh() -> Option<PathBuf> {
     #[cfg(target_os = "windows")]
     {
         use std::os::windows::process::CommandExt;
-        npm_cmd.creation_flags(0x08000000);
+        npm_cmd.creation_flags(crate::CREATE_NO_WINDOW);
     }
     let npm_prefix = npm_cmd.output().ok()?;
     let prefix = String::from_utf8_lossy(&npm_prefix.stdout)
@@ -515,7 +515,7 @@ pub fn assemble_profile() -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
         use std::os::windows::process::CommandExt;
-        asm.creation_flags(0x08000000);
+        asm.creation_flags(crate::CREATE_NO_WINDOW);
     }
     let asm_output = asm
         .output()
@@ -688,7 +688,7 @@ fn spawn_inner(state: Arc<NodeState>, app: tauri::AppHandle) -> Result<(), Strin
     #[cfg(target_os = "windows")]
     {
         use std::os::windows::process::CommandExt;
-        cmd.creation_flags(0x08000000);
+        cmd.creation_flags(crate::CREATE_NO_WINDOW);
     }
 
     let mut child = cmd
@@ -795,7 +795,7 @@ fn spawn_via_cmd_shim(
     #[cfg(target_os = "windows")]
     {
         use std::os::windows::process::CommandExt;
-        cmd.creation_flags(0x08000000);
+        cmd.creation_flags(crate::CREATE_NO_WINDOW);
     }
 
     let mut child = cmd
@@ -959,7 +959,7 @@ pub fn kill_sidecar(state: &NodeState) {
                     let pid_str = pid.to_string();
                     let _ = Command::new("taskkill")
                         .args(["/PID", pid_str.as_str(), "/T", "/F"])
-                        .creation_flags(0x08000000)
+                        .creation_flags(crate::CREATE_NO_WINDOW)
                         .output();
                     info!("node: taskkill /PID {pid} /T /F issued (tree kill)");
                 }

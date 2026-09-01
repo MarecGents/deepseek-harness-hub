@@ -44,6 +44,9 @@ function sanitizeIds(input: unknown): string[] {
   const ids: string[] = []
   for (const value of input) {
     if (typeof value !== 'string' || value === '') continue
+    // 2026-09-01 audit P2: 会话 id 是文件名片段——限长+限字符集，防止超长/
+    // 含路径语法 id 撑大 pins.json 或污染后续拼接。
+    if (value.length > 200 || !/^[a-zA-Z0-9_-]+$/.test(value)) continue
     if (seen.has(value)) continue
     seen.add(value)
     ids.push(value)

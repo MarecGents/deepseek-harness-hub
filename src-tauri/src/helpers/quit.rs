@@ -21,12 +21,22 @@ fn marker_path() -> PathBuf {
 /// 写 quit.marker（T3.6）。
 ///
 /// 托盘「退出」调用此函数后 process::exit(0)，launcher 看到 marker 不重启。
-pub fn write_quit_marker() {
-    let path = marker_path();
+#[cfg(test)]
+fn marker_path_in(root: &std::path::Path) -> PathBuf {
+    root.join("dsh-hub").join("quit.marker")
+}
+
+/// 内部实现（测试注入目录用）。
+fn write_marker_at(path: &std::path::Path) {
     if let Some(parent) = path.parent() {
         let _ = std::fs::create_dir_all(parent);
     }
-    let _ = std::fs::write(&path, "quit");
+    let _ = std::fs::write(path, "quit");
+}
+
+pub fn write_quit_marker() {
+    let path = marker_path();
+    write_marker_at(&path);
     info!("quit: wrote marker at {}", path.display());
 }
 
@@ -52,4 +62,35 @@ pub fn has_quit_marker() -> bool {
 pub fn quit_and_exit() -> ! {
     write_quit_marker();
     std::process::exit(0);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // 2026-09-01 audit P2: quit.marker 是 supervisor fail-fast 的唯一信号，
+    // 之前零单测——补 write/exists/clear 的隔离目录契约。
+    #[test]
+    fn marker_write_exists_clear_roundtrip() {
+        let dir = std::env::temp_dir().join(format!("dsh-hub-quit-test-{}", std::process::id()));
+        let marker = marker_path_in(&dir);
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(!marker.exists());
+        write_marker_at(&marker);
+        assert!(marker.exists());
+        assert_eq!(std::fs::read_to_string(&marker).unwrap(), "quit");
+        let _ = std::fs::remove_file(&marker);
+        assert!(!marker.exists());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn marker_parent_dirs_created() {
+        let dir = std::env::temp_dir().join(format!("dsh-hub-quit-parent-{}", std::process::id()));
+        let marker = marker_path_in(&dir);
+        let _ = std::fs::remove_dir_all(&dir);
+        write_marker_at(&marker);
+        assert!(marker.exists());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }
