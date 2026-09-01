@@ -377,8 +377,30 @@ export function installPinnedConversations(ctx: unknown): () => void {
    * text appears inside it; duplicate titles make the whole title group
    * ambiguous and are skipped entirely (never mislabeled). Returns the title
    * element as well, so the pin button can be inserted right after it.
+   *
+   * Performance (2026-09-01 audit P1-12): with hundreds of sessions the
+   * un-cached scan calls getComputedStyle per leaf element (forced layout)
+   * on every debounced sync. Rows are keyed by DOM identity with a cheap
+   * text-fingerprint + child-count check, so unchanged rows skip the
+   * getComputedStyle pass entirely; any text/childCount mutation (rename,
+   * status dot swap, re-render) invalidates only that row.
    */
+  const rowMatchCache = new WeakMap<HTMLElement, { fp: string; result: { id: string; titleEl: Element } | undefined }>()
   function mapRowByContent(row: HTMLElement): { id: string; titleEl: Element } | undefined {
+    // Fast path: unchanged rows reuse the cached result. fingerprint = all
+    // normalized leaf texts + total element count (cheap innerText-ish scan,
+    // no style read).
+    let fp = ''
+    let count = 0
+    for (const el of Array.from(row.querySelectorAll('span, div'))) {
+      count++
+      const text = el.childElementCount === 0 ? el.textContent : undefined
+      if (text !== undefined && text.trim() !== '') fp += text.trim() + '\u0001'
+    }
+    fp += '#' + count
+    const cached = rowMatchCache.get(row)
+    if (cached !== undefined && cached.fp === fp) return cached.result
+
     const byId = sessionSnapshot()?.byId ?? {}
     // titleText (normalized) → ids whose displayTitle matches it.
     const titleToIds = new Map<string, string[]>()
@@ -437,10 +459,15 @@ export function installPinnedConversations(ctx: unknown): () => void {
     // 标题（titleToIds 命中）时才算歧义跳过。此前对任意更长包含子串的叶子都跳过，
     // 导致标题恰是某非标题标签（相对时间/状态/徽章）前缀的会话无法置顶（2026-08-19）。
     const entries = [...candidates.values()]
-    if (entries.length !== 1) return undefined // ambiguous (or unknown) row
-    const entry = entries[0]
-    if (leafTexts.some((t) => t.length > entry.title.length && t.includes(entry.title) && titleToIds.has(t))) return undefined
-    return entry === undefined ? undefined : { id: entry.id, titleEl: entry.el }
+    let result: { id: string; titleEl: Element } | undefined
+    if (entries.length === 1) {
+      const entry = entries[0]
+      if (!leafTexts.some((t) => t.length > entry.title.length && t.includes(entry.title) && titleToIds.has(t))) {
+        result = { id: entry.id, titleEl: entry.el }
+      }
+    }
+    rowMatchCache.set(row, { fp, result })
+    return result
   }
 
   // ── DOM construction ─────────────────────────────────────────────────────

@@ -194,7 +194,10 @@ export const SESSION_LIMIT = 16
 
 /** Idle timeout: a session with no input or output for this long is closed
  * and reclaimed (explicit close semantics are unaffected). */
-const IDLE_TIMEOUT_MS = 30 * 60 * 1000
+// 2026-09-01 audit P1-2: idle 回收从 30min 收紧到 10min——SESSION_LIMIT×node-pty
+// （约 40-80MB/进程）在用户误点/长期闲置场景会累积到 ~1GB；10min 无人操作
+// 即可回收，仍宽于短时切换会话的预期使用（切换时 lastActivity 会刷新）。
+const IDLE_TIMEOUT_MS = 10 * 60 * 1000
 
 /** How often the idle reaper sweeps the session map. */
 const IDLE_SWEEP_MS = 60 * 1000
@@ -259,7 +262,14 @@ function killPty(s: Session): void {
   const pid = s.pty.pid
   if (process.platform === 'win32' && pid > 0) {
     execFile('taskkill', ['/PID', String(pid), '/T', '/F'], { windowsHide: true }, (err) => {
-      if (err !== null && !err.message.includes('not found') && !err.message.includes('cannot find')) {
+      // 2026-09-01 audit P1-3: err.message 判活对本地化系统脆弱（"not found"
+      // 只在英文环境）——增加 code 判活（errno 128 = ERROR_WAIT_NO_CHILDREN /
+      // 常见 taskkill 已退出态），并统一以 err.code 为准优先。
+      const alreadyExited = err === null
+        || err.code === 128
+        || err.code === 'ENOENT'
+        || /not found|cannot find|没有找到|无法找到|not running|未在运行/i.test(err.message ?? '')
+      if (!alreadyExited) {
         // taskkill failed for a real reason (not the expected already-exited
         // case) — leave a trace so orphaned shells are diagnosable, then fall
         // back to node-pty's own kill (closes the conpty handle; best effort

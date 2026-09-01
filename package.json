@@ -33,7 +33,7 @@
   ],
   "bin": {},
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && tsc -p tsconfig.client.json",
     "build:client": "node ./scripts/build-client.mjs",
     "build:installer": "node ./scripts/build-installer.mjs",
     "prepack": "npm run build && npm run build:client",
@@ -43,7 +43,8 @@
     "tauri:build": "tauri build",
     "tauri:icon": "tauri icon",
     "m1:check": "node scripts/check-tauri-conf.mjs",
-    "m1:ipc-smoke": "node scripts/ipc-smoke.mjs"
+    "m1:ipc-smoke": "node scripts/ipc-smoke.mjs",
+    "prepare": "node scripts/git-hooks.mjs install"
   },
   "dsh": {
     "bundle": {
