@@ -233,13 +233,29 @@ npm dist-tag add <pkg>@<ver> latest --registry=https://registry.npmjs.org/
 
 ---
 
+## 7.4 发布档位（release tiers）
+
+提交/发布动作分三档，**每次发布前由仓库所有者指定档位**，按档位执行对应步骤：
+
+| 档位 | 版本 bump | 门禁 | verify-release | build:installer | npm 发布 | merge main | 更新日志 / GitHub Release | 打包记录 |
+|---|---|---|---|---|---|---|---|---|
+| **T1 快速修复**（仅调试用） | ✅ 升版本 | ✅ 全跑 | ✅ | ✅ | ❌ | ❌（仅 dev-v2） | ❌ | ❌ |
+| **T2 候选发布** | ✅ 升版本 | ✅ 全跑 | ✅ | ✅ | ❌ 或按指定 | ✅（按指定） | ✅（按指定） | ✅ |
+| **T3 正式发布** | ✅ 升版本 | ✅ 全跑 | ✅ | ✅ | ✅ latest+rc | ✅ | ✅ | ✅ |
+
+- **T1（bug 修复快速通道）**：修复 bug 时**仅打包 + 推送至 dev-v2**——不发布 npmjs、不 merge main、不写更新日志。适合"先让问题修好、用户自测"的场景；后续需要正式分发时再升档（T2/T3）补流程。
+- **T2（候选/增量发布）**：常规 rc/增量版——npm 发布与否、merge main 与否、更新日志与否均**按仓库所有者每次指定**（历史惯例见打包记录：rc.15/rc.16 不 merge、rc.17 不发布 npm 等）。
+- **T3（正式版）**：全流程——npm `latest`+`rc` 双 tag、merge main、tag、更新日志（用于 GitHub Release，由所有者手动发布）。
+
+> 流程细则、坑位与必查点见 [PUBLISH.md](PUBLISH.md)（发布执行配套文档，含硬性纪律与命令模板）。
+
 ## 7.5 bug 修复 → 验证 → 重打包 SOP 要点
 
 - **修复门禁**：tsc（`npm run build`）与 client bundle（`npm run build:client`）**必须都跑**（漏 `build:client`＝新代码不进 lib/，dev/打包仍旧行为——踩坑 #85）；Rust 侧 `cargo fmt --check` + `clippy --all-targets -D warnings` + `cargo test --lib`；lib 零漂移（无未提交 lib/ 变更）。
 - **隔离实例验证**：`DSH_HOME=%TEMP%\<sandbox>` 独立 + `DSH_HUB_PACKAGE_ROOT=<仓库>` 起 dev 实例；行为性 bug 以用户实操确认为准（按 BUG_FIX_SOP.md 全流程）。
 - **多实例/端口冲突**：dev 实例退出后 dev-server 可能残留（占用 17891）→ 启动失败 EADDRINUSE。处置：`netstat -ano | grep :17891` 找 LISTENING PID → `Stop-Process -Id <pid> -Force`；`taskkill //F //IM dsh-hub.exe` 清壳残留；再重启。
 - **验证收尾**：移除临时诊断探针（host 路由+页面打点）→ 门禁复跑 → 踩坑登记 → 提交 dev-v2（按指示推送/合并）。
-- **重打包**（已发布版本后的修复）：dev-v2 升版本（用户指定，如 rc.10 → 下个 rc）→ package.json/package-lock.json/tauri.conf.json 三处一致 → `node scripts/verify-release.mjs` ALL PASS → `npm run build:installer` → 更新打包记录 → 真机验证。
+- **重打包 / 发布**（已发布版本后的修复）：按 **§7.4 档位**执行（T1 仅打包+推送 dev-v2；T2/T3 按所有者指定补 npm/merge/日志）。共同步骤：dev-v2 升版本 → package.json/package-lock.json/tauri.conf.json 三处一致 → 门禁全跑 → `node scripts/verify-release.mjs` ALL PASS → `npm run build:installer` → 真机验证。T1 **不**更新打包记录与更新日志。
 
 ## 8. 相关文档
 
