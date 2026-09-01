@@ -1,0 +1,66 @@
+name: frontend
+
+# Frontend + release-process quality gate (2026-09-01 audit):
+#  - tsc (strict) must stay clean — previously only verified locally,
+#    a regression could slip into a release;
+#  - lib/ must stay in sync with src/ (verify-release P3: lib zero-drift);
+#  - verify-release ALL PASS mirrors the release pipeline's own gate so CI
+#    catches version/identity/drift problems before a publish attempt.
+# Runs on any push touching src/, plugins/, package.json, tsconfig or
+# the verify script; the Rust half has its own workflow (rust.yml).
+
+on:
+  push:
+    branches: [dev-v2, main]
+    paths:
+      - 'src/**'
+      - 'plugins/**'
+      - 'scripts/verify-*.mjs'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'tsconfig.json'
+      - 'tsdown.config.ts'
+      - 'cordis.patch.yml'
+      - '.github/workflows/frontend.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'plugins/**'
+      - 'scripts/verify-*.mjs'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'tsconfig.json'
+      - 'tsdown.config.ts'
+      - 'cordis.patch.yml'
+      - '.github/workflows/frontend.yml'
+  workflow_dispatch: {}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # tsdown links the @deepseek-ai/dsh-* SDK packages via junction when
+      # they are missing — on CI the install-v1 registry metadata makes the
+      # packages exist already, but keep the same build order as the release
+      # pipeline (tsc first, then the client bundle).
+      - name: TypeScript (strict)
+        run: npm run build
+
+      - name: Client bundle
+        run: npm run build:client
+
+      - name: Release-process gate (verify-release)
+        # P3 requires lib/ to be committed — the checkout is fresh, so this
+        # also proves the committed lib/ matches the freshly built one.
+        run: node scripts/verify-release.mjs
