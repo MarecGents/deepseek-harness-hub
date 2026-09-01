@@ -1,6 +1,6 @@
 ># **`@marecgents/dsh-hub`** —— DeepSeek Harness（`dsh`）的桌面端框架：以原生 Tauri 2.x 窗口运行 dsh Web UI，提供托盘、主题同步、窗口记忆、右侧栏与系统通知。
 >
-> **版本状态（2026-08-30）**：**`0.1.3`**（npm `latest` / `rc` 双 tag 均为 `0.1.3`）——Tauri 2.x 壳 + dsh web 插件层，NSIS 安装器**安装即用**（安装期自动下载私有 Node + dsh + 插件到安装目录，无需系统预装 Node），首启自动进 dsh UI；卸载走快速通道并清理自有 profile 条目（保留 `.dsh` 本体与用户数据）。功能全貌见 [FUNCTIONS.md](FUNCTIONS.md)（11 大类、每项带来源与测试状态）：会话标签栏、交互终端（自定义 Shell）、对话定位条、置顶会话、右键菜单全量接管 + 双语 i18n、15 套皮肤 + 背景图 + 桌面图标六面同步、权限策略档位、四个独立插件、壳内拖放恢复、启动 Splash 皮肤配色。`0.0.2-rc.*` 与 `0.0.1-rc.14`（WebView2 壳 `dev-v1`，已冻结）为历史版本。
+> **版本状态（2026-09-01）**：**`0.1.3`**（npm `latest` / `rc` 双 tag 均为 `0.1.3`）——Tauri 2.x 壳 + dsh web 插件层，NSIS 安装器**安装即用**（安装期自动下载私有 Node + dsh + 插件到安装目录，无需系统预装 Node），首启自动进 dsh UI；卸载走快速通道并清理自有 profile 条目（保留 `.dsh` 本体与用户数据）。功能全貌见 [FUNCTIONS.md](FUNCTIONS.md)（11 大类、每项带来源与测试状态）：会话标签栏、交互终端（自定义 Shell）、对话定位条、置顶会话、右键菜单全量接管 + 双语 i18n、15 套皮肤 + 背景图 + 桌面图标六面同步、权限策略档位、四个独立插件、壳内拖放恢复、启动 Splash 皮肤配色。`0.0.2-rc.*` 与 `0.0.1-rc.14`（WebView2 壳 `dev-v1`，已冻结）为历史版本。
 
 [![npm version](https://img.shields.io/npm/v/@marecgents/dsh-hub)](https://www.npmjs.com/package/@marecgents/dsh-hub)
 [![npm rc](https://img.shields.io/npm/v/@marecgents/dsh-hub/rc)](https://www.npmjs.com/package/@marecgents/dsh-hub)
@@ -43,7 +43,7 @@
 - **project-memory 插件（PR #36）**：独立 dsh 插件（`plugins/dsh-project-memory/`）——每项目持久记忆（FACT.md + JOURNAL.jsonl，自动注入 systemPrompt.context + `memory_read`/`memory_log`/`memory_fact` 工具）。
 - **usage-stats 插件（PR #34）**：独立 dsh 插件（`plugins/dsh-usage-stats/`）——全会话 token 用量统计（按 provider/model 聚合 + 设置页可视化：汇总/各模型卡片/按天表格/趋势图/单价费用估算 + HTTP API；0.1.0 修复读取 500 与表格透背景图两处缺陷）；provider 名与服务端文案均双语（zh/en，跟随 dsh 语言设置，独立加载插件同样生效）。
   以上 4 个独立插件**双轨分发**（随 hub resources + 独立 npm 轨，package.json 均已 `private:false` 就绪），见 [BUILD.md §7](BUILD.md) 与 AGENTS.md §1.1。
-- **设置卡片**：dsh 设置 → 插件页提供桌面壳配置（窗口尺寸 / 主题 / 托盘行为 / 会话完成通知 / 提示音 / 多实例开关 / 界面皮肤 / 背景图 / 桌面图标）。**皮肤 15 套**：内置 5（午夜蓝/旧纸张/终端绿/ZCode/极光紫）+ **Reasonix 官方 8**（rx-*，黑金/绯红地平线/青蓝舞台/熔炉金红/玫瑰晨光/鼠尾草微风/火花笔记/紫罗兰星光）+ **opencode 2**（oc-* 经典/石墨）——由**统一推导规则生成器**产出（1:1 直映射 + 定向混合 + dimmed 夹取 ≥3.5:1），每套浅/深 × 33 token + `docs/skins/*.md` 文档；选择器为官方 Setting-Cell + Menu（菜单项与 pill 带皮肤浅|深色块预览），皮肤名/描述走词典、随 dsh 语言切换。
+- **设置页（一级）**：0.1.2 起为设置对话框一等页面（Agent 预设与用量统计之间），0.1.3 改为官方插件页风格三卡片（分辨率/常规设置/外观设置，默认折叠）+ 权限策略单列——窗口尺寸 / 主题 / 托盘行为 / 会话完成通知 / 提示音 / 多实例开关 / 界面皮肤 / 背景图 / 桌面图标。**皮肤 15 套**：内置 5（午夜蓝/旧纸张/终端绿/ZCode/极光紫）+ **Reasonix 官方 8**（rx-*，黑金/绯红地平线/青蓝舞台/熔炉金红/玫瑰晨光/鼠尾草微风/火花笔记/紫罗兰星光）+ **opencode 2**（oc-* 经典/石墨）——由**统一推导规则生成器**产出（1:1 直映射 + 定向混合 + dimmed 夹取 ≥3.5:1），每套浅/深 × 33 token + `docs/skins/*.md` 文档；选择器为官方 Setting-Cell + Menu（菜单项与 pill 带皮肤浅|深色块预览），皮肤名/描述走词典、随 dsh 语言切换。
 - **i18n（全量双语）**：hub 全部界面文案（设置卡/会话菜单/工作区菜单/皮肤名/空白右键菜单等）与 **usage-stats 插件**文案均收进 zh/en 词典（`src/client/locale.ts`；usage-stats 独立插件自带词典），语言源 = dsh 设置（General → Language）——官方 locale 插件写入的 `<html lang>`，切换即全量刷新。
 - **右键菜单语义**：WebView2 原生右键菜单已在 Rust 侧禁用（`SetAreDefaultContextMenusEnabled(false)`）；右键全部由 DOM 接管——**对象行（会话/工作区）→ 各自专属菜单**（会话全功能菜单 / 工作区：新建任务、打开工作区），**空白处（含左栏空态）→ 刷新菜单**，输入框等文本编辑要素不干预。
 - **壳内拖放恢复（0.1.0）**：关闭 Tauri 对 WebView2 拖放的文件专用覆盖——列表行拖拽排序（工作区/会话）、标签拖拽在壳内恢复浏览器同款行为；拖文件到输入区 = 官方附件上传，其他区域安全忽略（杜绝 file:// 导航）；拖拽状态 watchdog 兜底。
@@ -201,6 +201,9 @@ dsh-hub/
 │   ├── check-tauri-conf.mjs  # M1 字段核对断言
 │   ├── ipc-smoke.mjs         # M1 窗口 IPC 冒烟
 │   ├── verify-release.mjs    # 发布门禁（P1-P5）
+│   ├── verify-plugin.mjs     # 独立插件发布门禁（P1-P5）
+│   ├── verify-protocol.mjs   # 协议/契约门禁
+│   ├── verify-tauri-release.mjs # Tauri 发布一致性门禁
 │   ├── verify-m4-multi-instance.mjs # M4 多实例门禁断言
 │   ├── generate-titlebar-icons.mjs  # 标题栏/窗口主题图标生成（icon-dark/light）
 │   └── generate-desktop-icons.py    # 桌面图标 .ico 多尺寸生成（whale-girl*/whale）
@@ -270,6 +273,7 @@ npm publish --access public --tag rc --registry=https://registry.npmjs.org/
 ```
 
 > **独立插件（`plugins/<name>`）走双轨**：独立 npm 发布 + 随 hub NSIS 分发（resources + assemble-profile + cordis.patch.yml），见 [BUILD.md §7](BUILD.md) 与 AGENTS.md §1.1 铁律 8。壳单一功能不发 npm（随 hub 编译）。
+> **发布执行纪律**（版本 bump / 门禁顺序 / npm CDN TTL / tag / 分支同步 / 档位）：见 [PUBLISH.md](PUBLISH.md)。
 
 ## 致谢
 
@@ -284,3 +288,7 @@ npm publish --access public --tag rc --registry=https://registry.npmjs.org/
 - [开发约束（AGENTS.md，开发前必读）](AGENTS.md) —— 全部开发 harness 总纲 + 分层子 harness 索引
 - [调试与修复技术路线手册](docs/调试与修复技术路线手册.md) —— 会话 zstd 修复 / 崩溃定位 / 插件契约 / 验证矩阵（反复出现问题的调查路线，避免重新调研）
 - [关键踩坑记录（勿重蹈）](docs/关键踩坑记录.md)
+- [发布流程约束（PUBLISH，发布前必读）](PUBLISH.md)
+- [参考仓库索引（REFERENCE）](REFERENCE.md)
+- [打包记录（合订本）](docs/打包记录.md)
+- [质量审查报告（2026-09-01）](docs/质量审查报告-2026-09-01.md)

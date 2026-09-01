@@ -20,7 +20,7 @@
 
 // 分层（SPT 架构借鉴，2026-08-18 重构）：
 //   managers/ = 壳 Manager（tray/node/window/single_instance）
-//   helpers/  = 无状态 Helper（theme/state/quit/os_theme/e2e）
+//   helpers/  = 无状态 Helper（theme/state/quit/boot_theme/winutil/e2e）
 //   services/ = 领域 Services（notify）
 //   commands/ = Tauri 命令薄胶水（Callback 层）
 // #[path] 保留模块名（crate::tray 等），避免引用链改动。

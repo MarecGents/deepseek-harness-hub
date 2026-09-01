@@ -12,7 +12,7 @@ src-tauri/src/
   commands/             Callback 层：#[tauri::command] 薄胶水（commands.rs）
   managers/             壳 Manager：tray.rs / node.rs / window.rs / single_instance.rs / icon.rs
   services/             Services：notify.rs（系统 toast + 点击跳会话）
-  helpers/              Helper：theme.rs / state.rs / quit.rs / os_theme.rs / e2e.rs
+  helpers/              Helper：theme.rs / state.rs / quit.rs / boot_theme.rs / winutil.rs / e2e.rs
 ```
 
 > `#[path = "managers/tray.rs"] mod tray;` **保留模块名**（`crate::tray` / `crate::node` …），移动文件无需改引用链。新增文件在 lib.rs 增加 `#[path] mod` 声明并归类。
@@ -34,7 +34,8 @@ src-tauri/src/
 | `helpers/theme.rs` | **Helper** | 无状态纯函数：DWM 主题（apply_theme）+ desktop_icon_png + apply_window_icons（SMALL+BIG，BIG HICON 生命周期交调用方）；图标编排迁至 managers/icon.rs |
 | `helpers/state.rs` | **Helper** | `$DSH_HOME` 定位（dsh_home()）+ 窗口状态读写 |
 | `helpers/quit.rs` | **Helper** | quit.marker 语义（write_quit_marker） |
-| `helpers/os_theme.rs` | **Helper** | 系统深浅色探测 |
+| `helpers/boot_theme.rs` | **Helper** | 启动 Splash 配色（读 config + skin-colors.json 注入 __MG_BOOT_THEME） |
+| `helpers/winutil.rs` | **Helper** | RAII COM 初始化（ComInit）+ 宽字符工具（wide） |
 | `helpers/e2e.rs` | **Helper** | E2E 钩子（debug-only，`DSH_HUB_E2E=1` + 隔离 DSH_HOME） |
 
 ## 壳架构红线
