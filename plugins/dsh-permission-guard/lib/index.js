@@ -30,7 +30,7 @@
  * wildcard support.
  * Zero external runtime dependencies (Node built-ins only).
  */
-import { readFileSync, writeFileSync, mkdirSync, existsSync, statSync } from 'node:fs'
+import { readFileSync, writeFileSync, mkdirSync, existsSync, statSync, renameSync } from 'node:fs'
 import { join } from 'node:path'
 import { homedir } from 'node:os'
 
@@ -116,7 +116,8 @@ function loadConfig() {
   try {
     if (!existsSync(p)) {
       mkdirSync(join(p, '..'), { recursive: true })
-      writeFileSync(p, JSON.stringify(DEFAULT_CONFIG, null, 2) + '\n', 'utf8')
+      writeFileSync(p + '.tmp', JSON.stringify(DEFAULT_CONFIG, null, 2) + '\n', 'utf8')
+      renameSync(p + '.tmp', p)
     }
     const raw = JSON.parse(readFileSync(p, 'utf8'))
     return {
@@ -192,7 +193,8 @@ function writePolicy(policy) {
   let raw = {}
   try { raw = JSON.parse(readFileSync(p, 'utf8')) } catch { /* missing/corrupt -> start fresh */ }
   raw.policy = policy
-  writeFileSync(p, JSON.stringify(raw, null, 2) + '\n', 'utf8')
+  writeFileSync(p + '.tmp', JSON.stringify(raw, null, 2) + '\n', 'utf8')
+  renameSync(p + '.tmp', p)
   configCache = null
   return raw
 }

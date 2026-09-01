@@ -287,13 +287,21 @@ fn update_shell_icon_sources(_app: &AppHandle, icon_id: &str) {
     if let Some(parent) = current.parent() {
         let _ = std::fs::create_dir_all(parent);
     }
-    if let Err(e) = std::fs::copy(&ico, &current) {
+    // 2026-09-01 audit P1-7：原子复制（tmp + rename）——直拷 current.ico 在
+    // 崩溃时留下半截文件，Explorer/AUMID 会读到损坏图标。
+    let tmp = current.with_extension("ico.tmp");
+    if let Err(e) = std::fs::copy(&ico, &tmp) {
         log::warn!(
             "icon: copy {} -> {} failed: {} (shell icon sources not updated)",
             ico.display(),
             current.display(),
             e
         );
+        return;
+    }
+    if let Err(e) = std::fs::rename(&tmp, &current) {
+        log::warn!("icon: rename tmp -> {} failed: {}", current.display(), e);
+        let _ = std::fs::remove_file(&tmp);
         return;
     }
     let ico = current;

@@ -54,12 +54,6 @@ import { TerminalPage } from './terminal-dock.tsx'
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface SlotMap {
     /**
-     * One plugin's card inside the plugin configuration section. Declared at
-     * runtime by ui-settings-plugins; this shape mirrors its contract.
-     * rc.7 起 slot 从 `list` 改为 `keyed`（卡片按 settings namespace key 派发）。
-     */
-    'settings.plugin.item': { kind: 'keyed'; scope: 'root'; owner: SettingsPluginItemOwnerProps }
-    /**
      * Left end of the composer tool row, beside the official permission-preset
      * chip — the seat for the dsh-hub permission-policy tier chip. Runtime
      * owner share is ui-conversation's InputZone; this structural subset is
@@ -71,6 +65,8 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
      * One top-level page of the settings dialog (nav rail). Declared at
      * runtime by ui-settings-general; mirrors its contract (order sorts the
      * nav, label renders the nav cell, inject supplies section props).
+     * 2026-09-01 audit: the legacy `settings.plugin.item` declaration was
+     * removed — the settings card ships as a first-class section now.
      */
     'settings.section': { kind: 'list'; scope: 'root'; owner: SettingsSectionOwnerProps }
   }
@@ -80,12 +76,6 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 export interface SettingsSectionOwnerProps {
   /** Close the settings dialog (rendered by the section's own chrome). */
   close?: () => void
-}
-
-/** Owner share of a plugin card (the section supplies nothing). */
-export interface SettingsPluginItemOwnerProps {
-  /** Marker field: card owner props are intentionally empty. */
-  children?: never
 }
 
 /**

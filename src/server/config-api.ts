@@ -76,13 +76,15 @@ export function makeConfigRoutes(onChange?: (value: ShellConfig, changed?: { siz
               if (typeof record.allowMultipleInstances === 'boolean') patch.allowMultipleInstances = record.allowMultipleInstances
               // Skin id is an opaque short string; the client validates against
               // its own registry and falls back to 'default' for unknown ids.
-              if (typeof record.skin === 'string' && record.skin.length > 0 && record.skin.length <= 64) patch.skin = record.skin
-              // Background id is likewise an opaque short string (same cap as
-              // skin); unknown ids are ignored by the client and treated as 'none'.
-              if (typeof record.background === 'string' && record.background.length > 0 && record.background.length <= 64) patch.background = record.background
-              // Desktop-icon id is an opaque short string (same cap as skin);
-              // unknown ids fall back to the white whale on the Rust side.
-              if (typeof record.desktopIcon === 'string' && record.desktopIcon.length > 0 && record.desktopIcon.length <= 64) patch.desktopIcon = record.desktopIcon
+              // Whitelist charset (2026-09-01 audit): only [a-z0-9-] ids — the
+              // value is consumed as a filename fragment & skin selector, so
+              // reject anything that could smuggle path/selector syntax.
+              if (typeof record.skin === 'string' && /^[a-z0-9-]{1,64}$/i.test(record.skin)) patch.skin = record.skin
+              // Background id — same whitelist rationale (served via
+              // /api/dsh-hub/backgrounds/<id>).
+              if (typeof record.background === 'string' && /^[a-z0-9-]{1,64}$/i.test(record.background)) patch.background = record.background
+              // Desktop-icon id — same whitelist rationale (icons/<id>.ico lookup).
+              if (typeof record.desktopIcon === 'string' && /^[a-z0-9-]{1,64}$/i.test(record.desktopIcon)) patch.desktopIcon = record.desktopIcon
 
               const result = writeShellConfig(patch)
               if (!result.ok) {

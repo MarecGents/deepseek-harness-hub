@@ -14,6 +14,7 @@
 import { readFileSync } from 'node:fs'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { WebRoute } from '@deepseek-ai/dsh-host-webserver'
+import { rejectIfBadHost } from './host-guard.ts'
 
 /** Browser-facing base path of the desktop-icon API. */
 export const ICONS_API_PREFIX = '/api/dsh-hub/icons'
@@ -39,6 +40,7 @@ export function makeIconsRoutes(): WebRoute[] {
       kind: 'prefix',
       path: ICONS_API_PREFIX,
       handler: (req: IncomingMessage, res: ServerResponse): Promise<void> => {
+        if (rejectIfBadHost(req, res)) return Promise.resolve()
         if (req.method !== 'GET') {
           text(res, 405, 'method-not-allowed')
           return Promise.resolve()

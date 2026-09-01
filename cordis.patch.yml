@@ -20,5 +20,4 @@
         title: 'DeepSeek Harness Hub'
         width: 1280
         height: 720
-        tray: true
         theme: system

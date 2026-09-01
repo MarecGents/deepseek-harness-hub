@@ -12,6 +12,7 @@
 import { readFileSync } from 'node:fs'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { WebRoute } from '@deepseek-ai/dsh-host-webserver'
+import { rejectIfBadHost } from './host-guard.ts'
 
 /** Browser-facing base path of the background-image API. */
 export const BACKGROUNDS_API_PREFIX = '/api/dsh-hub/backgrounds'
@@ -43,6 +44,7 @@ export function makeBackgroundsRoutes(): WebRoute[] {
       kind: 'prefix',
       path: BACKGROUNDS_API_PREFIX,
       handler: (req: IncomingMessage, res: ServerResponse): Promise<void> => {
+        if (rejectIfBadHost(req, res)) return Promise.resolve()
         if (req.method !== 'GET') {
           text(res, 405, 'method-not-allowed')
           return Promise.resolve()

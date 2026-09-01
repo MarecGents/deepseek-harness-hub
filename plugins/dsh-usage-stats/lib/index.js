@@ -21,7 +21,7 @@
  */
 import { homedir } from 'node:os'
 import { join, dirname } from 'node:path'
-import { readFile, writeFile, mkdir } from 'node:fs/promises'
+import { readFile, writeFile, mkdir, rename } from 'node:fs/promises'
 
 export const name = '@dsh-external/dsh-usage-stats'
 // sessionPersistence is the required data source; webServer is optional and
@@ -145,10 +145,13 @@ async function readCache(key) {
   return null
 }
 
+// 2026-09-01 audit P1-6：所有落盘改 tmp + rename 原子写（崩溃不撕 JSON）。
 async function writeCache(key, data) {
   try {
     await mkdir(dirname(CACHE_FILE), { recursive: true })
-    await writeFile(CACHE_FILE, JSON.stringify({ key, data }), 'utf8')
+    const tmp = CACHE_FILE + '.tmp'
+    await writeFile(tmp, JSON.stringify({ key, data }), 'utf8')
+    await rename(tmp, CACHE_FILE)
   } catch { /* non-fatal: next read falls back to a rescan */ }
 }
 
@@ -166,7 +169,9 @@ async function readPerSession() {
 async function writePerSession(obj) {
   try {
     await mkdir(dirname(PER_SESSION_FILE), { recursive: true })
-    await writeFile(PER_SESSION_FILE, JSON.stringify(obj ?? {}), 'utf8')
+    const tmp = PER_SESSION_FILE + '.tmp'
+    await writeFile(tmp, JSON.stringify(obj ?? {}), 'utf8')
+    await rename(tmp, PER_SESSION_FILE)
   } catch { /* non-fatal: next scan recomputes */ }
 }
 
@@ -200,7 +205,9 @@ async function savePrices(obj) {
       : DEFAULT_PRICES.exchangeRate,
   }
   await mkdir(dirname(PRICE_FILE), { recursive: true })
-  await writeFile(PRICE_FILE, JSON.stringify(clean, null, 2), 'utf8')
+  const tmp = PRICE_FILE + '.tmp'
+  await writeFile(tmp, JSON.stringify(clean, null, 2), 'utf8')
+  await rename(tmp, PRICE_FILE)
   return clean
 }
 

@@ -90,6 +90,12 @@ export type ConfigWriteResult =
  *   error instead of confirming the value).
  */
 export function writeShellConfig(patch: Partial<ShellConfig>): ConfigWriteResult {
+  // Concurrency note (2026-09-01 audit P0-3): the read→merge→write sequence
+  // below is fully synchronous (readFileSync/writeFileSync/renameSync), so a
+  // single Node event loop can never interleave two callers between the read
+  // and the rename — there is no Lost Update within one process. The atomic
+  // rename also prevents torn files across crashes. If this ever becomes
+  // async (fs.promises), a write queue must be introduced here.
   const file = configFile()
   const dir = join(dshHome(), 'dsh-hub')
   let raw: Partial<ShellConfig> = {}

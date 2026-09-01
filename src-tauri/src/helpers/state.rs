@@ -92,13 +92,17 @@ pub fn load_window_state() -> WindowState {
 }
 
 /// 保存窗口状态（窗口关闭 / resize 时调用）。
+/// 2026-09-01 audit P1-7：原子写（tmp + rename）——直写 fs::write 在崩溃时
+/// 留下半截 JSON，下次 load 走 warn+default 丢失最大化状态。
 pub fn save_window_state(state: WindowState) -> Result<(), Box<dyn std::error::Error>> {
     let path = state_path();
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
     let content = serde_json::to_string_pretty(&state)?;
-    std::fs::write(&path, content)?;
+    let tmp = path.with_extension("json.tmp");
+    std::fs::write(&tmp, content)?;
+    std::fs::rename(&tmp, &path)?;
     log::info!("state: saved to {}", path.display());
     Ok(())
 }

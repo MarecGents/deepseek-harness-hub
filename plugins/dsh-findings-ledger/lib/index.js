@@ -11,7 +11,7 @@
  * 存储：<workspace>/.dsh-findings/{baseline.json, ledger.jsonl, reports/task-review-*.json}
  * 零外部运行时依赖（只 node 内建模块 + node:crypto）。
  */
-import { readFileSync, writeFileSync, appendFileSync, mkdirSync, existsSync, readdirSync, statSync } from 'node:fs'
+import { readFileSync, writeFileSync, appendFileSync, mkdirSync, existsSync, readdirSync, statSync, renameSync } from 'node:fs'
 import { join, relative } from 'node:path'
 import { createHash } from 'node:crypto'
 
@@ -80,7 +80,8 @@ function collectSnapshot(cwd) {
 function captureBaseline(cwd) {
   mkdirSync(baseDir(cwd), { recursive: true })
   const snap = collectSnapshot(cwd)
-  writeFileSync(baselinePath(cwd), JSON.stringify({ cwd, capturedAt: new Date().toISOString(), files: snap }, null, 2), 'utf8')
+  writeFileSync(baselinePath(cwd) + '.tmp', JSON.stringify({ cwd, capturedAt: new Date().toISOString(), files: snap }, null, 2), 'utf8')
+  renameSync(baselinePath(cwd) + '.tmp', baselinePath(cwd))
   return Object.keys(snap).length
 }
 function loadBaseline(cwd) {
@@ -146,7 +147,8 @@ function generateReport(cwd, session, errors = []) {
   }
   mkdirSync(reportsDir(cwd), { recursive: true })
   const file = join(reportsDir(cwd), 'task-review-' + Date.now() + '.json')
-  writeFileSync(file, JSON.stringify(report, null, 2), 'utf8')
+  writeFileSync(file + '.tmp', JSON.stringify(report, null, 2), 'utf8')
+  renameSync(file + '.tmp', file)
   return { report, file }
 }
 

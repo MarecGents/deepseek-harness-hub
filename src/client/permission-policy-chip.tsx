@@ -67,11 +67,12 @@ export interface PermissionPolicyChipProps {
   session?: { id?: string }
 }
 
-/** Tier accent dot color (state token per tier). */
+/** Tier accent dot color (state token per tier, `-primary` variants only —
+ * bare `state-warn/state-success` do not exist in the official token set). */
 function tierDot(policy: PermissionPolicy): string {
   switch (policy) {
-    case 'strict': return 'var(--dsw-alias-state-warn, #bf8700)'
-    case 'read-only': return 'var(--dsw-alias-state-success, #2da44e)'
+    case 'strict': return 'var(--dsw-alias-state-warn-primary, #bf8700)'
+    case 'read-only': return 'var(--dsw-alias-state-success-primary, #2da44e)'
     default: return 'var(--dsw-alias-brand-primary, #0a5ad9)'
   }
 }

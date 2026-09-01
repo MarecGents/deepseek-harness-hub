@@ -15,7 +15,7 @@
  */
 
 import { spawn } from 'node:child_process'
-import { existsSync, statSync } from 'node:fs'
+import { existsSync, realpathSync, statSync } from 'node:fs'
 import { readdir } from 'node:fs/promises'
 import { isAbsolute, join } from 'node:path'
 import type { IncomingMessage, ServerResponse } from 'node:http'
@@ -54,7 +54,7 @@ function json(res: ServerResponse, status: number, body: unknown): void {
   res.end(JSON.stringify(body))
 }
 
-function queryPath(req: IncomingMessage): string | null {
+function queryPath(req: IncomingMessage, resolveWorkspaceRoot?: () => string | undefined): string | null {
   try {
     const url = new URL(req.url ?? '', 'http://localhost')
     const raw = url.searchParams.get('path')
@@ -62,7 +62,13 @@ function queryPath(req: IncomingMessage): string | null {
     // URLSearchParams.get 已经完成一次百分号解码；再 decodeURIComponent 会
     // 二次解码，路径中的字面 '%'（如 C:\work\100%done）抛 URIError → 400，
     // 或把 '%25' 再解成 '%' 读错目录。直接用已解码的 raw 即可。
-    return isAbsolute(raw) ? raw : null
+    if (!isAbsolute(raw)) return null
+    // P0-1（2026-09-01 质量审查）：list/git 不能枚举任意绝对路径——与 open
+    // 同级的 withinRoot 防线。当 host 已追踪工作区 root 时，只允许 root 内
+    // 的路径（否则同源脚本可 GET /list?path=C:\Windows 枚举全盘）。
+    const root = resolveWorkspaceRoot?.()
+    if (root !== undefined && root !== '' && !isWithinRoot(root, raw)) return null
+    return raw
   } catch {
     return null
   }
@@ -89,15 +95,22 @@ function validPath(value: unknown, directoryOnly: boolean): string | null {
 /**
  * True when `target` is `root` itself or a descendant of `root`, bounded by a
  * path separator (so `C:\work2` is NOT inside root `C:\work`). Both paths are
- * normalized to forward slashes; comparison is case-insensitive on Windows,
- * where paths are case-insensitive.
+ * NORMALIZED THROUGH realpathSync first — a symlink or `..` inside the target
+ * that resolves outside `root` is detected (2026-09-01 audit P1-3: prefix
+ * matching alone let `$root/link -> C:\secret` pass). When realpath fails
+ * (race, dangling link) the comparison falls back to the raw strings so a
+ * just-deleted path still reports accurately for the caller's error path.
  * @param root - the allowed base directory (session workspace root).
  * @param target - the path to test (already validated as absolute + existing).
  */
 function isWithinRoot(root: string, target: string): boolean {
   const norm = (p: string): string => p.replace(/\\/g, '/').replace(/\/+$/, '')
-  const r = norm(root)
-  const t = norm(target)
+  let r = root
+  let t = target
+  try { r = realpathSync(root) } catch { /* keep raw on failure */ }
+  try { t = realpathSync(target) } catch { /* keep raw on failure */ }
+  r = norm(r)
+  t = norm(t)
   const ci = process.platform === 'win32'
   const eq = (a: string, b: string): boolean => (ci ? a.toLowerCase() === b.toLowerCase() : a === b)
   if (eq(r, t)) return true
@@ -237,9 +250,9 @@ export function makeWorkspaceRoutes(resolveWorkspaceRoot?: () => string | undefi
           json(res, 405, { ok: false, error: 'method-not-allowed' })
           return Promise.resolve()
         }
-        const path = queryPath(req)
+        const path = queryPath(req, resolveWorkspaceRoot)
         if (path === null) {
-          json(res, 400, { ok: false, error: 'missing or invalid path' })
+          json(res, 400, { ok: false, error: 'missing, invalid or outside-workspace path' })
           return Promise.resolve()
         }
         return listDirectory(path).then(
@@ -257,9 +270,9 @@ export function makeWorkspaceRoutes(resolveWorkspaceRoot?: () => string | undefi
           json(res, 405, { ok: false, error: 'method-not-allowed' })
           return Promise.resolve()
         }
-        const path = queryPath(req)
+        const path = queryPath(req, resolveWorkspaceRoot)
         if (path === null) {
-          json(res, 400, { ok: false, error: 'missing or invalid path' })
+          json(res, 400, { ok: false, error: 'missing, invalid or outside-workspace path' })
           return Promise.resolve()
         }
         return gitInfo(path).then(

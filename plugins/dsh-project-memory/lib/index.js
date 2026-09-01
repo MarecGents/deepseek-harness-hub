@@ -16,7 +16,7 @@
  * Zero external runtime deps (node built-ins only) — no @deepseek-ai/* import;
  * loads without a junction dependency.
  */
-import { readFileSync, writeFileSync, appendFileSync, mkdirSync, statSync, openSync, readSync, closeSync } from 'node:fs'
+import { readFileSync, writeFileSync, appendFileSync, mkdirSync, statSync, openSync, readSync, closeSync, renameSync } from 'node:fs'
 import { join } from 'node:path'
 
 export const name = '@dsh-external/dsh-project-memory'
@@ -140,7 +140,8 @@ function appendJournal(cwd, rec) {
     const st = statSync(p)
     if (st.size > 2 * 1024 * 1024) {
       const lines = readFileSync(p, 'utf8').split('\n').filter(Boolean).slice(-JOURNAL_MAX_LINES)
-      writeFileSync(p, lines.join('\n') + '\n', 'utf8')
+      writeFileSync(p + '.tmp', lines.join('\n') + '\n', 'utf8')
+      renameSync(p + '.tmp', p)
     }
   } catch { }
 }

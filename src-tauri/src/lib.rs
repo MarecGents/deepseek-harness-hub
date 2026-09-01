@@ -674,8 +674,17 @@ pub fn run() {
                 ])
                 .build(),
         )
-        // T3.3：单实例插件。
-        .plugin(single_instance::single_instance_plugin())
+        // T3.3：单实例插件（D1 决策：二次启动聚焦已有窗口）。
+        // 2026-09-01 audit P0-2：`allowMultipleInstances=true` 时应允许并存——
+        // tauri-plugin-single-instance 的 Windows 互斥名固定 `{bundle_id}-sim`
+        // 无法按 DSH_HOME 参数化，条件注册等效实现隔离；默认 false 仍注册。
+        .plugin(if !read_shell_config_bool("allowMultipleInstances", false) {
+            single_instance::single_instance_plugin()
+        } else {
+            // No-op plugin: no single-instance mutex when multiple instances
+            // are explicitly allowed (audit P0-2).
+            tauri::plugin::Builder::<tauri::Wry>::new("dsh-hub-allow-multi").build()
+        })
         .plugin(tauri_plugin_shell::init())
         // T3.5：通知插件（notify.rs 经 NotificationExt 弹系统 toast）。
         .plugin(tauri_plugin_notification::init())
