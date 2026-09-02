@@ -31,6 +31,8 @@ import { injectCardStyle, injectChatVisibilityStyle } from './style.ts'
 import { t } from './locale.ts'
 import { RightSidebar } from './right-sidebar.tsx'
 import { injectRightSidebarStyle } from './right-sidebar-style.ts'
+import { MessageContextMenu } from './message-context-menu.tsx'
+import { injectMessageContextMenuStyle } from './message-context-menu-style.ts'
 import { applySkin, fetchStoredSkin, hasUserPickedSkin } from './skins.ts'
 import { applyBackground, fetchStoredBackground, hasUserPickedBackground } from './backgrounds.ts'
 import { installPinnedConversations } from './pin-conversations.ts'
@@ -282,6 +284,7 @@ export function apply(ctx: ClientContext): void {
   // Inject the card + right-sidebar stylesheets (idempotent).
   injectCardStyle()
   injectRightSidebarStyle()
+  injectMessageContextMenuStyle()
   // Long-history rendering aid: content-visibility on chat rows (browser
   // skips off-screen layout/paint when a session's DOM grows large).
   injectChatVisibilityStyle()
@@ -363,6 +366,26 @@ export function apply(ctx: ClientContext): void {
     }, 'dsh-hub: right sidebar mount')
   } catch (error) {
     console.warn('[dsh-hub] right sidebar mount failed:', error)
+  }
+
+  // Message context menu (消息右键菜单): a body portal that intercepts
+  // right-clicks on conversation message rows and shows copy / add-to-task /
+  // ask-auxiliary. Suppresses the browser default menu (which only has 刷新).
+  try {
+    ctx.effect(() => {
+      const host = document.createElement('div')
+      host.id = 'dsh-hub-message-context-menu-root'
+      host.setAttribute('data-dsh-hub-message-context-menu', '')
+      document.body.appendChild(host)
+      const root: Root = createRoot(host)
+      root.render(createElement(MessageContextMenu, { ctx }))
+      return () => {
+        root.unmount()
+        host.remove()
+      }
+    }, 'dsh-hub: message context menu mount')
+  } catch (error) {
+    console.warn('[dsh-hub] message context menu mount failed:', error)
   }
 
   // Title-bar session tabs (顶部会话标签栏): a browser-style tab strip at the
