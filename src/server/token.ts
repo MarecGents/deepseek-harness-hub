@@ -27,6 +27,21 @@ export function getToken(): string {
 }
 
 /**
+ * Escape HTML special characters to prevent XSS injection.
+ * Used for safe insertion of dynamic content into HTML attributes.
+ * @param str - the string to escape.
+ * @returns the escaped string safe for HTML attribute values.
+ */
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
+/**
  * Inject the token into a served index.html body as a `<meta>` tag inside
  * `<head>`. A no-op when `<head>` is absent (replace returns the input
  * unchanged).
@@ -35,7 +50,9 @@ export function getToken(): string {
  */
 export function injectTokenToHtml(html: string): string {
   // 2026-09-01 audit P2-3: match any <head ...> variant (uppercase/attrs)
-  return html.replace(/<head[^>]*>/i, `<head><meta name="dsh-hub-token" content="${getToken()}">`)
+  // 2026-09-02 audit P2-6: escape HTML to prevent XSS (defense in depth)
+  const token = escapeHtml(getToken())
+  return html.replace(/<head[^>]*>/i, `<head><meta name="dsh-hub-token" content="${token}">`)
 }
 
 /** Constant-time string comparison (length mismatch fails first). */

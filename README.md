@@ -1,6 +1,6 @@
 ># **`@marecgents/dsh-hub`** —— DeepSeek Harness（`dsh`）的桌面端框架：以原生 Tauri 2.x 窗口运行 dsh Web UI，提供托盘、主题同步、窗口记忆、右侧栏与系统通知。
 >
-> **版本状态（2026-09-01）**：**`0.1.4`**（npm `latest` / `rc` 双 tag 均为 `0.1.4`）——Tauri 2.x 壳 + dsh web 插件层，NSIS 安装器**安装即用**（安装期自动下载私有 Node + dsh + 插件到安装目录，无需系统预装 Node），首启自动进 dsh UI；卸载走快速通道并清理自有 profile 条目（保留 `.dsh` 本体与用户数据）。功能全貌见 [FUNCTIONS.md](FUNCTIONS.md)（11 大类、每项带来源与测试状态）：会话标签栏、交互终端（自定义 Shell）、对话定位条、置顶会话、右键菜单全量接管 + 双语 i18n、15 套皮肤 + 背景图 + 桌面图标六面同步、权限策略档位、四个独立插件、壳内拖放恢复、启动 Splash 皮肤配色。`0.0.2-rc.*` 与 `0.0.1-rc.14`（WebView2 壳 `dev-v1`，已冻结）为历史版本。
+> **版本状态（2026-09-03）**：**`0.1.5`**（npm `latest` / `rc` 双 tag 均为 `0.1.5`）——Tauri 2.x 壳 + dsh web 插件层，NSIS 安装器**安装即用**（安装期自动下载私有 Node + dsh + 插件到安装目录，无需系统预装 Node），首启自动进 dsh UI；卸载走快速通道并清理自有 profile 条目（保留 `.dsh` 本体与用户数据）。功能全貌见 [FUNCTIONS.md](FUNCTIONS.md)（11 大类、每项带来源与测试状态）：会话标签栏、交互终端（自定义 Shell）、对话定位条、置顶会话、右键菜单全量接管 + 双语 i18n、15 套皮肤 + 背景图 + 桌面图标六面同步、权限策略档位、四个独立插件、壳内拖放恢复、启动 Splash 皮肤配色。`0.0.2-rc.*` 与 `0.0.1-rc.14`（WebView2 壳 `dev-v1`，已冻结）为历史版本。
 
 [![npm version](https://img.shields.io/npm/v/@marecgents/dsh-hub)](https://www.npmjs.com/package/@marecgents/dsh-hub)
 [![npm rc](https://img.shields.io/npm/v/@marecgents/dsh-hub/rc)](https://www.npmjs.com/package/@marecgents/dsh-hub)
@@ -15,9 +15,9 @@
 
 | 分支 | 状态 | 说明 |
 |---|---|---|
-| `main` | 发布分支（**唯一合并目标**） | 已合并 dev-v2 → **`0.1.4`**（与 dev-v2 同步） |
+| `main` | 发布分支（**唯一合并目标**） | 已合并 dev-v2 → **`0.1.5`**（与 dev-v2 同步） |
 | `dev-v1` | **永久冻结**（WebView2 时代存档） | 不再接收任何更新/同步；历史收尾 = `0.0.1-rc.13/rc.14`（WebView2 最终版） |
-| `dev-v2` | **唯一开发分支**（Tauri 2.x 壳） | 所有更新在此开发，merge 只到 main；当前 = `0.1.4`（已 merge 进 main；npm latest/rc = 0.1.4） |
+| `dev-v2` | **唯一开发分支**（Tauri 2.x 壳） | 所有更新在此开发，merge 只到 main；当前 = `0.1.5`（已 merge 进 main；npm latest/rc = 0.1.5） |
 
 ---
 

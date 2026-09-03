@@ -25,6 +25,8 @@ import { join } from 'node:path'
 import { dshHome } from '../helpers/state-store.js'
 import { readJsonBody } from '../helpers/read-json-body.js'
 import { rejectIfBadHost, rejectIfBadOrigin } from './host-guard.ts'
+import { verifyToken } from './token.js'
+import { applySecureHeaders } from './security-headers.ts'
 
 
 /** Route prefix shared with the other dsh-hub APIs. */
@@ -101,6 +103,7 @@ export function writePinnedSessions(input: unknown): PinsWriteResult {
 
 /** Write one JSON response. */
 function json(res: ServerResponse, status: number, body: unknown): void {
+  applySecureHeaders(res)
   res.writeHead(status, { 'content-type': 'application/json; charset=utf-8' })
   res.end(JSON.stringify(body))
 }
@@ -119,6 +122,12 @@ export function makePinsRoutes(): WebRoute[] {
           return Promise.resolve()
         }
         if (req.method === 'PUT') {
+          // Audit 2026-09-02 P1-5: state-changing route — require the process
+          // token (GET stays open for the boot-time pin restore).
+          if (!verifyToken(req)) {
+            json(res, 401, { ok: false, error: 'unauthorized' })
+            return Promise.resolve()
+          }
           return readJsonBody(req).then(
             (body) => {
               const record = (typeof body === 'object' && body !== null) ? body as Record<string, unknown> : {}

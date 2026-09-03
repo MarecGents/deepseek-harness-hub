@@ -98,6 +98,23 @@ pub fn play_sound(app: &tauri::AppHandle, kind: String) -> Result<(), String> {
     Ok(())
 }
 
+/// Pure guard for `open_workspace_path` (audit P1-3): a client-supplied
+/// target must be an absolute, existing directory. Workspaces live anywhere on
+/// disk, so a DSH_HOME containment check would break every real workspace —
+/// existence + directory-ness is the guard (blocks junk/device/nonexistent
+/// paths; explorer only ever sees a real directory).
+fn validate_open_target(path: &str) -> Result<(), String> {
+    let p = std::path::Path::new(path);
+    if !p.is_absolute() {
+        return Err(format!("relative path is not allowed: {path}"));
+    }
+    match std::fs::metadata(p) {
+        Ok(m) if m.is_dir() => Ok(()),
+        Ok(_) => Err(format!("not a directory: {path}")),
+        Err(e) => Err(format!("path not accessible: {path} ({e})")),
+    }
+}
+
 /// 打开工作区目录（client 托盘「打开工作区」→ invoke 上行，Q6）。
 /// 平台命令：Windows explorer / macOS open / Linux xdg-open。
 /// 空路径兜底：打开 $DSH_HOME（无工作区时至少"有反应"）。
@@ -105,8 +122,11 @@ pub fn open_workspace_path(path: String) -> Result<(), String> {
     let path = if path.trim().is_empty() {
         crate::state::dsh_home().to_string_lossy().to_string()
     } else {
+        // Audit P1-3 (2026-09-02): validate before spawning the OS handler.
+        validate_open_target(&path)?;
         path
     };
+
     log::info!("open_workspace_path invoked from page: {path}");
     #[cfg(target_os = "windows")]
     let result = std::process::Command::new("explorer").arg(&path).spawn();
@@ -126,14 +146,57 @@ pub fn window_toggle_visible(app: &tauri::AppHandle) -> Result<(), String> {
         .ok_or("main window not found")?;
     let front = win.is_visible().unwrap_or(false) && !win.is_minimized().unwrap_or(true);
     if front {
-        let _ = win.hide();
+        // Audit P2-2 (2026-09-02): surface failures instead of silent `let _ =`.
+        if let Err(e) = win.hide() {
+            log::warn!("window_toggle_visible: hide failed: {e}");
+        }
         log::info!("window_toggle_visible: hidden to tray");
     } else {
-        let _ = win.unminimize();
-        let _ = win.show();
-        let _ = win.set_focus();
+        if let Err(e) = win.unminimize() {
+            log::warn!("window_toggle_visible: unminimize failed: {e}");
+        }
+        if let Err(e) = win.show() {
+            log::warn!("window_toggle_visible: show failed: {e}");
+        }
+        if let Err(e) = win.set_focus() {
+            log::warn!("window_toggle_visible: set_focus failed: {e}");
+        }
         log::info!("window_toggle_visible: shown to front");
     }
     crate::tray::sync_toggle_label(app);
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::validate_open_target;
+
+    #[test]
+    fn rejects_relative_paths() {
+        let err = validate_open_target("relative/dir").unwrap_err();
+        assert!(err.contains("relative path"), "got: {err}");
+    }
+
+    #[test]
+    fn rejects_nonexistent_paths() {
+        let absent = std::env::temp_dir().join("dsh-hub-open-path-probe-absent");
+        let _ = std::fs::remove_dir_all(&absent);
+        let err = validate_open_target(&absent.to_string_lossy()).unwrap_err();
+        assert!(err.contains("not accessible"), "got: {err}");
+    }
+
+    #[test]
+    fn accepts_existing_directory() {
+        let dir = std::env::temp_dir();
+        validate_open_target(&dir.to_string_lossy()).expect("temp dir must be openable");
+    }
+
+    #[test]
+    fn rejects_existing_file() {
+        let file = std::env::temp_dir().join("dsh-hub-open-path-probe.txt");
+        std::fs::write(&file, b"probe").expect("write probe file");
+        let err = validate_open_target(&file.to_string_lossy()).unwrap_err();
+        assert!(err.contains("not a directory"), "got: {err}");
+        let _ = std::fs::remove_file(&file);
+    }
 }

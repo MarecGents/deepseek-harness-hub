@@ -20,8 +20,8 @@
 5. **settings 命名空间约束**：`settingsNamespace('dsh-hub')` 强制小写 kebab-case；带 scope 的包名（`@marecgents/dsh-hub`）不能用作 settings ns 或 API 前缀。第三方配置 UI 一律走插件自有 HTTP 路由 `/api/dsh-hub/*`。
 6. **发布前检查不可跳过**：每次 `npm publish` 之前**必须**运行 `node scripts/verify-release.mjs` 且**全部 PASS**（含「干净安装 → 首启装配」冒烟），FAIL 立即停止排查，**禁止发布**。发布流程与检查细则见 §5（rc.10–rc.13 曾因跳过"全新环境安装验证"连发 4 版首启即崩的包，见 [docs/关键踩坑记录.md#33](docs/关键踩坑记录.md)）。
 7. **开发流程必须遵循 PROCESS_QUALITY**：任何开发任务（迁移、功能、修复、文档、发布）**必须严格遵循 [PROCESS_QUALITY.md](PROCESS_QUALITY.md) 的 SOP（标准作业程序）与质量管理规范**——含阶段输入/输出/门禁（Gate）逐项核查、验收表、回归基线、DMAIC 改进循环。**禁止跳过阶段门禁**；与本文件铁律冲突时，以本文件（AGENTS.md）为准。
-9. **bug 修复必须遵循 BUG_FIX_SOP.md**（五阶段：复现/测量/根因/方案审查/实施验证；先测量后下结论；链路探针用完即删；修复沉淀进踩坑记录）。官方弹层类 UI 在本环境可能不可达（合成事件与真实事件均失败，实测）——依赖官方 UI 入口前先判别其可用性，功能落点优先官方数据层 API。（详见 [BUG_FIX_SOP.md](BUG_FIX_SOP.md)）
-8. **数据安全红线：绝不触碰 home / C 盘**（历史血泪：`~/` 与 C 盘曾被删除导致配置全丢、系统重装，2026-08-25 复现）。**任何 agent / 脚本 / 手工操作都必须遵守**：
+8. **bug 修复必须遵循 BUG_FIX_SOP.md**（五阶段：复现/测量/根因/方案审查/实施验证；先测量后下结论；链路探针用完即删；修复沉淀进踩坑记录）。官方弹层类 UI 在本环境可能不可达（合成事件与真实事件均失败，实测）——依赖官方 UI 入口前先判别其可用性，功能落点优先官方数据层 API。（详见 [BUG_FIX_SOP.md](BUG_FIX_SOP.md)）
+9. **数据安全红线：绝不触碰 home / C 盘**（历史血泪：`~/` 与 C 盘曾被删除导致配置全丢、系统重装，2026-08-25 复现）。**任何 agent / 脚本 / 手工操作都必须遵守**：
    - **禁止**删除/移动/清空 `C:\Users\*` 下任何文件（尤其 `~`、`$HOME`、`USERPROFILE`、真实 `~/.dsh`、`.ssh`、`.gitconfig` 等配置文件）；任何 `rm` / `Remove-Item` / `RMDir` / `unlinkSync` / `rmSync` 的目标路径**不得含** `~`、`$HOME`、`USERPROFILE`、`C:\Users`、`homedir()`。
    - **测试 / 复现 / 安装 / 卸载一律用隔离环境**：`DSH_HOME` 指向 E:/D: 盘或 `%TEMP%` 下的独立目录（如 `$env:TEMP\dsh-hub-repro`），**禁止**指向真实 `~/.dsh`；「清干净重来」只对隔离目录执行，**永不删除真实 `~/.dsh`**（dsh 会自动重建空 profile，配置/会话/凭据不可恢复）。
    - **删除纪律**：执行任何删除前，先打印/回显目标绝对路径并确认不是 home 子树；`rm -rf` / `Remove-Item -Recurse -Force` 必须写完整绝对路径，禁止裸 `~`、禁止环境变量缩写、禁止 `$INSTDIR` 未经展开即递归删除。

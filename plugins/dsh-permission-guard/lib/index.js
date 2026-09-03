@@ -230,14 +230,30 @@ function rejectIfBadOrigin(req, res) {
   return true
 }
 function readJsonBody(req) {
-  return new Promise((resolve) => {
+  const MAX_BODY_SIZE = 1024 * 1024 // 1MB limit
+  return new Promise((resolve, reject) => {
     const chunks = []
-    req.on('data', (c) => chunks.push(c))
+    let totalSize = 0
+    req.on('data', (c) => {
+      totalSize += c.length
+      if (totalSize > MAX_BODY_SIZE) {
+        req.destroy() // Stop reading
+        reject(new Error('Body too large'))
+        return
+      }
+      chunks.push(c)
+    })
     req.on('end', () => {
       try { resolve(JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}')) }
       catch { resolve({}) }
     })
-    req.on('error', () => resolve({}))
+    req.on('error', (err) => {
+      if (err.message === 'Body too large') {
+        reject(err)
+      } else {
+        resolve({})
+      }
+    })
   })
 }
 function json(res, status, body) {
@@ -363,3 +379,18 @@ export function apply(ctx) {
 }
 
 export const Config = undefined
+
+// Test-only access to internal helpers (no runtime consumer).
+export const __internals = {
+  wildcardToRegExp,
+  matchAny,
+  capabilityKey,
+  lastEventValue,
+  decide,
+  denialFor,
+  readonlyDenial,
+  isHostAllowed,
+  isOriginAllowed,
+  toJsonSchema,
+  DEFAULT_CONFIG,
+}

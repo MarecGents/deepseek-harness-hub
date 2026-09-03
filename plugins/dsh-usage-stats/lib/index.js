@@ -498,3 +498,18 @@ export function apply(ctx) {
     }
   }, 'dsh-usage-stats: api')
 }
+
+// Test-only access to internal helpers (no runtime consumer).
+export const __internals = {
+  zero,
+  addUsage,
+  dayOf,
+  foldEvents,
+  fingerprint,
+  totalsOf,
+  foldSession,
+  mergeFolded,
+  mapLimit,
+  loadPrices,
+  savePrices,
+}

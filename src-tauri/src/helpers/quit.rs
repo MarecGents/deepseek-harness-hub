@@ -29,9 +29,15 @@ fn marker_path_in(root: &std::path::Path) -> PathBuf {
 /// 内部实现（测试注入目录用）。
 fn write_marker_at(path: &std::path::Path) {
     if let Some(parent) = path.parent() {
+        // Best-effort: the write below surfaces the real failure if any.
         let _ = std::fs::create_dir_all(parent);
     }
-    let _ = std::fs::write(path, "quit");
+    // Audit P2-2 (2026-09-02): the marker is the supervisor's only signal for
+    // "voluntary exit" — a silent write failure would turn the next boot into
+    // a crash-restart, so surface it.
+    if let Err(e) = std::fs::write(path, "quit") {
+        log::warn!("quit: marker write failed at {}: {e}", path.display());
+    }
 }
 
 pub fn write_quit_marker() {
@@ -44,7 +50,10 @@ pub fn write_quit_marker() {
 pub fn clear_quit_marker() {
     let path = marker_path();
     if path.exists() {
-        let _ = std::fs::remove_file(&path);
+        // Audit P2-2 (2026-09-02): a leftover marker suppresses crash-restart.
+        if let Err(e) = std::fs::remove_file(&path) {
+            log::warn!("quit: marker clear failed at {}: {e}", path.display());
+        }
         info!("quit: cleared marker at {}", path.display());
     }
 }

@@ -60,6 +60,17 @@ jobs:
       - name: Client bundle
         run: npm run build:client
 
+      # Verify skin-colors.json is in sync with the skin definitions in
+      # src/client/skins.ts. The export script is pure Node (no build
+      # artifacts required), so it can run at any point after `npm ci`.
+      - name: Verify skin-colors.json is up-to-date
+        run: |
+          node scripts/export-skin-colors.mjs
+          if ! git diff --exit-code src-tauri/src/skin-colors.json; then
+            echo "::error::src-tauri/src/skin-colors.json is out of date. Run 'node scripts/export-skin-colors.mjs' locally and commit."
+            exit 1
+          fi
+
       - name: Release-process gate (verify-release)
         # P3 requires lib/ to be committed — the checkout is fresh, so this
         # also proves the committed lib/ matches the freshly built one.

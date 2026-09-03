@@ -45,6 +45,7 @@ import { injectSessionMenuStyle } from './session-menu-style.ts'
 import { closeSessionMenu, openSessionMenu } from './session-menu.ts'
 import { openWorkspaceMenu } from './workspace-menu.ts'
 import { DRAG_ACTIVE_CLASS } from './workspace-drag-guard.ts'
+import { authHeaders } from './api-auth.ts'
 
 /** Route prefix of the host pins API (mirrors server/pins-api.ts). */
 const PINS_API = '/api/dsh-hub/pins'
@@ -174,9 +175,10 @@ export function installPinnedConversations(ctx: unknown): () => void {
   function apiPutPins(ids: string[]): void {
     writeQueue = writeQueue
       .then(async () => {
+        // Audit 2026-09-02 P1-5: the PUT route verifies the Bearer token.
         await fetch(PINS_API, {
           method: 'PUT',
-          headers: { 'content-type': 'application/json' },
+          headers: authHeaders(),
           body: JSON.stringify({ ids }),
         })
       })

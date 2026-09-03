@@ -15,12 +15,14 @@ import { readFileSync } from 'node:fs'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { WebRoute } from '@deepseek-ai/dsh-host-webserver'
 import { rejectIfBadHost } from './host-guard.ts'
+import { applySecureHeaders } from './security-headers.ts'
 
 /** Browser-facing base path of the sounds API. */
 export const SOUNDS_API_PREFIX = '/api/dsh-hub/sounds'
 
 /** Write a plain-text response. */
 function text(res: ServerResponse, status: number, body: string): void {
+  applySecureHeaders(res)
   res.writeHead(status, { 'content-type': 'text/plain; charset=utf-8' })
   res.end(body)
 }

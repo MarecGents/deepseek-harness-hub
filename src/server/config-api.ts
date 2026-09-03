@@ -19,6 +19,8 @@ import { type ShellConfig } from '../models/shell-config.js'
 import { readShellConfig, writeShellConfig } from '../services/config-store.js'
 import { readJsonBody } from '../helpers/read-json-body.js'
 import { rejectIfBadHost, rejectIfBadOrigin } from './host-guard.ts'
+import { verifyToken } from './token.js'
+import { applySecureHeaders } from './security-headers.ts'
 export type { ShellConfig }
 
 /** Browser-facing base path of the shell config API. */
@@ -26,6 +28,7 @@ export const CONFIG_API_PREFIX = '/api/dsh-hub'
 
 /** Write one JSON response. */
 function json(res: ServerResponse, status: number, body: unknown): void {
+  applySecureHeaders(res)
   res.writeHead(status, { 'content-type': 'application/json; charset=utf-8' })
   res.end(JSON.stringify(body))
 }
@@ -49,6 +52,12 @@ export function makeConfigRoutes(onChange?: (value: ShellConfig, changed?: { siz
           return Promise.resolve()
         }
         if (req.method === 'POST') {
+          // Audit 2026-09-02 P1-5: state-changing route — require the process
+          // token (GET stays open: the splash/skins boot reads it pre-auth).
+          if (!verifyToken(req)) {
+            json(res, 401, { ok: false, error: 'unauthorized' })
+            return Promise.resolve()
+          }
           return readJsonBody(req).then(
             (body) => {
               const record = (typeof body === 'object' && body !== null)

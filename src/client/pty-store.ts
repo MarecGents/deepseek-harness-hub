@@ -30,6 +30,7 @@
  */
 import { useSyncExternalStore } from 'react'
 import { getPrefs, setShell } from './terminal-prefs.ts'
+import { pluginToken } from './api-auth.ts'
 
 export type ShellId = 'powershell' | 'pwsh' | 'cmd' | 'bash'
 
@@ -69,21 +70,16 @@ interface SessionsListLike {
 /** Session-list snapshot accessor, plugged by {@link bindPtyRuntime}. */
 let sessionsSnapshot: (() => SessionsListLike | undefined) | null = null
 
-/** dsh-hub auth token, read once from the injected global and cached. */
-let cachedToken: string | null = null
-
 function emit(): void { for (const l of listeners) l() }
 function set(patch: Partial<State>): void { state = { ...state, ...patch }; emit() }
 
 /**
  * Resolve the auth token from the `__DSH_HUB_TOKEN__` global injected by the
- * host (`webserver/index-inject`); cached at module level after first read.
+ * host (`webserver/index-inject`); delegated to the shared client helper
+ * (src/client/api-auth.ts) so every authed fetch uses one source.
  */
 function getToken(): string {
-  if (cachedToken === null) {
-    cachedToken = (globalThis as { __DSH_HUB_TOKEN__?: string }).__DSH_HUB_TOKEN__ ?? ''
-  }
-  return cachedToken
+  return pluginToken()
 }
 
 /** Append a chunk to a tab's output ring buffer (last {@link RING_LIMIT}). */

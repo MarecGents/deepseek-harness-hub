@@ -16,6 +16,7 @@ import { IconChevronDownOutline14, Menu } from '@deepseek-ai/dsh-client-ui-primi
 import { CARD_CSS_CLASSES as c } from './style.ts'
 import { SKINS, DEFAULT_SKIN_ID, applySkin, markSkinUserPicked, type DshSkin } from './skins.ts'
 import { t, useLocaleLang, type HubKey } from './locale.ts'
+import { authHeaders } from './api-auth.ts'
 import { BACKGROUNDS, DEFAULT_BACKGROUND_ID, applyBackground, markBackgroundUserPicked } from './backgrounds.ts'
 import { PERMISSION_POLICIES, permissionPolicyLabel, fetchPolicy, savePolicy, type PermissionPolicy } from './permission-policy-chip.tsx'
 import { refreshConversationRailPalette } from './conversation-rail.ts'
@@ -59,9 +60,10 @@ async function fetchConfig(): Promise<ShellConfig | null> {
 /** Write the shell config document (POST); returns the persisted value. */
 async function saveConfig(patch: Partial<ShellConfig>): Promise<ShellConfig | null> {
   try {
+    // Audit 2026-09-02 P1-5: mutating routes verify the Bearer token server-side.
     const res = await fetch('/api/dsh-hub/config', {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: authHeaders(),
       body: JSON.stringify(patch),
     })
     const body = (await res.json()) as { ok?: boolean; value?: ShellConfig }

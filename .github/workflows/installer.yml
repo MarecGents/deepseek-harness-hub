@@ -1,0 +1,57 @@
+name: installer
+
+# Manual NSIS installer build (BUILD.md §7.4 — T1 tier: dev-v2 only,
+# no npm publish, no merge to main). Produces a downloadable artifact
+# for testers to install and exercise on Windows.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Override version label (optional, defaults to tauri.conf.json)'
+        required: false
+        default: ''
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install JS dependencies
+        run: npm ci
+
+      - name: Build host (tsc)
+        run: npm run build
+
+      - name: Build client bundle
+        run: npm run build:client
+
+      # VS Build Tools with MSVC C++ workload are pre-installed on
+      # windows-latest, but cargo needs the vcvars64 environment.
+      - name: Setup MSVC environment
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Install stable Rust (MSVC)
+        run: rustup toolchain install stable --profile minimal
+
+      - name: Build Tauri (NSIS)
+        working-directory: src-tauri
+        run: cargo tauri build
+
+      # Collect all NSIS installer artifacts.
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: installer
+          path: |
+            src-tauri/target/release/bundle/nsis/*.exe
+            src-tauri/target/release/bundle/nsis/*.nsis
+          retention-days: 14
+          if-no-files-found: error

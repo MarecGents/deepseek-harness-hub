@@ -286,3 +286,13 @@ export function apply(ctx) {
 }
 
 export const Config = undefined
+
+// Test-only access to internal helpers (no runtime consumer).
+export const __internals = {
+  cwdOf,
+  readFact,
+  readJournalTail,
+  renderMemory,
+  appendJournal,
+  appendFact,
+}

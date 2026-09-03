@@ -33,6 +33,7 @@ import { isAbsolute } from 'node:path'
 import { readJsonBody } from '../helpers/read-json-body.js'
 import { rejectIfBadHost, rejectIfBadOriginPresent } from './host-guard.ts'
 import { verifyToken } from './token.ts'
+import { applySecureHeaders } from './security-headers.ts'
 import { createPty, detectShells, getTab, listTabs, ptyClose, ptyResize, ptySubscribe, ptyWrite, PtyLimitReachedError, type ShellId } from '../services/pty-manager.ts'
 import { readTerminalPrefs, writeTerminalPrefs } from '../services/terminal-prefs.ts'
 
@@ -41,6 +42,7 @@ const HEARTBEAT_MS = 15_000
 
 /** Write one JSON response. */
 function json(res: ServerResponse, status: number, body: unknown): void {
+  applySecureHeaders(res)
   res.writeHead(status, { 'content-type': 'application/json; charset=utf-8' })
   res.end(JSON.stringify(body))
 }

@@ -29,6 +29,7 @@ import { existsSync, readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { dshHome } from '../helpers/state-store.js'
 import { rejectIfBadHost } from './host-guard.ts'
+import { applySecureHeaders } from './security-headers.ts'
 
 /** Route prefix shared with the other dsh-hub APIs. */
 const API_PREFIX = '/api/dsh-hub'
@@ -84,6 +85,7 @@ function locateSession(id: string): { found: boolean; sessionDir?: string; logPa
 
 /** Write one JSON response. */
 function json(res: ServerResponse, status: number, body: unknown): void {
+  applySecureHeaders(res)
   res.writeHead(status, { 'content-type': 'application/json; charset=utf-8' })
   res.end(JSON.stringify(body))
 }

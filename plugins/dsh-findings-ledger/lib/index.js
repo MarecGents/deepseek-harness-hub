@@ -225,3 +225,16 @@ export function apply(ctx) {
 
 // 插件配置：快照跳过目录（Config schema——普通对象作默认值；如需校验用 schemastery）
 export const Config = undefined
+
+// Test-only access to internal helpers (no runtime consumer).
+export const __internals = {
+  cwdOf,
+  collectSnapshot,
+  captureBaseline,
+  loadBaseline,
+  diffSnapshot,
+  loadLedger,
+  recordFinding,
+  generateReport,
+  SKIP_DIRS,
+}
