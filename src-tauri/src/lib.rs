@@ -709,6 +709,7 @@ pub fn run() {
             commands::window_toggle_visible,
             commands::play_sound,
             commands::open_workspace_path,
+            commands::open_url,
             notify::notify_task_complete,
         ])
         .setup(|app| {

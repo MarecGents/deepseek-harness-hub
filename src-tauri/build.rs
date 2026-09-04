@@ -18,6 +18,7 @@ fn main() {
             "window_toggle_visible",
             "play_sound",
             "open_workspace_path",
+            "open_url",
             "notify_task_complete",
         ]),
     ))

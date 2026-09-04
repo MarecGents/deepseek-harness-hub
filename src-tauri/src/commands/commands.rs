@@ -177,3 +177,10 @@ pub fn play_sound(app: tauri::AppHandle, kind: String) -> Result<(), String> {
 pub fn open_workspace_path(path: String) -> Result<(), String> {
     crate::window_ops::open_workspace_path(path)
 }
+
+/// 在默认浏览器中打开 URL（仅 http/https 协议）。
+/// 实现已下沉 managers/window_ops.rs（安全校验：url::Url::parse + 协议白名单）。
+#[tauri::command]
+pub fn open_url(url: String) -> Result<(), String> {
+    crate::window_ops::open_url(url)
+}

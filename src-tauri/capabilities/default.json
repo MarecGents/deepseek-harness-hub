@@ -38,6 +38,7 @@
     "allow-window-toggle-visible",
     "allow-play-sound",
     "allow-open-workspace-path",
+    "allow-open-url",
     "allow-notify-task-complete",
     "dialog:allow-open"
   ]

@@ -123,7 +123,7 @@ dsh-hub 是**双 half** 结构，且**套壳代码与插件代码必须严格模
 - 产品文案用中文；代码注释用英文（与 dsh 官方一致）。
 
 - **文案 i18n 纪律**：非皮肤代码的产品文案一律写入 `src/client/locale.ts` 词典（zh 为键源、en 完整对照，tsc 保证键集完备），经 `t()` 消费，语言源跟随 dsh 设置（官方 locale 插件写入 `<html lang>`，MutationObserver + `useSyncExternalStore` 订阅）；**禁止在组件/样式/路由中硬编码中文字面量文案**。皮肤 name/description 同样词典化（`skin.name.<id>` / `skin.desc.<id>`，展示端 `t()` 回退静态值）。新增文案 = 词典双向键 + 当前语言立即生效。
-- **右键菜单语义（壳 UI 行为契约）**：WebView2 原生右键菜单已在 Rust 侧禁用；页面右键全部由 DOM 接管——对象行（`div[role="treeitem"]`，会话/工作区）→ 各自专属菜单，**空白处（含左栏空态）→ 刷新菜单**，文本编辑要素不干预；全局刷新菜单必须保持**单一注册源**（见 docs/关键踩坑记录.md #77-80，勿重复注册）。
+- **右键菜单语义（壳 UI 行为契约）**：WebView2 原生右键菜单已在 Rust 侧禁用；页面右键全部由 DOM 接管——优先级从高到低：① 对象行（`div[role="treeitem"]`，会话/工作区）→ 各自专属菜单（pin-conversations / workspace-menu）；② 对话文本选中（`getSelection().type !== 'Collapsed'`）→ 复制菜单（复制 / 添加到当前任务 / 在辅助对话中提问）；③ 链接（`a[href]` http(s)）→ 链接菜单（在浏览器中打开 / 复制链接地址）；④ 文本编辑要素（`textarea / input / [contenteditable]`）→ 编辑菜单（撤销/重做/剪切/复制/粘贴/删除/全选）；⑤ 空白处（含左栏空态）→ 刷新菜单。全局菜单必须保持**单一注册源**（见 docs/关键踩坑记录.md #77-80，勿重复注册）。链接左键点击默认在外部浏览器打开（`open_url` Tauri 命令）。
 
 ### 3.1 皮肤（skins）风格豁免
 

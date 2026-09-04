@@ -42,6 +42,8 @@ import { SessionTabs } from './SessionTabs.tsx'
 import { bindPtyRuntime, fetchShells, ptyToggle } from './pty-store.ts'
 import { syncHostPrefs } from './terminal-prefs.ts'
 import { TerminalPage } from './terminal-dock.tsx'
+import { showContextMenu, closeContextMenu, buildSelectionMenu, buildEditMenu, buildLinkMenu } from './context-menu.ts'
+import { installLinkHandler } from './link-handler.ts'
 
 /**
  * Tray-bridge ready flag, set at module scope — the very first thing that
@@ -442,76 +444,77 @@ export function apply(ctx: ClientContext): void {
   // source. Explicit target exemptions, NOT stopPropagation side-effects:
   //   - left object rail (session/workspace trees + empty/blank space) →
   //     their own menus (pin-conversations / workspace-menu) or nothing;
-  //   - interactive controls → nothing.
-  // Only page-level blank space shows the refresh item.
+  //   - text selection → copy menu;
+  //   - text editing controls → edit menu;
+  //   - links → link menu;
+  //   - blank space → refresh menu.
+  // Priority: object row > text selection > link > text editing > blank (refresh).
+  // Single registration source (踩坑 #78); extends existing handler, no new listener.
   try {
     ctx.effect(() => {
-      let menuEl: HTMLElement | null = null
-      const closeMenu = (): void => {
-        if (menuEl === null) return
-        menuEl.remove()
-        menuEl = null
-        window.removeEventListener('mousedown', onOutside)
-        window.removeEventListener('keydown', onKey)
-        window.removeEventListener('scroll', closeMenu, true)
-      }
-      const onKey = (event: KeyboardEvent): void => { if (event.key === 'Escape') closeMenu() }
-      const onOutside = (event: MouseEvent): void => {
-        if (menuEl !== null && !menuEl.contains(event.target as Node | null)) closeMenu()
-      }
       const onContext = (event: MouseEvent): void => {
         const target = event.target
-        if (target instanceof Element) {
-          // Object controls (session / workspace tree rows) never show the
-          // refresh item — they open their own menus (pin-conversations /
-          // workspace-menu; the row catches its inner buttons too). EVERYTHING
-          // else — including rail blank space, empty state and most containers
-          // — falls through to the refresh menu, matching "only object
-          // controls are exempt, blank space anywhere is refreshable".
-          if (target.closest('div[role="treeitem"]')) return
-          // Text-editing essentials only: never pop refresh over an active
-          // input/selection. Broad control classes (button/a/[role=button])
-          // were over-broad — they wrap most "blank-looking" chrome and made
-          // plain-space right-click dead. They are thus NOT exempt here.
-          if (target.closest('textarea, input, select, [contenteditable="true"]')) return
+        if (!(target instanceof Element)) return
+
+        // Priority 1: object row (session/workspace tree items) — own menus handled
+        // by pin-conversations / workspace-menu, not this handler.
+        if (target.closest('div[role="treeitem"]')) return
+
+        // Priority 2: <a> link with http(s) href → link menu.
+        const anchor = target.closest('a[href]')
+        if (anchor !== null) {
+          const href = anchor.getAttribute('href') ?? ''
+          if (href.startsWith('http://') || href.startsWith('https://')) {
+            event.preventDefault()
+            event.stopPropagation()
+            showContextMenu(event.clientX, event.clientY, buildLinkMenu(href))
+            return
+          }
         }
+
+        // Priority 3: selected text in conversation area → copy menu.
+        const selection = window.getSelection()
+        if (selection !== null && selection.type !== 'Collapsed' && selection.toString().trim() !== '') {
+          event.preventDefault()
+          event.stopPropagation()
+          showContextMenu(event.clientX, event.clientY, buildSelectionMenu(selection.toString()))
+          return
+        }
+
+        // Priority 4: text editing controls → edit menu (undo/redo/cut/copy/paste).
+        if (target.closest('textarea, input, select, [contenteditable="true"]')) {
+          event.preventDefault()
+          event.stopPropagation()
+          showContextMenu(event.clientX, event.clientY, buildEditMenu(target as HTMLElement))
+          return
+        }
+
+        // Priority 5: blank space → refresh menu.
         event.preventDefault()
-        closeMenu()
-        const el = document.createElement('div')
-        el.setAttribute('role', 'menu')
-        el.style.cssText = [
-          'position:fixed', 'z-index:2147483646', 'min-width:120px', 'padding:4px',
-          'background:var(--dsw-alias-bg-layer-3,#1f1f23)', 'border:1px solid var(--dsw-alias-border-l2,#333)',
-          'border-radius:8px', 'box-shadow:0 6px 24px rgb(0 0 0 / 25%)',
-          'font-family:var(--dsw-font-family,system-ui)', 'font-size:13px', 'color:var(--dsw-alias-label-primary,#e6e6e6)',
-        ].join(';')
-        el.style.left = Math.min(event.clientX, window.innerWidth - 140) + 'px'
-        el.style.top = Math.min(event.clientY, window.innerHeight - 44) + 'px'
-        const item = document.createElement('button')
-        item.setAttribute('role', 'menuitem')
-        item.textContent = t('menu.refresh')
-        item.style.cssText = [
-          'display:block', 'width:100%', 'padding:6px 10px', 'border:none', 'border-radius:6px',
-          'background:transparent', 'color:inherit', 'font:inherit', 'text-align:left', 'cursor:pointer',
-        ].join(';')
-        item.addEventListener('mouseenter', () => { item.style.background = 'var(--dsw-alias-interactive-bg-hover, rgb(128 128 128 / 16%))' })
-        item.addEventListener('mouseleave', () => { item.style.background = 'transparent' })
-        item.addEventListener('click', () => { closeMenu(); location.reload() })
-        el.appendChild(item)
-        document.body.appendChild(el)
-        menuEl = el
-        window.addEventListener('mousedown', onOutside)
-        window.addEventListener('keydown', onKey)
-        window.addEventListener('scroll', closeMenu, true)
+        closeContextMenu()
+        showContextMenu(event.clientX, event.clientY, [
+          { label: t('menu.refresh'), action: () => { location.reload() } },
+        ])
       }
       document.addEventListener('contextmenu', onContext)
       return () => {
         document.removeEventListener('contextmenu', onContext)
-        closeMenu()
+        closeContextMenu()
       }
-    }, 'dsh-hub: context menu (refresh-only)')
+    }, 'dsh-hub: context menu')
   } catch (error) {
     console.warn('[dsh-hub] context menu install failed:', error)
+  }
+
+  // Link click handler: intercept <a> clicks with http(s) href and open in
+  // the default browser via the Tauri open_url command (audit: link handling).
+  try {
+    ctx.effect(() => {
+      const uninstall = installLinkHandler()
+      return uninstall
+    }, 'dsh-hub: link handler')
+  } catch (error) {
+    console.warn('[dsh-hub] link handler install failed:', error)
   }
 
   // Workspace-row drag guard（官方工作区行拖拽的插件层兜底；主根因 =

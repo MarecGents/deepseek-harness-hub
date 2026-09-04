@@ -137,6 +137,28 @@ pub fn open_workspace_path(path: String) -> Result<(), String> {
     result.map(|_| ()).map_err(|e| e.to_string())
 }
 
+/// 在默认浏览器中打开 URL（仅 http/https 协议）。
+/// 安全校验：url::Url::parse + 协议白名单 + host 非空。
+pub fn open_url(url: String) -> Result<(), String> {
+    let parsed = url::Url::parse(&url).map_err(|e| format!("invalid URL: {e}"))?;
+    if !matches!(parsed.scheme(), "http" | "https") {
+        return Err("only http/https URLs are allowed".to_string());
+    }
+    if parsed.host_str().unwrap_or("").is_empty() {
+        return Err("URL must have a host".to_string());
+    }
+    log::info!("open_url invoked from page: {url}");
+    #[cfg(target_os = "windows")]
+    let result = std::process::Command::new("cmd")
+        .args(["/c", "start", "", &url])
+        .spawn();
+    #[cfg(target_os = "macos")]
+    let result = std::process::Command::new("open").arg(&url).spawn();
+    #[cfg(target_os = "linux")]
+    let result = std::process::Command::new("xdg-open").arg(&url).spawn();
+    result.map(|_| ()).map_err(|e| e.to_string())
+}
+
 /// 托盘菜单第一项「显示/隐藏主界面」切换（Q1/Q7 唯一实现）。
 /// 判断：窗口可见且未最小化 → 隐藏到托盘；否则 → 显示并置顶到最前。
 /// （按可见性而非聚焦：点击托盘会夺走焦点，用聚焦判断会误「显示」。）
