@@ -19,14 +19,19 @@ import { fileURLToPath } from 'node:url'
 
 const PACKAGE_ROOT = dirname(dirname(fileURLToPath(import.meta.url)))
 
-/** The @deepseek-ai scope inside the installed dsh CLI's dependency tree. */
+/** The @deepseek-ai scope inside the installed dsh CLI's dependency tree.
+  * Returns null when the tree cannot be found and DSH_CLIENT_SDK_OPTIONAL=1
+  * (CI has no dsh install — the client bundle is a release-machine artifact);
+  * throws otherwise. */
 function dshSdkScope() {
   // The dsh CLI is installed globally; its client SDK packages live inside
   // the dsh package's own node_modules (a vendored, self-contained tree).
   const candidates = []
-  const globalRoot = spawnSync(process.env.ComSpec ?? 'cmd', ['/d', '/s', '/c', 'npm root -g'], {
-    encoding: 'utf8', windowsHide: true,
-  })
+  const globalRoot = process.platform === 'win32'
+    ? spawnSync(process.env.ComSpec ?? 'cmd', ['/d', '/s', '/c', 'npm root -g'], {
+        encoding: 'utf8', windowsHide: true,
+      })
+    : spawnSync('npm', ['root', '-g'], { encoding: 'utf8' })
   if (globalRoot.status === 0) {
     const root = globalRoot.stdout.trim()
     // dsh package may be hoisted (root/@deepseek-ai/dsh/...) or nested
@@ -51,6 +56,10 @@ function dshSdkScope() {
   for (const candidate of candidates) {
     if (existsSync(join(candidate, 'dsh-client-runtime', 'package.json'))) return candidate
   }
+  if (process.env.DSH_CLIENT_SDK_OPTIONAL === '1') {
+    console.warn('[build-client] DSH client SDK tree not found (npm root -g / DSH_CMD) — DSH_CLIENT_SDK_OPTIONAL=1, skipping client bundle.')
+    return null
+  }
   throw new Error('build-client: could not locate the @deepseek-ai/dsh client SDK tree (npm root -g or DSH_CMD)')
 }
 
@@ -72,6 +81,7 @@ const SDK_PACKAGES = [
 
 function linkSdk() {
   const scope = dshSdkScope()
+  if (!scope) return false
   const targetScope = join(PACKAGE_ROOT, 'node_modules', '@deepseek-ai')
   mkdirSync(targetScope, { recursive: true })
   let linked = 0
@@ -90,10 +100,14 @@ function linkSdk() {
     }
   }
   console.log(`[build-client] linked ${linked} SDK packages from ${scope}`)
+  return true
 }
 
 function main() {
-  linkSdk()
+  if (!linkSdk()) {
+    console.warn('[build-client] Skipped: the client bundle needs a local @deepseek-ai/dsh install (dev boxes / release machines only).')
+    return
+  }
   const run = spawnSync('npx', ['tsdown'], {
     cwd: PACKAGE_ROOT,
     stdio: 'inherit',
