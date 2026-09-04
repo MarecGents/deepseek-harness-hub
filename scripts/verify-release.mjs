@@ -91,6 +91,12 @@ function uncommittedDrift() {
 function runSmoke() {
   const work = join(tmpdir(), `dsh-hub-verify-${Date.now()}`)
   const npmRoot = join(work, 'npmroot')
+  // npm -g layout differs by platform: Windows <prefix>/node_modules,
+  // Unix <prefix>/lib/node_modules. resolveGlobalModules() below must be
+  // used for every path under the isolated prefix.
+  const globalModules = process.platform === 'win32'
+    ? join(npmRoot, 'node_modules')
+    : join(npmRoot, 'lib', 'node_modules')
   const simHome = join(work, 'dshhome')
   mkdirSync(work, { recursive: true })
   try {
@@ -117,7 +123,7 @@ function runSmoke() {
     //    (the Tauri shell's `--assemble-only` covers the Rust side in
     //    verify-tauri-release P2; this Node-side check validates the npm
     //    package's own assembly).
-    const sidecar = join(npmRoot, 'node_modules', ...SCOPED.split('/'), 'bin', 'dsh-web-sidecar.mjs')
+    const sidecar = join(globalModules, ...SCOPED.split('/'), 'bin', 'dsh-web-sidecar.mjs')
     if (!existsSync(sidecar)) return { ok: false, detail: `installed package missing sidecar helper: ${sidecar}` }
     const run = spawnSync(process.execPath, [sidecar], {
       cwd: PACKAGE_ROOT, encoding: 'utf8', windowsHide: true, timeout: 120000,
@@ -138,7 +144,7 @@ function runSmoke() {
     const linkPath = join(simHome, 'profiles', 'web', 'node_modules', ...SCOPED.split('/'))
     if (!existsSync(linkPath)) return { ok: false, detail: `scoped junction missing at ${linkPath}` }
     const target = readlinkSync(linkPath).toLowerCase()
-    const expected = join(npmRoot, 'node_modules', ...SCOPED.split('/')).toLowerCase()
+    const expected = join(globalModules, ...SCOPED.split('/')).toLowerCase()
     const norm = (p) => p.replace(/^\\\\\?\\/, '').replace(/\/+$/, '')
     if (norm(target) !== norm(expected)) return { ok: false, detail: `junction target mismatch: ${target} vs ${expected}` }
 
