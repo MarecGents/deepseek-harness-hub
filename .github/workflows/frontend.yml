@@ -39,6 +39,11 @@ on:
 jobs:
   check:
     runs-on: ubuntu-latest
+    env:
+      # Job-level so verify-release's P4 npm-pack smoke also inherits it:
+      # the client SDK only exists inside an installed dsh CLI, which
+      # GitHub runners don't have (see Client bundle step below).
+      DSH_CLIENT_SDK_OPTIONAL: '1'
     steps:
       - uses: actions/checkout@v5
 
@@ -58,12 +63,10 @@ jobs:
 
       # The @deepseek-ai/dsh-* client SDK ships only inside an installed
       # dsh CLI (vendored tree, not on npm), so GitHub runners cannot build
-      # lib/client.js. DSH_CLIENT_SDK_OPTIONAL=1 makes build-client.mjs skip
-      # with a warning instead of failing; the release pipeline builds the
-      # real bundle on a machine with a dsh install.
+      # lib/client.js. DSH_CLIENT_SDK_OPTIONAL=1 (job-level above) makes
+      # build-client.mjs skip with a warning instead of failing; the release
+      # pipeline builds the real bundle on a machine with a dsh install.
       - name: Client bundle
-        env:
-          DSH_CLIENT_SDK_OPTIONAL: '1'
         run: npm run build:client
 
       - name: Release-process gate (verify-release)
