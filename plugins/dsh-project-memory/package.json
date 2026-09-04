@@ -1,7 +1,7 @@
 {
   "name": "@dsh-external/dsh-project-memory",
-  "version": "0.0.1",
-  "description": "每项目持久记忆（FACT.md + JOURNAL.jsonl，自动注入 systemPrompt.context + memory_read/log/fact 工具，PR #36 修订落地版）",
+  "version": "0.0.2",
+  "description": "每项目持久记忆（MEMORY.md 索引 + memories/<slug>.md 单记忆文件 + FACT.md + JOURNAL.jsonl，自动注入 systemPrompt.context + memory_save/read/log/fact 工具）",
   "private": false,
   "type": "module",
   "main": "./lib/index.js",
