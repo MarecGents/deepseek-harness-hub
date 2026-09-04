@@ -460,7 +460,18 @@ export function apply(ctx: ClientContext): void {
         // by pin-conversations / workspace-menu, not this handler.
         if (target.closest('div[role="treeitem"]')) return
 
-        // Priority 2: <a> link with http(s) href → link menu.
+        // Priority 2: text editing controls → edit menu (undo/redo/cut/copy/
+        // paste). MUST precede the selection check: the composer is a
+        // contenteditable div, so selecting text inside it must show the edit
+        // menu, not the conversation-context menu (Bug 2).
+        if (target.closest('textarea, input, select, [contenteditable="true"]')) {
+          event.preventDefault()
+          event.stopPropagation()
+          showContextMenu(event.clientX, event.clientY, buildEditMenu(target as HTMLElement))
+          return
+        }
+
+        // Priority 3: <a> link with http(s) href → link menu.
         const anchor = target.closest('a[href]')
         if (anchor !== null) {
           const href = anchor.getAttribute('href') ?? ''
@@ -472,20 +483,12 @@ export function apply(ctx: ClientContext): void {
           }
         }
 
-        // Priority 3: selected text in conversation area → copy menu.
+        // Priority 4: selected text in conversation area → copy menu.
         const selection = window.getSelection()
         if (selection !== null && selection.type !== 'Collapsed' && selection.toString().trim() !== '') {
           event.preventDefault()
           event.stopPropagation()
           showContextMenu(event.clientX, event.clientY, buildSelectionMenu(selection.toString()))
-          return
-        }
-
-        // Priority 4: text editing controls → edit menu (undo/redo/cut/copy/paste).
-        if (target.closest('textarea, input, select, [contenteditable="true"]')) {
-          event.preventDefault()
-          event.stopPropagation()
-          showContextMenu(event.clientX, event.clientY, buildEditMenu(target as HTMLElement))
           return
         }
 

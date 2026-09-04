@@ -186,7 +186,14 @@ export function openSessionMenu(params: SessionMenuParams): void {
   entries.push({
     label: t('menu.archiveSession'),
     danger: true,
-    run: () => { void runtime.workspaces?.archiveSession?.(params.id)?.catch(() => {}) },
+    run: () => {
+      // Bug 1 (2026-09-04): archive failures were silently swallowed — the
+      // user saw "nothing happened". Surface the error so a wrong session id
+      // (title-matching miss) or an RPC failure is diagnosable.
+      void runtime.workspaces?.archiveSession?.(params.id)?.catch((error: unknown) => {
+        console.warn('[dsh-hub] session archive failed:', error)
+      })
+    },
   })
   entries.push('sep')
   if (workspacePath !== undefined) {

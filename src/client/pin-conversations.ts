@@ -840,6 +840,12 @@ export function installPinnedConversations(ctx: unknown): () => void {
           event.preventDefault()
           event.stopPropagation()
           openWorkspaceMenu({ x: event.clientX, y: event.clientY, workspace: ws, ctx: runtime })
+        } else {
+          // The ungrouped bucket (aria-expanded row with no backing workspace)
+          // has no actions per official design — swallow the event so the
+          // refresh menu never appears over it (Bug 1).
+          event.preventDefault()
+          event.stopPropagation()
         }
       }
       return

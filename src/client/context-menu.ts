@@ -95,6 +95,11 @@ export function showContextMenu(x: number, y: number, slots: MenuSlot[]): () => 
   el.style.left = Math.max(4, Math.min(x, window.innerWidth - rect.width - 4)) + 'px'
   el.style.top = Math.max(4, Math.min(y, window.innerHeight - rect.height - 4)) + 'px'
 
+  // Keep focus on the underlying element (composer/input) when a menu item is
+  // clicked — without this, the button click blurs the editor and
+  // execCommand('undo'/'cut'/...) operates on the wrong element (Bug 2).
+  el.addEventListener('mousedown', (e) => { e.preventDefault() })
+
   activeMenu = el
 
   // Dismiss handlers.
