@@ -1,0 +1,6 @@
+# @dsh-external/dsh-model-efforts — dsh bundle patch (top-level array; a
+# `plugins:` mapping form fails to parse in dsh's loadOverlayPatches).
+# Identity rule (AGENTS.md iron law 2): insert.id == insert.name == package.json name.
+- insert:
+    - id: '@dsh-external/dsh-model-efforts'
+      name: '@dsh-external/dsh-model-efforts'

@@ -385,12 +385,29 @@ function ModelSelectNested({ locked, available, directory, load, select }: Model
 
 /** Register the model-select override into the composer model seat. */
 export function installModelSelect(ctx: ClientContext): void {
-  const slots = ctx.get('slots')
-  const models = ctx.get('modelDirectories')
   const sessions = ctx.get('sessions') as unknown as { subagentAddress(sessionId: string): unknown } | undefined
-  if (slots === undefined || models === undefined || sessions === undefined) return
-  ctx.effect(() => {
-    return slots.inject('conversation.input.model', () => slots.register({
+  if (sessions === undefined) {
+    // Pure defense: `sessions` is declared on the client entry's inject list,
+    // so this only fires if that declaration is ever dropped.
+    console.warn('[dsh-hub] model-select skipped: sessions service unavailable')
+    return
+  }
+  // Scoped injection — the same pattern the official ui-model-selection uses
+  // (`ctx.inject(['commandUi', 'modelDirectories'], …)`): the child fiber
+  // parks until `modelDirectories` is provided, then registers the seat. A
+  // missing service degrades to the built-in seat without pending the whole
+  // hub client plugin (README contract). 2026-09-06 fix: the previous
+  // ctx.get() probe silently returned when the service was not provided yet
+  // at apply time (dsh 0.1.2-rc.1 service ordering), so the override never
+  // registered and the official seat stayed in place.
+  ctx.inject(['modelDirectories'], (scope: ClientContext) => {
+    const slots = scope.get('slots')
+    const models = scope.get('modelDirectories')
+    if (slots === undefined || models === undefined) {
+      console.warn('[dsh-hub] model-select skipped: slots/modelDirectories unavailable')
+      return
+    }
+    scope.effect(() => slots.inject('conversation.input.model', () => slots.register({
       name: 'conversation.input.model',
       priority: -1,
       inject: (sessionId: string) => {
@@ -403,6 +420,7 @@ export function installModelSelect(ctx: ClientContext): void {
           select: (selection: Selection) => available ? directory.select(selection).then(() => true, () => false) : Promise.resolve(false),
         }
       },
-    }, (props: ModelSelectProps) => ModelSelectNested(props)))
-  }, 'dsh-hub: model-select override')
+    }, (props: ModelSelectProps) => ModelSelectNested(props))), 'dsh-hub: model-select override')
+    console.log('[dsh-hub] model-select override installed')
+  })
 }

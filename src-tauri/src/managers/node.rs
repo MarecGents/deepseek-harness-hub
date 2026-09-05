@@ -88,10 +88,20 @@ fn dispatch_dsh_cmd(app: &tauri::AppHandle, cmd_json: &str) {
         "set_window_size" => {
             let w = value.get("width").and_then(|v| v.as_f64());
             let h = value.get("height").and_then(|v| v.as_f64());
+            // Optional field: manual-save frames omit it (default true =
+            // unmaximize-first); the boot sync sends false so a restored
+            // maximized state survives plugin startup.
+            let allow_unmax = value
+                .get("allowUnmaximize")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(true);
             if let (Some(w), Some(h)) = (w, h) {
-                // 与页面 invoke 路径同一实现（window_ops）：最大化状态下先
-                // unmaximize 再 set_size（R2-3 发现 2 修复，双路径行为一致）。
-                let _ = crate::window_ops::set_window_size(app, w, h);
+                // 与页面 invoke 路径同一实现（window_ops）：手动路径最大化时先
+                // unmaximize 再 set_size（R2-3 发现 2）；boot 同步带
+                // allowUnmaximize:false，最大化优先（2026-09-06 修复）。
+                if let Err(e) = crate::window_ops::set_window_size(app, w, h, allow_unmax) {
+                    warn!("node: set_window_size failed: {e}");
+                }
             }
         }
         // S6：设置桌面图标（tauri-shell.ts setDesktopIcon 上行）。设置卡页面

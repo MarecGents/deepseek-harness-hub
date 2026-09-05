@@ -119,13 +119,20 @@ pub fn set_desktop_icon(app: tauri::AppHandle, icon_id: String) -> Result<(), St
     crate::window_ops::set_desktop_icon(&app, icon_id)
 }
 
-/// 窗口大小设置命令。
-/// 项 6：最大化状态下 Windows 不允许直接 set_size——先 unmaximize 再设尺寸
-/// （记录日志；unmaximize 触发的 resize 事件由 lib.rs 恢复逻辑兜底）。
-/// 实现已下沉 managers/window_ops.rs（DSH_CMD 路径同实现，双路径行为一致）。
+/// Window size command.
+/// Manual-save semantics: when maximized, unmaximize first, then resize
+/// (`allow_unmaximize` absent = true, legacy behavior — e2e callers unchanged).
+/// Boot-sync callers pass `false` to preserve a restored maximized state.
+/// Implementation lives in managers/window_ops.rs (shared with the DSH_CMD
+/// path — single implementation, dual-path consistency).
 #[tauri::command]
-pub fn set_window_size(app: tauri::AppHandle, width: f64, height: f64) -> Result<(), String> {
-    crate::window_ops::set_window_size(&app, width, height)
+pub fn set_window_size(
+    app: tauri::AppHandle,
+    width: f64,
+    height: f64,
+    allow_unmaximize: Option<bool>,
+) -> Result<(), String> {
+    crate::window_ops::set_window_size(&app, width, height, allow_unmaximize.unwrap_or(true))
 }
 
 /// 工作区路径命令（D4 决策：页面主动上报，壳侧预置桩）。

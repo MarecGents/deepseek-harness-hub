@@ -85,9 +85,12 @@ export interface SettingsSectionOwnerProps {
 
 /**
  * Required services: slots (card), workspaces + sessions (tray + sidebar data).
- * NOTE: modelDirectories is deliberately NOT injected — the model-seat override
- * (model-select.tsx) resolves it via ctx.get() with a guard, so a missing
- * service degrades to "built-in seat" instead of PENDING the whole plugin.
+ * NOTE: modelDirectories is deliberately NOT on this list — the model-seat
+ * override (model-select.tsx) waits for it via a scoped `ctx.inject` child
+ * fiber, so a missing service still degrades to the "built-in seat" instead
+ * of pending the whole plugin (2026-09-06: replaced the apply-time ctx.get
+ * probe, which silently skipped registration under dsh 0.1.2-rc.1 service
+ * ordering).
  */
 export const inject = ['slots', 'workspaces', 'sessions']
 

@@ -1,9 +1,9 @@
 # dsh-hub 功能清单（FUNCTIONS）
 
-> 当前版本：`0.1.5`（dev-v2 已 merge main，Tauri 2.x 壳 + dsh web 插件层）。基线对照：官方 dsh（deepseek-harness）。更新：2026-09-03（v0.1.5 安全与代码质量修复）。
+> 当前版本：`0.1.6`（dev-v2，Tauri 2.x 壳 + dsh web 插件层，dsh 0.1.2-rc.1 适配 + 三项修复）。基线对照：官方 dsh（deepseek-harness）。更新：2026-09-06（v0.1.6 三项修复：最大化记忆恢复、模型 seat scoped 注入、dsh-model-efforts 插件）。
 > 本清单收录 **dsh-hub 相对官方 dsh 新增/改变的全部功能**，分门别类，每项带【来源】（PR 号 / 版本）与【测试状态】。
 > 测试状态标记：✅ = 真机或隔离环境实测通过 · 🔶 = 代码就绪、未系统真机验证 · ⚠️ = 部分/待收口 · ➖ = 历史（dev-v1 WebView2 时代，Tauri 后不适用）。
-> 更新：2026-09-03 · 依据全量 PR 清点（#1–#51）+ 源码盘点。
+> 更新：2026-09-06 · 依据全量 PR 清点（#1–#51）+ 源码盘点。
 
 ---
 
@@ -13,11 +13,11 @@
 |---|------|------|------|------|
 | A1 | 原生窗口承载 dsh SPA | 无边框 Tauri 窗口；webserver ACTIVE 即开窗（占位页先显示），READY 验证后再导航到 dsh web，不弹浏览器 | rc.1+ | ✅ |
 | A2 | 品牌化 Splash | 启动覆盖层（鲸鱼 logo + spinner + 主题色），盖住 SPA 首绘，load 或 3s 后淡出，无白/黑闪 | — | ✅ |
-| A3 | 窗口状态记忆 | 最大化状态持久化；退出最大化恢复保存尺寸或 3/4 屏；最小 480×360 | — | ✅ |
-| A4 | **分辨率与多屏策略** | 无保存尺寸时按**光标所在显示器**取 3/4 屏（multi-monitor aware，上限 1600×1000）；窗口尺寸钳制到所在屏；`window-size scaling`（DPI 缩放适配，PR #6 一并落地） | PR #6 | 🔶 单屏实测、多屏组合未系统测 |
+| A3 | 窗口状态记忆 | 最大化状态持久化；退出最大化恢复保存尺寸或 3/4 屏；最小 480×360；**0.1.6 修复**：boot applySize 不再无条件退最大化（allowUnmaximize 语义分流，最大化优先于配置尺寸） | 0.1.6 | ✅ |
+| A4 | **分辨率与多屏策略** | 无保存尺寸时按**光标所在显示器**取 3/4 屏（multi-monitor aware）；窗口尺寸钳制到所在屏；`window-size scaling`（DPI 缩放适配，PR #6 一并落地） | PR #6 | 🔶 单屏实测、多屏组合未系统测 |
 | A5 | 关闭/最小化到托盘 | closeToTray 关窗保进程；minimizeToTray 最小化即隐藏；实时读配置 | — | ✅ |
 | A6 | 标题栏主题跟随/强制 | `system` 监听页面深浅切换（DWM immersive dark + webview 背景 + 窗口图标翻转，MutationObserver）；可强制浅/深（按当前皮肤色板解析） | — | ✅ |
-| A7 | 设置实时应用 | 主题/尺寸保存后 DSH_CMD 上行即时应用；最大化时先退最大化再套用 | — | ✅ |
+| A7 | 设置实时应用 | 主题/尺寸保存后 DSH_CMD 上行即时应用；0.1.6 起尺寸语义分流：boot 同步（allowUnmaximize=false）最大化优先跳过；手动保存（默认 true）保持 unmaximize-first | 0.1.6 | ✅ |
 | A8 | 壳内 HTML5 拖放恢复 | `disable_drag_drop_handler` 撤掉 wry 文件专用 IDropTarget 覆盖——页内 HTML5 拖拽（工作区/会话行排序、标签排序）在壳内恢复浏览器同款行为 | rc.17 | ✅ 工作区行实测；会话行/标签排序 🔶 |
 | A9 | Files 拖放兜底 | document capture 阶段对 Files 拖放 preventDefault：拖文件到输入区 = 官方附件上传；其他区域/空窗期安全忽略（杜绝 file:// 导航） | rc.17 | 🔶 行为变化未真机全面回归 |
 | A10 | 拖拽状态守卫 | watchdog 合成 dragend 自愈官方拖拽状态卡死 + 拖拽中收缩置顶区 + 拖拽中挂起置顶刷新 | rc.17 | ✅ 合成链实测 |
@@ -45,7 +45,7 @@
 |---|------|------|------|------|
 | D1 | 对话定位条（rail） | 对话列左侧 20px 悬浮条：每轮对话一根可点击刻度，点击滚动定位到该轮；hover 显示该轮开场文本预览（时间窗真实 kind：user/steering/context/assistant/command/compaction） | PR #27/#35 | 🔶 点击跳转实测；hover 预览未系统回归 |
 | D2 | rail 自适应配色 | 刻度条配色按当前皮肤/背景图自动推导（per-skin/background 调色板，非两套固定色）；皮肤/背景切换自动重读 | PR #30 | 🔶 抽查个别皮肤 |
-| D3 | 模型嵌套菜单 | composer 模型 seat 替换为 provider→model 两级菜单（官方 slot `conversation.input.model` priority -1 阴影；服务缺失降级内置） | PR #33 | 🔶 |
+| D3 | 模型嵌套菜单 | composer 模型 seat 替换为 provider→model 两级菜单（官方 slot `conversation.input.model` priority -1 阴影；**0.1.6 起**采用 scoped `ctx.inject` 等待 `modelDirectories` 服务就绪后注册，服务缺失仍降级内置 seat，不 PENDING 整个插件） | PR #33 | ✅ 注册链 0.1.2-rc.1 验证 |
 | D4 | 权限策略 chip | 会话左下角（官方权限 chip 旁）快捷切换 dsh-permission-guard 档位，带档位色点（蓝=跟随/橙=严格/绿=只读） | rc.14 | 🔶 |
 | D5 | 右键菜单语义 | WebView2 原生右键禁用，DOM 全量接管，四层优先级：对象行→专属菜单；对话文本选中→复制菜单（复制/添加到任务/辅助对话）；链接→链接菜单（浏览器打开/复制地址）；输入框→编辑菜单（撤销/重做/剪切/复制/粘贴/删除/全选）；空白→刷新菜单。链接左键→默认浏览器打开（`open_url` Tauri 命令）；全量 zh/en i18n | v0.2.0 | ✅ |
 
@@ -93,6 +93,7 @@
 | I2 | dsh-permission-guard | 逐命令权限白名单 + 四级拦截（auto/give-command/confirm/never）+ **policy 档位**（follow 联动会话官方预设：Full Access 只留 never 红线；read-only；strict）+ HTTP 路由 + systemPrompt 指南 | PR #37 | 🔶 决策矩阵模拟验证；真机会话拦截 🔶 |
 | I3 | dsh-project-memory | 每项目持久记忆（FACT.md + JOURNAL.jsonl 自动注入 systemPrompt.context）+ `memory_read`/`memory_log`/`memory_fact` 工具 | PR #36 | 🔶 |
 | I4 | dsh-findings-ledger | baseline 快照 + 变更对账 + 覆盖度报告（turn/end 自动出报告） | PR #38 | 🔶 |
+| I5 | dsh-model-efforts | 自定义模型思考强度档位编辑器（**0.1.6 新增**）：settings.section（order 35）列出 llm-pi-ai 路由/模型，per-model 编辑 reasoningEfforts 七档（off/low/medium/high/…）+ false 非推理开关；双路写入（catalog 路由逐键 modelOverrides / 手填路由整组 models 数组）；通过官方 settingsScope 直写 llm-pi-ai 命名空间（revision 围栏 + schema 校验），热生效 | 0.1.6 | 🔶 门禁通过；真机写入+菜单出现档位待验证 |
 
 ## J. 工作区与会话数据
 

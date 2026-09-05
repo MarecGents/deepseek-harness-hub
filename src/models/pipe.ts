@@ -30,6 +30,11 @@ export interface MgTrayFrame {
 /** host→壳 上行帧载荷（`DSH_CMD <json>`，node.rs 分发表）。 */
 export interface DshCmdPayload {
   cmd: string
+  /**
+   * Open payload — command-specific fields. `set_window_size` carries the
+   * optional `allowUnmaximize` boolean (absent = true = legacy manual-save
+   * unmaximize-first; boot sync sends false to preserve a maximized state).
+   */
   [key: string]: unknown
 }
 

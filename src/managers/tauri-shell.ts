@@ -111,10 +111,14 @@ export interface TauriShellHandle {
   applyTheme(theme: 'system' | 'light' | 'dark'): void
 
   /**
-   * Apply a window size immediately (from the settings card's width/height).
+   * Apply a window size immediately.
+   * - Manual save (settings card width/height): call without opts — a
+   *   maximized window is unmaximized first (legacy behavior).
+   * - Boot sync: pass `{ allowUnmaximize: false }` so a maximized state
+   *   restored by the shell wins over the configured size (2026-09-06 fix).
    * Delegates to the Tauri `set_window_size` command (T4.8).
    */
-  applySize(width: number, height: number): void
+  applySize(width: number, height: number, opts?: { allowUnmaximize?: boolean }): void
 
   /**
    * Apply a desktop/window icon id immediately (from the settings card's
@@ -215,9 +219,9 @@ export function openDesktopShellTauri(
       void invoke('set_window_theme', { theme })
     },
 
-    applySize: (width: number, height: number) => {
+    applySize: (width: number, height: number, opts?: { allowUnmaximize?: boolean }) => {
       if (guard()) return
-      void invoke('set_window_size', { width, height })
+      void invoke('set_window_size', { width, height, allowUnmaximize: opts?.allowUnmaximize })
     },
 
     setDesktopIcon: (id: string) => {

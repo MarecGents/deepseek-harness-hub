@@ -66,7 +66,9 @@ export function makeConfigRoutes(onChange?: (value: ShellConfig, changed?: { siz
               // Narrow to known fields only; width/height are clamped to a
               // generous absolute maximum (the client input already caps at
               // the actual screen size, so this only guards hostile values).
-              const sizeChanged = 'width' in record || 'height' in record
+              // sizeChanged is derived from the sanitized patch (not the raw
+              // record) so a malformed value like width:"abc" cannot trigger a
+              // spurious window resize.
               const patch: Partial<ShellConfig> = {}
               // 8K UHD upper bound — no current monitor exceeds it.
               const MAX_SCREEN = 7680
@@ -94,6 +96,9 @@ export function makeConfigRoutes(onChange?: (value: ShellConfig, changed?: { siz
               if (typeof record.background === 'string' && /^[a-z0-9-]{1,64}$/i.test(record.background)) patch.background = record.background
               // Desktop-icon id — same whitelist rationale (icons/<id>.ico lookup).
               if (typeof record.desktopIcon === 'string' && /^[a-z0-9-]{1,64}$/i.test(record.desktopIcon)) patch.desktopIcon = record.desktopIcon
+              // Only a *sanitized* size field counts as a size change: the
+              // caller (src/index.ts) applies it via shell.applySize.
+              const sizeChanged = patch.width !== undefined || patch.height !== undefined
 
               const result = writeShellConfig(patch)
               if (!result.ok) {

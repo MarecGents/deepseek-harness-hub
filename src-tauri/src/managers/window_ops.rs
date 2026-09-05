@@ -4,8 +4,8 @@
 // 职责：窗口相关操作的**唯一实现**，供 commands 层（invoke 命令）与 managers 层
 //       （node.rs DSH_CMD 分发表 / tray.rs 托盘菜单）共用——消除
 //       managers→commands 反向依赖（R1-3 发现 3，src-tauri/src/AGENTS.md
-//       分层依赖红线），并保证双路径行为一致（set_window_size 统一
-//       unmaximize-first，R2-3 发现 2）。
+//       分层依赖红线），并保证双路径行为一致（set_window_size 双语义分流，
+//       R2-3 发现 2 + 2026-09-06 maximize-preserve 参数化）。
 // 分层：本模块（managers 层）只依赖同层 managers（icon/tray）与 helpers
 //       （theme/state），不 import commands 层。
 // 外部接口：set_window_theme / set_desktop_icon / set_window_size / play_sound /
@@ -65,19 +65,65 @@ pub fn set_desktop_icon(app: &tauri::AppHandle, icon_id: String) -> Result<(), S
     Ok(())
 }
 
-/// 窗口大小设置（项 6 唯一实现）。
-/// 最大化状态下 Windows 不允许直接 set_size——先 unmaximize 再设尺寸
-/// （记录日志；unmaximize 触发的 resize 事件由 lib.rs 恢复逻辑兜底）。
-/// invoke（commands::set_window_size）与 DSH_CMD（node.rs 分发）双路径
-/// 行为一致（R2-3 发现 2 修复）。
-pub fn set_window_size(app: &tauri::AppHandle, width: f64, height: f64) -> Result<(), String> {
+/// What `set_window_size` should do when the main window is maximized.
+enum ResizeAction {
+    /// Boot sync with `allow_unmaximize=false`: keep the maximized state and
+    /// skip the resize entirely (the configured size intentionally yields to
+    /// the restored window state; when the user later un-maximizes, lib.rs
+    /// restores the default 3/4 size because the saved size is recorded as 0
+    /// while maximized).
+    Skip,
+    /// Manual save (`allow_unmaximize=true`): unmaximize first (Windows cannot
+    /// set_size a maximized window), then apply the requested size.
+    UnmaximizeThenResize,
+    /// Window not maximized: plain resize.
+    Resize,
+}
+
+/// Pure decision for the maximized-state branch (unit-testable, red line 16).
+fn resize_action(is_maximized: bool, allow_unmaximize: bool) -> ResizeAction {
+    if !is_maximized {
+        ResizeAction::Resize
+    } else if allow_unmaximize {
+        ResizeAction::UnmaximizeThenResize
+    } else {
+        ResizeAction::Skip
+    }
+}
+
+/// Window size setter (single implementation shared by both uplink paths).
+///
+/// `allow_unmaximize` selects the semantic: the manual-save path (page invoke
+/// via `commands::set_window_size`, or the host config-onChange DSH_CMD)
+/// passes `true` — a maximized window is unmaximized first, then resized
+/// (R2-3 finding 2). The boot-sync path passes `false` — the maximized state
+/// wins and the sync is skipped (2026-09-06 fix: the boot `applySize` used to
+/// un-maximize the window that `restore_window_state` had just restored).
+pub fn set_window_size(
+    app: &tauri::AppHandle,
+    width: f64,
+    height: f64,
+    allow_unmaximize: bool,
+) -> Result<(), String> {
     if let Some(win) = app.get_webview_window("main") {
-        if win.is_maximized().unwrap_or(false) {
-            log::info!("set_window_size: window maximized, unmaximizing first");
-            win.unmaximize().map_err(|e| e.to_string())?;
+        match resize_action(win.is_maximized().unwrap_or(false), allow_unmaximize) {
+            ResizeAction::Skip => {
+                log::info!(
+                    "set_window_size: window maximized, boot sync skipped (unmaximize not allowed)"
+                );
+                Ok(())
+            }
+            ResizeAction::UnmaximizeThenResize => {
+                log::info!("set_window_size: window maximized, unmaximizing first");
+                win.unmaximize().map_err(|e| e.to_string())?;
+                let size = tauri::Size::Logical(tauri::LogicalSize::new(width, height));
+                win.set_size(size).map_err(|e| e.to_string())
+            }
+            ResizeAction::Resize => {
+                let size = tauri::Size::Logical(tauri::LogicalSize::new(width, height));
+                win.set_size(size).map_err(|e| e.to_string())
+            }
         }
-        let size = tauri::Size::Logical(tauri::LogicalSize::new(width, height));
-        win.set_size(size).map_err(|e| e.to_string())
     } else {
         Err("main window not found".to_string())
     }
@@ -191,7 +237,26 @@ pub fn window_toggle_visible(app: &tauri::AppHandle) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
-    use super::validate_open_target;
+    use super::{resize_action, validate_open_target, ResizeAction};
+
+    #[test]
+    fn boot_sync_skips_when_maximized_and_not_allowed() {
+        assert!(matches!(resize_action(true, false), ResizeAction::Skip));
+    }
+
+    #[test]
+    fn manual_save_unmaximizes_first_when_maximized() {
+        assert!(matches!(
+            resize_action(true, true),
+            ResizeAction::UnmaximizeThenResize
+        ));
+    }
+
+    #[test]
+    fn normal_resize_when_not_maximized() {
+        assert!(matches!(resize_action(false, true), ResizeAction::Resize));
+        assert!(matches!(resize_action(false, false), ResizeAction::Resize));
+    }
 
     #[test]
     fn rejects_relative_paths() {
