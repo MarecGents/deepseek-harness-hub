@@ -30,14 +30,23 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 use tauri::Manager;
 
-/// 解析 dsh web 输出行中的端口号。
-/// 匹配 `dsh web: http://127.0.0.1:<port>` 格式（rc.7 实测）。
-fn parse_dsh_ready_port(line: &str) -> Option<u16> {
-    // 尝试 `dsh web: http://127.0.0.1:<port>` 格式。
+/// 解析 dsh web 输出行中的端口号与 launch token。
+/// 匹配 `dsh web: http://127.0.0.1:<port>` 格式（rc.7 实测）；
+/// 0.1.2-rc.1 起 READY 行带 `?token=<base64url>`（browser-auth 认证），
+/// 返回 (port, Option<token>)；无 token 的旧行仍兼容。
+fn parse_dsh_ready_port(line: &str) -> (Option<u16>, Option<String>) {
+    // 尝试 `dsh web: http://127.0.0.1:<port>[/?token=...]` 格式。
     if let Some(rest) = line.strip_prefix("dsh web: http://127.0.0.1:") {
-        if let Some(port_str) = rest.split(|c: char| !c.is_ascii_digit()).next() {
-            return port_str.parse().ok();
-        }
+        let port_str: String = rest.chars().take_while(|c| c.is_ascii_digit()).collect();
+        let port = port_str.parse().ok();
+        // 提取 `?token=` 段（可能紧跟端口或尾随空格/引号）。
+        let token = rest
+            .split("?token=")
+            .nth(1)
+            .and_then(|t| t.split(|c: char| c.is_whitespace() || c == '"').next())
+            .filter(|t| !t.is_empty())
+            .map(str::to_string);
+        return (port, token);
     }
     // 尝试 `dsh web: http://[::]:<port>` 或其他模式。
     // 备选：搜索 `DSH_EVENT {"type":"ready","port":N}`（T4.1 SOP 帧格式）。
@@ -48,11 +57,11 @@ fn parse_dsh_ready_port(line: &str) -> Option<u16> {
             // ——单测 parses_dsh_event_ready_json 捕获的真实 off-by-one）。
             let after = &line[port_pos + 7..];
             if let Some(end) = after.find(|c: char| !c.is_ascii_digit()) {
-                return after[..end].parse().ok();
+                return (after[..end].parse().ok(), None);
             }
         }
     }
-    None
+    (None, None)
 }
 
 /// 执行 tauri-shell.ts 经 stdout 上行的请求行（SOP D-1：stdio JSON-RPC）。
@@ -175,6 +184,8 @@ pub struct NodeState {
     pub child: Mutex<Option<Child>>,
     pub port: Mutex<Option<u16>>,
     pub ready: Mutex<bool>,
+    /// dsh web 输出的 launch token（0.1.2-rc.1 browser-auth `?token=`，导航拼进 URL）。
+    pub token: Mutex<Option<String>>,
     /// dsh web 进程的 stdin 管道（rc.14 tray-helper 模式：壳下行托盘命令 →
     /// 独立进程管道 → host 插件 → 页面 dispatchPageEvent 带重试）。
     pub stdin: Mutex<Option<std::process::ChildStdin>>,
@@ -188,6 +199,7 @@ impl NodeState {
             child: Mutex::new(None),
             port: Mutex::new(None),
             ready: Mutex::new(false),
+            token: Mutex::new(None),
             stdin: Mutex::new(None),
             restart_count: AtomicU32::new(0),
         }
@@ -728,9 +740,14 @@ fn spawn_output_readers(
             match line {
                 Ok(l) => {
                     info!("dsh-stdout: {}", l);
-                    if let Some(port) = parse_dsh_ready_port(&l) {
+                    if let (Some(port), token) = parse_dsh_ready_port(&l) {
                         *state_ready.ready.lock().unwrap() = true;
                         *state_ready.port.lock().unwrap() = Some(port);
+                        // 0.1.2-rc.1: READY 行带 launch token（browser-auth），
+                        // 导航拼进 URL；无 token 的旧行保持 None（兼容）。
+                        if token.is_some() {
+                            *state_ready.token.lock().unwrap() = token;
+                        }
                         // READY 到达 = 本轮启动成功，连续崩溃计数归零。
                         state_ready.restart_count.store(0, Ordering::SeqCst);
                         info!("node: READY on port {}", port);
@@ -833,17 +850,22 @@ fn wait_restart_ready_and_navigate(state: &NodeState, app: &tauri::AppHandle) {
                         "node: restart READY verified — {addr} reachable, navigating main window"
                     );
                     if let Some(win) = app.get_webview_window("main") {
-                        if let Ok(url) = tauri::Url::parse(&format!("http://127.0.0.1:{port}")) {
+                        // 0.1.2-rc.1: 导航 URL 携带 launch token（browser-auth）。
+                        let token = state.token.lock().unwrap().clone();
+                        let base = format!("http://127.0.0.1:{port}");
+                        let url_str = match token {
+                            Some(t) => format!("{base}/?token={t}"),
+                            None => base.clone(),
+                        };
+                        if let Ok(url) = tauri::Url::parse(&url_str) {
                             if let Err(e) = win.navigate(url) {
                                 warn!("node: supervisor navigate failed: {e}");
                             } else {
-                                info!("node: supervisor navigated main window to http://127.0.0.1:{port}");
+                                info!("node: supervisor navigated main window to {url_str}");
                             }
                         } else {
                             // URL 解析失败（u16 端口理论上不会）——退 eval 兜底。
-                            if let Err(e) =
-                                win.eval(format!("location.href='http://127.0.0.1:{port}'"))
-                            {
+                            if let Err(e) = win.eval(format!("location.href='{url_str}'")) {
                                 warn!("node: supervisor eval fallback failed: {e}");
                             }
                         }
@@ -986,7 +1008,16 @@ mod tests {
     fn parses_dsh_web_line() {
         assert_eq!(
             parse_dsh_ready_port("dsh web: http://127.0.0.1:8279"),
-            Some(8279)
+            (Some(8279), None)
+        );
+    }
+
+    #[test]
+    fn parses_token_from_ready_line() {
+        // 0.1.2-rc.1: READY 行带 launch token（browser-auth `?token=`）。
+        assert_eq!(
+            parse_dsh_ready_port("dsh web: http://127.0.0.1:8279/?token=abc-123_XYZ"),
+            (Some(8279), Some("abc-123_XYZ".to_string()))
         );
     }
 
@@ -994,23 +1025,26 @@ mod tests {
     fn parses_dsh_event_ready_json() {
         assert_eq!(
             parse_dsh_ready_port(r#"DSH_EVENT {"type":"ready","port":4321}"#),
-            Some(4321)
+            (Some(4321), None)
         );
     }
 
     #[test]
     fn ignores_non_matching_lines() {
-        assert_eq!(parse_dsh_ready_port("dsh web: http://127.0.0.1:0"), Some(0));
-        assert_eq!(parse_dsh_ready_port("plain log line"), None);
-        assert_eq!(parse_dsh_ready_port("DSH_EVENT {"), None);
-        assert_eq!(parse_dsh_ready_port(""), None);
+        assert_eq!(
+            parse_dsh_ready_port("dsh web: http://127.0.0.1:0"),
+            (Some(0), None)
+        );
+        assert_eq!(parse_dsh_ready_port("plain log line"), (None, None));
+        assert_eq!(parse_dsh_ready_port("DSH_EVENT {"), (None, None));
+        assert_eq!(parse_dsh_ready_port(""), (None, None));
     }
 
     #[test]
     fn stops_at_first_digit_run() {
         assert_eq!(
             parse_dsh_ready_port("dsh web: http://127.0.0.1:65535 trailing"),
-            Some(65535)
+            (Some(65535), None)
         );
     }
 }

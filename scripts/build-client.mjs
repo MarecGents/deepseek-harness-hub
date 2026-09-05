@@ -35,7 +35,7 @@ function dshSdkScope() {
       join(root, '@deepseek-ai', 'dsh', 'node_modules', '@deepseek-ai'),
       join(root, 'node_modules', '@deepseek-ai', 'dsh', 'node_modules', '@deepseek-ai'),
     ]) {
-      if (existsSync(join(dshDir, 'dsh-client-runtime', 'package.json'))) candidates.push(dshDir)
+      if (existsSync(join(dshDir, 'dsh-client-modules', 'package.json'))) candidates.push(dshDir)
     }
   }
   if (process.env.DSH_CMD && existsSync(process.env.DSH_CMD)) {
@@ -45,18 +45,18 @@ function dshSdkScope() {
       join(dirname(cliDir), 'node_modules', '@deepseek-ai', 'dsh', 'node_modules', '@deepseek-ai'),
       join(dirname(dirname(cliDir)), 'node_modules', '@deepseek-ai', 'dsh', 'node_modules', '@deepseek-ai'),
     ]) {
-      if (existsSync(join(dshDir, 'dsh-client-runtime', 'package.json'))) candidates.push(dshDir)
+      if (existsSync(join(dshDir, 'dsh-client-modules', 'package.json'))) candidates.push(dshDir)
     }
   }
   for (const candidate of candidates) {
-    if (existsSync(join(candidate, 'dsh-client-runtime', 'package.json'))) return candidate
+    if (existsSync(join(candidate, 'dsh-client-modules', 'package.json'))) return candidate
   }
   throw new Error('build-client: could not locate the @deepseek-ai/dsh client SDK tree (npm root -g or DSH_CMD)')
 }
 
 /** Packages this bundle imports (directly or transitively). */
 const SDK_PACKAGES = [
-  'dsh-client-runtime', 'dsh-client-ui-slots', 'dsh-client-ui-settings',
+  'dsh-client-modules', 'dsh-client-ui-slots', 'dsh-client-ui-settings',
   'dsh-client-locale', 'dsh-client-connection', 'dsh-client-schema-form',
   'dsh-client-ui-primitives', 'dsh-client-web-react', 'dsh-client-ui-theme',
   'dsh-client-web', 'dsh-client-ui-attachment', 'dsh-api-remotes',

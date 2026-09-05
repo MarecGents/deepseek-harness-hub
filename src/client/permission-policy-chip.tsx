@@ -61,10 +61,13 @@ export async function savePolicy(policy: PermissionPolicy): Promise<boolean> {
   }
 }
 
-/** Owner share the chip reads: only the session id (reload on session switch). */
+/** Owner share the chip reads: only the session id (reload on session switch).
+ * 0.1.2-rc.1: `conversation.input.left` no longer injects an owner (renders
+ * `{}`); the session id comes from the standard `sessionId` prop that
+ * ui-session merges into SessionStandardProps. */
 export interface PermissionPolicyChipProps {
-  /** Current session face; the id keys the one-shot policy fetch. */
-  session?: { id?: string }
+  /** Current session id; keys the one-shot policy fetch. */
+  sessionId?: string
 }
 
 /** Tier accent dot color (state token per tier, `-primary` variants only —
@@ -100,7 +103,7 @@ const dotStyle: CSSProperties = {
 }
 
 /** Composer tool-row chip: current tier + Menu of the three tiers. */
-export function PermissionPolicyChip({ session }: PermissionPolicyChipProps) {
+export function PermissionPolicyChip({ sessionId }: PermissionPolicyChipProps) {
   const [policy, setPolicy] = useState<PermissionPolicy | null>(null)
   const [open, setOpen] = useState(false)
   const [failed, setFailed] = useState(false)
@@ -113,7 +116,7 @@ export function PermissionPolicyChip({ session }: PermissionPolicyChipProps) {
       if (alive && p !== null) setPolicy(p)
     })
     return () => { alive = false }
-  }, [session?.id])
+  }, [sessionId])
 
   // Route unreachable (plain dsh web / plugin absent): hide the chip.
   if (policy === null) return null

@@ -22,7 +22,9 @@ import {
   IconWarningOutline16,
   Toast,
 } from '@deepseek-ai/dsh-client-ui-primitives'
-import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
+// 0.1.2-rc.1: dsh-client-runtime replaced by dsh-client-modules; official
+// pattern is `Context as ClientContext` from cordis.
+import type { Context as ClientContext } from '@deepseek-ai/cordis'
 
 // ── modelDirectories 服务类型自声明 ──────────────────────────────────────
 // dsh-client-runtime@0.1.0-rc.6 类型面缺失该服务（类型注入在

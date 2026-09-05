@@ -912,7 +912,13 @@ pub fn run() {
                 // dsh 页自带同款 Splash 覆盖层（同底色/同鲸鱼脉冲）接管视觉。
                 let _ = nav_win.eval("window.__mgFadeout && window.__mgFadeout()");
                 std::thread::sleep(std::time::Duration::from_millis(240));
-                let url = format!("http://127.0.0.1:{port}");
+                // 0.1.2-rc.1: 导航 URL 携带 launch token（browser-auth 认证）；
+                // 无 token 的旧版 dsh 保持原 URL（兼容）。
+                let token = nav_state.token.lock().unwrap().clone();
+                let url = match token {
+                    Some(t) => format!("http://127.0.0.1:{port}/?token={t}"),
+                    None => format!("http://127.0.0.1:{port}"),
+                };
                 info!("m4: navigating to {}", url);
                 match tauri::Url::parse(&url) {
                     Ok(u) => {

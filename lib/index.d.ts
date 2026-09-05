@@ -33,6 +33,10 @@ export declare const name = "@marecgents/dsh-hub";
  * Optional services are read via `ctx.get`, never injected: declaring
  * `webServer` here would leave the plugin pending forever on the headless
  * profile, which has no server at all.
+ * 0.1.2-rc.1: `ctx.settings` is a direct Context member (SettingsProvider
+ * service) — the old `installSettingsSection` helper did its own
+ * `ctx.inject(['settings'], ...)`; the new `installSection` method requires
+ * the service to be present, so `settings` must be declared here.
  */
 export declare const inject: string[];
 /** Plugin config, overridable through a later patch layer. */
@@ -63,7 +67,7 @@ export interface Config {
 }
 export declare const Config: z<Config>;
 /** Settings namespace owned by this plugin (spelled like the package). */
-export declare const SETTINGS_NS: import("@deepseek-ai/dsh-settings").SettingsNamespace;
+export declare const SETTINGS_NS = "dsh-hub";
 /** Env marker the Tauri shell sets before spawning the dsh web sidecar. */
 export declare const LAUNCHED_BY_SHORTCUT_ENV = "DSH_HUB_LAUNCHED";
 /** True when this process was started by the Tauri shell (or `dsh-hub`). */

@@ -35,7 +35,9 @@ import type {} from '@deepseek-ai/dsh-cmdline'
 import type {} from '@deepseek-ai/dsh-host-webserver'
 import type {} from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-agent'
-import { installSettingsSection, settingsNamespace } from '@deepseek-ai/dsh-settings'
+// Type-only: pulls the `ctx.settings` Context augmentation from dsh-settings
+// (the provider's `declare module '@deepseek-ai/cordis'` merge).
+import type {} from '@deepseek-ai/dsh-settings'
 import z from '@deepseek-ai/schemastery'
 import { openDesktopShellTauri, type TauriShellHandle } from './managers/tauri-shell.ts'
 import { makeConfigRoutes } from './server/config-api.js'
@@ -61,8 +63,12 @@ export const name = '@marecgents/dsh-hub'
  * Optional services are read via `ctx.get`, never injected: declaring
  * `webServer` here would leave the plugin pending forever on the headless
  * profile, which has no server at all.
+ * 0.1.2-rc.1: `ctx.settings` is a direct Context member (SettingsProvider
+ * service) — the old `installSettingsSection` helper did its own
+ * `ctx.inject(['settings'], ...)`; the new `installSection` method requires
+ * the service to be present, so `settings` must be declared here.
  */
-export const inject: string[] = []
+export const inject: string[] = ['settings']
 
 /** Plugin config, overridable through a later patch layer. */
 export interface Config {
@@ -107,7 +113,7 @@ export const Config: z<Config> = z.object({
 })
 
 /** Settings namespace owned by this plugin (spelled like the package). */
-export const SETTINGS_NS = settingsNamespace('dsh-hub')
+export const SETTINGS_NS = 'dsh-hub'
 
 /** Env marker the Tauri shell sets before spawning the dsh web sidecar. */
 export const LAUNCHED_BY_SHORTCUT_ENV = 'DSH_HUB_LAUNCHED'
@@ -154,9 +160,12 @@ export function apply(ctx: Context, config: Config): void {
   let opened = false
   let routesDisposed: (() => void) | undefined
 
-  // Settings namespace via the official helper (in-process visibility; see
+  // Settings namespace via the official provider (in-process visibility; see
   // module comment for why the client card uses our own routes instead).
-  installSettingsSection(ctx, SETTINGS_NS, Config, config, {
+  // 0.1.2-rc.1: `installSettingsSection`/`settingsNamespace` were removed from
+  // @deepseek-ai/dsh-settings — replaced by `ctx.settings.installSection`
+  // (SettingsProvider instance method, ns as a plain lowercase-kebab string).
+  ctx.settings.installSection(ctx, SETTINGS_NS, Config, config, {
     setSource: () => { /* future settings-backed values */ },
     onChange: () => { /* future: apply live config changes */ },
   })

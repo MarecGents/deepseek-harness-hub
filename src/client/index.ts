@@ -22,7 +22,11 @@
 
 import { createElement } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
-import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
+// 0.1.2-rc.1: dsh-client-runtime was replaced by dsh-client-modules; the
+// official pattern is `Context as ClientContext` from cordis (all rc.1
+// packages do this). The slots/layout type merges below still load the
+// Context augmentation (slots/sessions/workspaces members).
+import type { Context as ClientContext } from '@deepseek-ai/cordis'
 // Type-only: pulls the slots Context merge and the layout slot declarations.
 import type {} from '@deepseek-ai/dsh-client-ui-slots'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
@@ -57,12 +61,11 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface SlotMap {
     /**
      * Left end of the composer tool row, beside the official permission-preset
-     * chip — the seat for the dsh-hub permission-policy tier chip. Runtime
-     * owner share is ui-conversation's InputZone; this structural subset is
-     * all the chip reads (the session id), mirroring the local declare
-     * pattern above (the official package is not a compile-time dependency).
+     * chip — the seat for the dsh-hub permission-policy tier chip.
+     * 0.1.2-rc.1: the slot no longer injects an owner (renders `{}`); the
+     * chip reads the standard `sessionId` prop from SessionStandardProps.
      */
-    'conversation.input.left': { kind: 'list'; scope: 'session'; owner: PermissionPolicyChipProps }
+    'conversation.input.left': { kind: 'list'; scope: 'session' }
     /**
      * One top-level page of the settings dialog (nav rail). Declared at
      * runtime by ui-settings-general; mirrors its contract (order sorts the
@@ -332,6 +335,8 @@ export function apply(ctx: ClientContext): void {
   // tool row (official `conversation.input.left` slot), beside the official
   // permission-preset chip. Selects the dsh-permission-guard plugin's policy
   // tier (follow/strict/read-only); the plugin's own route persists it.
+  // 0.1.2-rc.1: the slot no longer injects a session owner — the chip reads
+  // the standard `sessionId` prop from SessionStandardProps.
   try {
     slots.inject('conversation.input.left', function* () {
       yield slots.register({
@@ -339,7 +344,7 @@ export function apply(ctx: ClientContext): void {
         // list slot: identified by id (not the keyed card's key).
         id: 'dsh-hub-permission-policy',
         priority: 20,
-      }, (props: PermissionPolicyChipProps) => PermissionPolicyChip({ session: props.session }))
+      }, (props: PermissionPolicyChipProps) => PermissionPolicyChip({ sessionId: props.sessionId }))
     })
   } catch (error) {
     // A chip failure must never take down the tray bridge.
