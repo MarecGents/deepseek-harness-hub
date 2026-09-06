@@ -2,13 +2,15 @@
  * dsh-hub model selector — replaces the official composer model seat.
  *
  * Module category: client UI component.
- * Responsibility: render the official composer placement and interaction
- * contract (`conversation.input.model`) with a provider -> model -> effort
- * menu. The selector uses the shared per-session model directory for every
- * selection. When a custom model has no reasoning metadata yet, the effort
- * pane can declare the standard levels through the official `llm-pi-ai`
- * settings scope; the host then rebuilds the catalog and the same pane shows
- * the host-validated effort choices. No settings-page UI is involved.
+ * Responsibility: render the composer model seat (`conversation.input.model`)
+ * as TWO adjacent trigger buttons — left opens the provider -> model list,
+ * right opens the thinking-effort list (PR #33 layout). Both share one
+ * popup menu with three panes (providers / model / effort). The selector
+ * uses the shared per-session model directory for every selection, so state
+ * stays consistent with the /model command. When a custom model has no
+ * reasoning metadata yet, the effort pane can declare the standard levels
+ * through the official `llm-pi-ai` settings scope; the host then rebuilds
+ * the catalog and the same pane shows the host-validated effort choices.
  */
 
 import { useCallback, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from 'react'
@@ -31,21 +33,21 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 
 const CSS = [
   '._dshnms_root{min-width:0;position:relative}',
-  '._dshnms_trigger{min-width:0;max-width:260px;height:28px;color:var(--dsw-alias-label-secondary);cursor:pointer;background:0 0;border:none;border-radius:24px;outline:none;align-items:center;gap:5px;padding:0 5px 0 9px;font-size:13px;font-weight:500;line-height:20px;display:flex}',
-  '._dshnms_trigger:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}',
-  '._dshnms_trigger:focus-visible{box-shadow:0 0 0 2px var(--dsw-alias-border-l3)}',
-  '._dshnms_trigger:disabled{color:var(--dsw-alias-label-dimmed);cursor:default}',
+  '._dshnms_triggerRow{display:flex;align-items:center;gap:2px}',
+  '._dshnms_trigger{min-width:0;max-width:200px;height:28px;color:var(--dsw-alias-label-secondary);cursor:pointer;background:0 0;border:none;border-radius:24px;outline:none;align-items:center;gap:4px;padding:0 4px 0 8px;font-size:13px;font-weight:500;line-height:20px;display:flex}',
+  '._dshnms_triggerEffort{min-width:0;max-width:120px;height:28px;color:var(--dsw-alias-label-secondary);cursor:pointer;background:0 0;border:none;border-radius:24px;outline:none;align-items:center;gap:4px;padding:0 4px 0 8px;font-size:13px;font-weight:500;line-height:20px;display:flex}',
+  '._dshnms_trigger:hover:not(:disabled),._dshnms_triggerEffort:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}',
+  '._dshnms_trigger:focus-visible,._dshnms_triggerEffort:focus-visible{box-shadow:0 0 0 2px var(--dsw-alias-border-l3)}',
+  '._dshnms_trigger:disabled,._dshnms_triggerEffort:disabled{color:var(--dsw-alias-label-dimmed);cursor:default}',
   '._dshnms_triggerLabel{text-overflow:ellipsis;white-space:nowrap;min-width:0;overflow:hidden}',
-  '._dshnms_triggerEffort{color:var(--dsw-alias-label-caption);font-weight:400;white-space:nowrap}',
   '._dshnms_chevron{color:var(--dsw-alias-label-caption);flex:none;transition:transform .12s}',
   '._dshnms_chevronOpen{transform:rotate(180deg)}',
-  '._dshnms_menu{z-index:20;border:1px solid var(--dsw-alias-border-inverted);background:var(--dsw-specific-menu);width:min(280px,100vw - 32px);max-height:min(420px,100vh - 96px);box-shadow:var(--dsw-shadow-lv3);color:var(--dsw-alias-label-primary);--dsh-scrollbar-thumb:var(--dsw-alias-scrollbar-bg-l2);--dsh-scrollbar-thumb-hover:var(--dsw-alias-scrollbar-hover-l2);border-radius:12px;flex-direction:column;padding:4px;display:flex;position:absolute;bottom:calc(100% + 8px);right:0;overflow:hidden}',
+  '._dshnms_menu{z-index:20;border:1px solid var(--dsw-alias-border-inverted);background:var(--dsw-specific-menu);width:min(260px,100vw - 32px);max-height:min(420px,100vh - 96px);box-shadow:var(--dsw-shadow-lv3);color:var(--dsw-alias-label-primary);--dsh-scrollbar-thumb:var(--dsw-alias-scrollbar-bg-l2);--dsh-scrollbar-thumb-hover:var(--dsw-alias-scrollbar-hover-l2);border-radius:12px;flex-direction:column;padding:4px;display:flex;position:absolute;bottom:calc(100% + 8px);right:0;overflow:hidden}',
   '._dshnms_status,._dshnms_empty{color:var(--dsw-alias-label-tertiary);padding:10px;font-size:13px;line-height:20px}',
   '._dshnms_error,._dshnms_warning{background:var(--dsw-alias-interactive-bg-hover-danger);color:var(--dsw-alias-state-error-primary);border-radius:8px;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:4px;padding:7px 8px;font-size:12px;line-height:18px;display:flex}',
   '._dshnms_warning{background:var(--dsw-alias-bg-module-platform);color:var(--dsw-alias-state-warn-label)}',
   '._dshnms_retry{color:inherit;font:inherit;cursor:pointer;background:0 0;border:none;flex:none;padding:0;font-weight:600}',
   '._dshnms_groups{min-height:0;overflow-y:auto;overscroll-behavior:contain}',
-  '._dshnms_groupTitle{color:var(--dsw-alias-label-caption);padding:6px 8px 3px;font-size:11px;font-weight:600;line-height:16px}',
   '._dshnms_option{width:100%;color:var(--dsw-alias-label-primary);background:0 0;border:none;border-radius:8px;outline:none;justify-content:space-between;align-items:center;gap:8px;padding:6px 8px;font-size:13px;font-weight:500;line-height:20px;text-align:left;display:flex;cursor:pointer}',
   '._dshnms_option:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}',
   '._dshnms_option:focus-visible{box-shadow:0 0 0 2px var(--dsw-alias-border-l3)}',
@@ -74,31 +76,33 @@ if (typeof document !== 'undefined' && document.querySelector('style[data-plugin
   document.head.appendChild(tag)
 }
 const c = {
-  root: '_dshnms_root', trigger: '_dshnms_trigger', triggerLabel: '_dshnms_triggerLabel', triggerEffort: '_dshnms_triggerEffort',
-  chevron: '_dshnms_chevron', chevronOpen: '_dshnms_chevronOpen', menu: '_dshnms_menu', status: '_dshnms_status',
-  empty: '_dshnms_empty', error: '_dshnms_error', warning: '_dshnms_warning', retry: '_dshnms_retry', groups: '_dshnms_groups',
-  groupTitle: '_dshnms_groupTitle', option: '_dshnms_option', optionCopy: '_dshnms_optionCopy', modelName: '_dshnms_modelName',
+  root: '_dshnms_root', triggerRow: '_dshnms_triggerRow', trigger: '_dshnms_trigger', triggerEffort: '_dshnms_triggerEffort',
+  triggerLabel: '_dshnms_triggerLabel', chevron: '_dshnms_chevron', chevronOpen: '_dshnms_chevronOpen', menu: '_dshnms_menu',
+  status: '_dshnms_status', empty: '_dshnms_empty', error: '_dshnms_error', warning: '_dshnms_warning', retry: '_dshnms_retry',
+  groups: '_dshnms_groups', option: '_dshnms_option', optionCopy: '_dshnms_optionCopy', modelName: '_dshnms_modelName',
   description: '_dshnms_description', selected: '_dshnms_selected', check: '_dshnms_check', cell: '_dshnms_cell', cellLabel: '_dshnms_cellLabel',
   cellValue: '_dshnms_cellValue', cellChevron: '_dshnms_cellChevron', back: '_dshnms_back', header: '_dshnms_header', headerName: '_dshnms_headerName',
 }
 
 const zh = {
-  'trigger.fallback': '选择模型', 'trigger.loading': '正在加载模型…', 'trigger.selectAria': '选择模型',
+  'trigger.fallback': '选择模型', 'trigger.selectAria': '选择模型',
   'trigger.aria': '选择模型：{model}', 'trigger.ariaEffort': '选择模型：{model}，思考强度：{effort}',
   'menu.aria': '模型与思考强度', 'menu.model': '模型', 'menu.effort': '思考强度', 'menu.back': '返回',
-  'effort.providerDefault': '默认', 'status.loading': '正在刷新模型列表…', 'error.action': '模型操作失败：{message}',
-  'action.reload': '重新加载', 'warning.groupLoad': '{name} 加载失败：{message}', 'empty.models': '没有可用模型。',
-  'empty.efforts': '当前模型未提供思考强度。', 'config.efforts': '为此自定义模型启用标准思考强度', 'config.busy': '正在启用…',
-  'config.failed': '无法声明思考强度，请检查模型配置。',
+  'menu.models': '{name} · 选择模型', 'effort.providerDefault': '默认', 'status.loading': '正在刷新模型列表…',
+  'error.action': '模型操作失败：{message}', 'error.rejected': '选择被拒绝',
+  'action.reload': '重新加载', 'warning.groupLoad': '{name} 加载失败：{message}',
+  'empty.providers': '没有可用的供应商。', 'empty.models': '没有可用模型。', 'empty.efforts': '当前模型未提供思考强度。',
+  'config.efforts': '为此自定义模型启用标准思考强度', 'config.busy': '正在启用…', 'config.failed': '无法声明思考强度，请检查模型配置。',
 }
 const en = {
-  'trigger.fallback': 'Select model', 'trigger.loading': 'Loading models…', 'trigger.selectAria': 'Select model',
+  'trigger.fallback': 'Select model', 'trigger.selectAria': 'Select model',
   'trigger.aria': 'Select model: {model}', 'trigger.ariaEffort': 'Select model: {model}, reasoning effort: {effort}',
   'menu.aria': 'Model and reasoning effort', 'menu.model': 'Model', 'menu.effort': 'Reasoning effort', 'menu.back': 'Back',
-  'effort.providerDefault': 'Default', 'status.loading': 'Refreshing model list…', 'error.action': 'Model action failed: {message}',
-  'action.reload': 'Reload', 'warning.groupLoad': '{name} failed to load: {message}', 'empty.models': 'No models available.',
-  'empty.efforts': 'This model does not provide reasoning efforts.', 'config.efforts': 'Enable standard efforts for this custom model', 'config.busy': 'Enabling…',
-  'config.failed': 'Unable to declare reasoning efforts; check the model configuration.',
+  'menu.models': '{name} · Select model', 'effort.providerDefault': 'Default', 'status.loading': 'Refreshing model list…',
+  'error.action': 'Model action failed: {message}', 'error.rejected': 'Selection rejected',
+  'action.reload': 'Reload', 'warning.groupLoad': '{name} failed to load: {message}',
+  'empty.providers': 'No providers available.', 'empty.models': 'No models available.', 'empty.efforts': 'This model does not provide reasoning efforts.',
+  'config.efforts': 'Enable standard efforts for this custom model', 'config.busy': 'Enabling…', 'config.failed': 'Unable to declare reasoning efforts; check the model configuration.',
 }
 function t(key: keyof typeof zh, params?: Record<string, string>): string {
   const dict = (document.documentElement.getAttribute('lang') || '').startsWith('zh') ? zh : en
@@ -127,12 +131,20 @@ interface Model { id: string; name: string; description?: string; reasoning?: Re
 interface Reasoning { defaultEffort?: string; efforts: { id: string; name: string; description?: string }[] }
 interface Selection { provider: string; model: string; reasoningEffort?: string }
 interface EffortChoice { key: string; effort: string | undefined; label: string; description?: string }
-interface SettingsProvider { models?: Array<Record<string, unknown>>; modelOverrides?: Record<string, Record<string, unknown>> }
+interface SettingsProvider { models?: Array<Record<string, unknown>> }
+interface SettingsScopeSnapshot {
+  status: 'loading' | 'ready' | 'unavailable'
+  value?: { providers?: Record<string, SettingsProvider> }
+  revision?: number
+  writable?: boolean
+}
 interface SettingsScope {
-  getSnapshot(): { status: string; value?: { providers?: Record<string, SettingsProvider> }; revision?: number; writable?: boolean }
+  getSnapshot(): SettingsScopeSnapshot
   mutate(ops: Array<{ op: 'set' | 'unset'; path: string[]; value?: unknown }>, expectedRevision?: number): Promise<void>
 }
-
+interface SettingsScopeBinder {
+  bind<T>(spec: { namespace: string; decode?: (section: unknown) => T | undefined }): SettingsScope & { getSnapshot(): SettingsScopeSnapshot & { value?: T } }
+}
 interface ModelDirectoriesService {
   directoryFor(sessionId: string): {
     store: ModelSelectProps['directory']
@@ -155,30 +167,45 @@ const STANDARD_EFFORTS: Record<string, string | null> = {
 function ModelSelectNested({ locked, available, directory, load, select, configureEfforts }: ModelSelectProps) {
   const state = useSyncExternalStore((fn) => directory.subscribe(fn), () => directory.getSnapshot())
   const [open, setOpen] = useState(false)
-  const [pane, setPane] = useState<'root' | 'model' | 'effort'>('root')
+  const [pane, setPane] = useState<'providers' | 'model' | 'effort'>('providers')
+  const [activeGroup, setActiveGroup] = useState<string | null>(null)
   const [toast, setToast] = useState<{ seq: number; text: string } | null>(null)
   const [configuring, setConfiguring] = useState(false)
   const toastSeq = useRef(0)
   const lastActionRef = useRef<'load' | 'select'>('load')
+  // Menu-generation guard: a selection settling after the menu was closed
+  // and reopened must not close the fresh menu (R3-B finding 3).
+  const epochRef = useRef(0)
+  // Which trigger opened the menu — Escape-close restores focus to it.
+  const lastOpenedRef = useRef<'providers' | 'effort'>('providers')
   const rootRef = useRef<HTMLDivElement>(null)
-  const triggerRef = useRef<HTMLButtonElement>(null)
+  const modelTriggerRef = useRef<HTMLButtonElement>(null)
+  const effortTriggerRef = useRef<HTMLButtonElement>(null)
   const itemRefs = useRef<(HTMLButtonElement | null)[]>([])
   const id = useId()
 
-  const choices = useMemo(() => state.groups.flatMap(group => group.models.map(model => ({
+  const choices = useMemo(() => state.groups.flatMap((group) => group.models.map((model) => ({
     group,
     model,
-    selection: { provider: group.id, model: model.id, ...(model.reasoning?.defaultEffort === undefined ? {} : { reasoningEffort: model.reasoning.defaultEffort }) },
+    selection: {
+      provider: group.id,
+      model: model.id,
+      ...(model.reasoning?.defaultEffort === undefined ? {} : { reasoningEffort: model.reasoning.defaultEffort }),
+    },
   }))), [state.groups])
-  const selectedIndex = state.current === null ? -1 : choices.findIndex(choice => choice.selection.provider === state.current?.provider && choice.selection.model === state.current.model)
+  const selectedIndex = state.current === null ? -1 : choices.findIndex((choice) => choice.selection.provider === state.current?.provider && choice.selection.model === state.current.model)
   const currentChoice = choices[selectedIndex]
   const reasoning = currentChoice?.model.reasoning
   const effectiveEffort = state.current?.reasoningEffort ?? reasoning?.defaultEffort
-  const effortLabel = reasoning === undefined ? undefined : effectiveEffort === undefined ? t('effort.providerDefault') : reasoning.efforts.find(level => level.id === effectiveEffort)?.name ?? effectiveEffort
-  const effortChoices = useMemo<readonly EffortChoice[]>(() => reasoning === undefined ? [] : [
-    ...(reasoning.defaultEffort === undefined ? [{ key: 'provider-default', effort: undefined, label: t('effort.providerDefault') }] : []),
-    ...reasoning.efforts.map(level => ({ key: `effort:${level.id}`, effort: level.id, label: level.name, ...(level.description === undefined ? {} : { description: level.description }) })),
-  ], [reasoning])
+  // PR #33 semantics: without reasoning metadata the effort trigger still
+  // shows "Default" (provider default), never hides.
+  const effortLabel = effectiveEffort === undefined ? t('effort.providerDefault') : reasoning?.efforts.find((level) => level.id === effectiveEffort)?.name ?? effectiveEffort
+  const effortChoices = useMemo<readonly EffortChoice[]>(() => reasoning === undefined
+    ? [{ key: 'provider-default', effort: undefined, label: t('effort.providerDefault') }]
+    : [
+        ...(reasoning.defaultEffort === undefined ? [{ key: 'provider-default', effort: undefined, label: t('effort.providerDefault') }] : []),
+        ...reasoning.efforts.map((level) => ({ key: `effort:${level.id}`, effort: level.id, label: level.name, ...(level.description === undefined ? {} : { description: level.description }) })),
+      ], [reasoning])
   const busy = state.status === 'selecting' || configuring
   const reload = useCallback(() => { lastActionRef.current = 'load'; load() }, [load])
 
@@ -190,19 +217,34 @@ function ModelSelectNested({ locked, available, directory, load, select, configu
   }, [open])
   if (!available) return null
 
-  const close = (restoreFocus = false): void => {
-    setOpen(false); setPane('root')
-    if (restoreFocus) queueMicrotask(() => triggerRef.current?.focus())
+  const showProviders = (): void => {
+    epochRef.current += 1
+    lastOpenedRef.current = 'providers'
+    setPane('providers'); setActiveGroup(null); setOpen(true)
+    if (state.status !== 'loading') reload()
   }
-  const show = (): void => { setPane('root'); setOpen(true); reload() }
-  const goBack = (): void => { if (pane !== 'root') setPane('root'); else close(true) }
+  const showEffort = (): void => {
+    epochRef.current += 1
+    lastOpenedRef.current = 'effort'
+    setPane('effort'); setOpen(true)
+    if (state.status !== 'loading') reload()
+  }
+  const close = (restoreFocus = false): void => {
+    epochRef.current += 1
+    setOpen(false); setPane('providers'); setActiveGroup(null)
+    if (restoreFocus) queueMicrotask(() => { (lastOpenedRef.current === 'effort' ? effortTriggerRef : modelTriggerRef).current?.focus() })
+  }
+  const goBack = (): void => {
+    if (pane === 'model' || pane === 'effort') { setPane('providers'); return }
+    if (pane === 'providers') { close(true) }
+  }
   const moveFocus = (offset: number): void => {
     const items = itemRefs.current.filter((item): item is HTMLButtonElement => item !== null)
     if (items.length === 0) return
-    const active = items.findIndex(item => item === document.activeElement)
+    const active = items.findIndex((item) => item === document.activeElement)
     items[(Math.max(active, 0) + offset + items.length) % items.length]?.focus()
   }
-  const onKeyDown = (event: React.KeyboardEvent<HTMLDivElement>): void => {
+  const onRootKeyDown = (event: React.KeyboardEvent<HTMLDivElement>): void => {
     if (event.key === 'Escape' && open) { event.preventDefault(); goBack(); return }
     if (open && (event.key === 'ArrowDown' || event.key === 'ArrowUp')) { event.preventDefault(); moveFocus(event.key === 'ArrowDown' ? 1 : -1) }
   }
@@ -211,19 +253,21 @@ function ModelSelectNested({ locked, available, directory, load, select, configu
     close()
   }
   const settleSelection = (accepted: boolean): void => {
-    if (accepted) { close(true); return }
+    if (accepted) { if (rootRef.current !== null) close(true); return }
     toastSeq.current += 1
-    setToast({ seq: toastSeq.current, text: t('error.action', { message: directory.getSnapshot().error ?? t('config.failed') }) })
+    setToast({ seq: toastSeq.current, text: t('error.action', { message: directory.getSnapshot().error ?? t('error.rejected') }) })
   }
   const choose = (selection: Selection): void => {
     if (state.current?.provider === selection.provider && state.current.model === selection.model) { close(true); return }
+    const epoch = epochRef.current
     lastActionRef.current = 'select'
-    void select(selection).then(settleSelection, () => settleSelection(false))
+    void select(selection).then((ok) => { if (epochRef.current === epoch) settleSelection(ok) }, () => { if (epochRef.current === epoch) settleSelection(false) })
   }
   const chooseEffort = (effort: string | undefined): void => {
     if (state.current === null || effectiveEffort === effort) { close(true); return }
+    const epoch = epochRef.current
     lastActionRef.current = 'select'
-    void select({ provider: state.current.provider, model: state.current.model, ...(effort === undefined ? {} : { reasoningEffort: effort }) }).then(settleSelection, () => settleSelection(false))
+    void select({ provider: state.current.provider, model: state.current.model, ...(effort === undefined ? {} : { reasoningEffort: effort }) }).then((ok) => { if (epochRef.current === epoch) settleSelection(ok) }, () => { if (epochRef.current === epoch) settleSelection(false) })
   }
   const configure = (): void => {
     if (!configureEfforts || state.current === null || configuring) return
@@ -238,64 +282,181 @@ function ModelSelectNested({ locked, available, directory, load, select, configu
     }).finally(() => setConfiguring(false))
   }
 
+  const modelLabel = currentChoice ? currentChoice.model.name : t('trigger.fallback')
   itemRefs.current = []
   let itemIndex = 0
-  const itemRef = (): ((node: HTMLButtonElement | null) => void) => { const at = itemIndex++; return node => { itemRefs.current[at] = node } }
-  const modelLabel = state.current === null ? t('trigger.fallback') : currentChoice?.model.name ?? `${state.current.provider}/${state.current.model}`
-  const triggerLabel = effortLabel === undefined ? modelLabel : `${modelLabel} · ${effortLabel}`
-  const triggerAria = state.current === null ? t('trigger.selectAria') : effortLabel === undefined ? t('trigger.aria', { model: modelLabel }) : t('trigger.ariaEffort', { model: modelLabel, effort: effortLabel })
-  const activeModelGroup = pane === 'model' ? state.groups : []
-  const back = <button ref={itemRef()} type="button" role="menuitem" className={c.cell} onClick={goBack}><IconChevronLeftOutline14 className={c.back} /><span className={c.cellLabel}>{t('menu.back')}</span></button>
+  const itemRef = (): ((node: HTMLButtonElement | null) => void) => { const at = itemIndex++; return (node) => { itemRefs.current[at] = node } }
+  const activeGroupObj = activeGroup === null ? undefined : state.groups.find((g) => g.id === activeGroup)
 
-  return <div ref={rootRef} className={c.root} onKeyDown={onKeyDown} onBlur={onBlur}>
-    <button ref={triggerRef} type="button" className={c.trigger} aria-label={triggerAria} aria-haspopup="menu" aria-expanded={open} aria-controls={open ? `${id}-menu` : undefined} title={triggerLabel} disabled={locked} onClick={() => open ? close() : show()}>
-      <span className={c.triggerLabel}>{modelLabel}</span>
-      {effortLabel !== undefined && <span className={c.triggerEffort}>{effortLabel}</span>}
-      <IconChevronDownOutline14 className={clsx(c.chevron, open && c.chevronOpen)} />
+  const backCell = (
+    <button ref={itemRef()} type="button" role="menuitem" className={c.cell} onClick={goBack}>
+      <IconChevronLeftOutline14 className={c.back} />
+      <span className={c.cellLabel}>{t('menu.back')}</span>
     </button>
-    {open && <div id={`${id}-menu`} className={c.menu} role="menu" aria-label={t('menu.aria')} aria-busy={state.status === 'loading' || busy}>
-      {pane === 'root' && <>
-        <button ref={itemRef()} type="button" role="menuitem" className={c.cell} onClick={() => setPane('model')}><span className={c.cellLabel}>{t('menu.model')}</span><span className={c.cellValue}>{modelLabel}</span><IconChevronRightOutline14 className={c.cellChevron} /></button>
-        {(reasoning !== undefined || (configureEfforts !== undefined && state.current !== null)) && <button ref={itemRef()} type="button" role="menuitem" className={c.cell} onClick={() => setPane('effort')}><span className={c.cellLabel}>{t('menu.effort')}</span><span className={c.cellValue}>{effortLabel ?? t('effort.providerDefault')}</span><IconChevronRightOutline14 className={c.cellChevron} /></button>}
-      </>}
-      {pane === 'model' && <>
-        {back}
-        {state.status === 'loading' && <div className={c.status}>{t('status.loading')}</div>}
-        {state.error !== null && lastActionRef.current === 'load' && <div className={c.error}><span>{t('error.action', { message: state.error })}</span><button type="button" className={c.retry} onClick={reload}>{t('action.reload')}</button></div>}
-        {state.failures.map(failure => <div className={c.warning} key={failure.id}><span>{t('warning.groupLoad', { name: failure.name, message: failure.message })}</span><button type="button" className={c.retry} onClick={reload}>{t('action.reload')}</button></div>)}
-        <div className={clsx(c.groups, 'scrollable')}>
-          {activeModelGroup.map(group => <section role="group" key={group.id}><div className={c.groupTitle}>{group.name}</div>{group.models.map(model => { const selected = state.current?.provider === group.id && state.current.model === model.id; return <button ref={itemRef()} type="button" role="menuitemradio" aria-checked={selected} className={clsx(c.option, selected && c.selected)} key={model.id} title={model.name} disabled={busy} onClick={() => choose({ provider: group.id, model: model.id })}><span className={c.optionCopy}><span className={c.modelName}>{model.name}</span>{model.description !== undefined && <span className={c.description}>{model.description}</span>}</span><span className={c.check}>{selected ? <IconCheckOutline16 /> : null}</span></button> })}</section>)}
+  )
+
+  const providersPane = (
+    <>
+      {backCell}
+      {(reasoning !== undefined || (configureEfforts !== undefined && state.current !== null)) && (
+        <button ref={itemRef()} type="button" role="menuitem" className={c.cell} onClick={() => setPane('effort')}>
+          <span className={c.cellLabel}>{t('menu.effort')}</span>
+          <span className={c.cellValue}>{effortLabel}</span>
+          <IconChevronRightOutline14 className={c.cellChevron} />
+        </button>
+      )}
+      {state.status === 'loading' && <div className={c.status}>{t('status.loading')}</div>}
+      {state.error !== null && lastActionRef.current === 'load' && (
+        <div className={c.error}>
+          <span>{t('error.action', { message: state.error })}</span>
+          <button type="button" className={c.retry} onClick={reload}>{t('action.reload')}</button>
         </div>
-        {state.status === 'ready' && choices.length === 0 && <div className={c.empty}>{t('empty.models')}</div>}
-      </>}
-      {pane === 'effort' && <>
-        {back}
-        {reasoning === undefined && configureEfforts !== undefined && <button ref={itemRef()} type="button" role="menuitem" className={c.cell} disabled={busy} onClick={configure}><span className={c.cellLabel}>{configuring ? t('config.busy') : t('config.efforts')}</span><IconChevronRightOutline14 className={c.cellChevron} /></button>}
-        {reasoning === undefined && configureEfforts === undefined && <div className={c.empty}>{t('empty.efforts')}</div>}
-        {reasoning !== undefined && state.error !== null && lastActionRef.current === 'load' && <div className={c.error}><span>{t('error.action', { message: state.error })}</span><button type="button" className={c.retry} onClick={reload}>{t('action.reload')}</button></div>}
-        {reasoning !== undefined && (effortChoices.length === 0 ? <div className={c.empty}>{t('empty.efforts')}</div> : effortChoices.map(level => <button ref={itemRef()} type="button" role="menuitemradio" aria-checked={effectiveEffort === level.effort} className={clsx(c.option, effectiveEffort === level.effort && c.selected)} key={level.key} disabled={busy} onClick={() => chooseEffort(level.effort)}><span className={c.optionCopy}><span className={c.modelName}>{level.label}</span>{level.description !== undefined && <span className={c.description}>{level.description}</span>}</span><span className={c.check}>{effectiveEffort === level.effort ? <IconCheckOutline16 /> : null}</span></button>))}
-      </>}
-    </div>}
-    {toast !== null && <Toast key={toast.seq} text={toast.text} icon={<IconWarningOutline16 />} anchor={rootRef.current?.closest<HTMLElement>('[data-composer-card]') ?? null} onDone={() => setToast(null)} />}
-  </div>
+      )}
+      {state.failures.map((failure) => (
+        <div className={c.warning} key={failure.id}>
+          <span>{t('warning.groupLoad', { name: failure.name, message: failure.message })}</span>
+          <button type="button" className={c.retry} onClick={reload}>{t('action.reload')}</button>
+        </div>
+      ))}
+      {state.groups.length === 0 && state.status === 'ready' && <div className={c.empty}>{t('empty.providers')}</div>}
+      <div className={clsx(c.groups, 'scrollable')}>
+        {state.groups.map((group) => (
+          <button key={group.id} ref={itemRef()} type="button" role="menuitem" className={c.cell} onClick={() => { setActiveGroup(group.id); setPane('model') }}>
+            <span className={c.cellLabel}>{group.name}</span>
+            <IconChevronRightOutline14 className={c.cellChevron} />
+          </button>
+        ))}
+      </div>
+    </>
+  )
+
+  const modelPane = (
+    <>
+      {backCell}
+      <div className={c.header}>
+        <span className={c.headerName}>{activeGroupObj ? t('menu.models', { name: activeGroupObj.name }) : ''}</span>
+      </div>
+      {activeGroupObj && (
+        <div className={clsx(c.groups, 'scrollable')}>
+          {activeGroupObj.models.map((model) => {
+            const selected = state.current?.provider === activeGroupObj.id && state.current.model === model.id
+            return (
+              <button key={model.id} ref={itemRef()} type="button" role="menuitemradio" aria-checked={selected}
+                className={clsx(c.option, selected && c.selected)} title={model.name} disabled={busy}
+                onClick={() => choose({ provider: activeGroupObj.id, model: model.id })}>
+                <span className={c.optionCopy}>
+                  <span className={c.modelName}>{model.name}</span>
+                  {model.description !== undefined && <span className={c.description}>{model.description}</span>}
+                </span>
+                <span className={c.check}>{selected ? <IconCheckOutline16 /> : null}</span>
+              </button>
+            )
+          })}
+        </div>
+      )}
+      {state.status === 'ready' && choices.length === 0 && <div className={c.empty}>{t('empty.models')}</div>}
+    </>
+  )
+
+  const effortPane = (
+    <>
+      {backCell}
+      {reasoning === undefined && configureEfforts !== undefined && (
+        <button ref={itemRef()} type="button" role="menuitem" className={c.cell} disabled={busy} onClick={configure}>
+          <span className={c.cellLabel}>{configuring ? t('config.busy') : t('config.efforts')}</span>
+          <IconChevronRightOutline14 className={c.cellChevron} />
+        </button>
+      )}
+      {reasoning !== undefined && state.error !== null && lastActionRef.current === 'load' && (
+        <div className={c.error}>
+          <span>{t('error.action', { message: state.error })}</span>
+          <button type="button" className={c.retry} onClick={reload}>{t('action.reload')}</button>
+        </div>
+      )}
+      {effortChoices.length === 0 ? <div className={c.empty}>{t('empty.efforts')}</div> : effortChoices.map((level) => (
+        <button key={level.key} ref={itemRef()} type="button" role="menuitemradio" aria-checked={effectiveEffort === level.effort}
+          className={clsx(c.option, effectiveEffort === level.effort && c.selected)} disabled={busy}
+          onClick={() => chooseEffort(level.effort)}>
+          <span className={c.optionCopy}>
+            <span className={c.modelName}>{level.label}</span>
+            {level.description !== undefined && <span className={c.description}>{level.description}</span>}
+          </span>
+          <span className={c.check}>{effectiveEffort === level.effort ? <IconCheckOutline16 /> : null}</span>
+        </button>
+      ))}
+    </>
+  )
+
+  return (
+    <div ref={rootRef} className={c.root} onKeyDown={onRootKeyDown} onBlur={onBlur}>
+      <div className={c.triggerRow}>
+        <button ref={modelTriggerRef} type="button" className={c.trigger} aria-label={t('trigger.selectAria')}
+          aria-haspopup="menu" aria-expanded={open && pane === 'providers'} aria-controls={open ? `${id}-menu` : undefined}
+          title={modelLabel} disabled={locked}
+          onClick={() => { if (open && pane === 'providers') close(); else showProviders() }}>
+          <span className={c.triggerLabel}>{modelLabel}</span>
+          <IconChevronDownOutline14 className={clsx(c.chevron, open && pane === 'providers' && c.chevronOpen)} />
+        </button>
+        <button ref={effortTriggerRef} type="button" className={c.triggerEffort} aria-label={t('menu.effort')}
+          aria-haspopup="menu" aria-expanded={open && pane === 'effort'} aria-controls={open ? `${id}-menu` : undefined}
+          title={effortLabel} disabled={locked}
+          onClick={() => { if (open && pane === 'effort') close(); else showEffort() }}>
+          <span className={c.triggerLabel}>{effortLabel}</span>
+          <IconChevronDownOutline14 className={clsx(c.chevron, open && pane === 'effort' && c.chevronOpen)} />
+        </button>
+      </div>
+      {open && (
+        <div id={`${id}-menu`} className={c.menu} role="menu" aria-label={t('menu.aria')} aria-busy={state.status === 'loading' || busy}>
+          {pane === 'providers' && providersPane}
+          {pane === 'model' && modelPane}
+          {pane === 'effort' && effortPane}
+        </div>
+      )}
+      {toast !== null && (
+        <Toast key={toast.seq} text={toast.text} icon={<IconWarningOutline16 />}
+          anchor={rootRef.current?.closest<HTMLElement>('[data-composer-card]') ?? null}
+          onDone={() => setToast(null)} />
+      )}
+    </div>
+  )
 }
 
-/** Build the official llm-pi-ai settings mutation for a custom model. */
+/**
+ * Declare the standard effort levels for a custom model through the official
+ * llm-pi-ai settings namespace. The snapshot value is the schema-resolved
+ * section: an absent `models` key materializes as `[]`, so the whole-array
+ * write covers both pure-catalog routes and already-declared routes.
+ * modelOverrides is NEVER written — the official resolveRouteModels refuses
+ * it for any model the installed catalog does not describe, which is exactly
+ * the custom-model case this action exists for. Success is judged by reading
+ * the declared value back (mutate never throws on rejection; it recovers and
+ * resolves, so the read-back is the only reliable failure signal).
+ */
 async function declareStandardEfforts(scope: SettingsScope | undefined, selection: Selection): Promise<boolean> {
   if (scope === undefined) return false
-  const snapshot = scope.getSnapshot()
-  const provider = snapshot.value?.providers?.[selection.provider]
-  if (snapshot.status !== 'ready' || snapshot.revision === undefined || snapshot.writable === false || provider === undefined) return false
+  const before = scope.getSnapshot()
+  if (before.status !== 'ready' || before.writable !== true || before.revision === undefined) return false
+  const provider = before.value?.providers?.[selection.provider]
+  if (provider === undefined) return false
   const models = Array.isArray(provider.models) ? provider.models : []
   const efforts = { ...STANDARD_EFFORTS }
-  const ops = models.length > 0
-    ? [{ op: 'set' as const, path: ['providers', selection.provider, 'models'], value: models.map(model => model.id === selection.model ? { ...model, reasoningEfforts: efforts } : model) }]
-    : [{ op: 'set' as const, path: ['providers', selection.provider, 'modelOverrides', selection.model, 'reasoningEfforts'], value: efforts }]
-  await scope.mutate(ops, snapshot.revision)
-  const updated = scope.getSnapshot()
-  return updated.status === 'ready'
-    && updated.revision !== undefined
-    && updated.revision > snapshot.revision
+  const ops = [{
+    op: 'set' as const,
+    path: ['providers', selection.provider, 'models'],
+    // Whole-array replacement: applyPathOp cannot address array indexes (a
+    // non-plain-object intermediate is replaced by an object), so the array
+    // is rebuilt from the resolved snapshot, which is JSON-shaped by
+    // construction (no undefined entries to strip).
+    value: models.map((model) => model.id === selection.model ? { ...model, reasoningEfforts: efforts } : model),
+  }]
+  await scope.mutate(ops, before.revision)
+  const after = scope.getSnapshot()
+  if (after.status !== 'ready') return false
+  const p = after.value?.providers?.[selection.provider]
+  const declared = Array.isArray(p?.models)
+    ? p.models.find((m) => m.id === selection.model)?.reasoningEfforts
+    : undefined
+  return declared !== undefined
 }
 
 /** Register the model selector in the official composer seat. */
@@ -305,19 +466,22 @@ export function installModelSelect(ctx: ClientContext): void {
     console.warn('[dsh-hub] model-select skipped: sessions service unavailable')
     return
   }
-  // Keep this dependency scoped: the hub client entry stays active even if a
-  // future profile omits the model catalog, while the seat waits for the
-  // official directory and settings services exactly like dsh's own seat.
-  ctx.inject(['modelDirectories'], (scope: ClientContext) => {
+  // All three services are declared in the scoped inject table (matching the
+  // official ui-model-selection pattern): the fiber only runs once every
+  // dependency is active, so the undefined guards below are pure defense.
+  // settingsScope is provided by ui-settings, an unconditional web-bundle
+  // row, so it is always present in the supported profile.
+  ctx.inject(['slots', 'modelDirectories', 'settingsScope'], (scope: ClientContext) => {
     const slots = scope.get('slots')
     const models = scope.get('modelDirectories') as unknown as ModelDirectoriesService | undefined
-    if (slots === undefined || models === undefined) {
-      console.warn('[dsh-hub] model-select skipped: slots/modelDirectories unavailable')
+    const binder = scope.get('settingsScope') as unknown as SettingsScopeBinder | undefined
+    if (slots === undefined || models === undefined || binder === undefined) {
+      console.warn('[dsh-hub] model-select skipped: slots/modelDirectories/settingsScope unavailable')
       return
     }
-    // The selector itself only waits for the official model directory. The
-    // settings scope is read lazily when the inline declaration action is
-    // clicked, so it never delays or disables the model seat.
+    // Bind once at apply time (official pattern): the controller is captured
+    // by the configure closure; binding per click would leak effects.
+    const effortsScope = binder.bind<{ providers?: Record<string, SettingsProvider> }>({ namespace: 'llm-pi-ai' })
     slots.inject('conversation.input.model', () => slots.register({
       name: 'conversation.input.model',
       priority: -1,
@@ -329,10 +493,7 @@ export function installModelSelect(ctx: ClientContext): void {
           directory: directory.store as unknown as ModelSelectProps['directory'],
           load: () => { if (available) directory.load().catch(() => {}) },
           select: (selection: Selection) => available ? directory.select(selection).then(() => true, () => false) : Promise.resolve(false),
-          configureEfforts: (selection: Selection) => declareStandardEfforts(
-            scope.get('settingsScope') as unknown as SettingsScope | undefined,
-            selection,
-          ),
+          configureEfforts: (selection: Selection) => declareStandardEfforts(effortsScope, selection),
         }
       },
     }, (props: ModelSelectProps) => ModelSelectNested(props)))
