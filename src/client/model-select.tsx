@@ -544,9 +544,24 @@ async function declareStandardEfforts(scope: SettingsScope | undefined, selectio
 
 /** Register the model selector in the official composer seat. */
 export function installModelSelect(ctx: ClientContext): void {
+  // Diagnostic uplink (dsh.log): the desktop shell's Folder log target does
+  // NOT capture browser console.log, so seat registration success/failure is
+  // reported through the same diag_report channel pins/session-focus use —
+  // this is the only page-side signal that lands in ~/.dsh/dsh-hub/logs/dsh.log.
+  const report = (msg: string): void => {
+    try {
+      const internals = (window as unknown as {
+        __TAURI_INTERNALS__?: { invoke?: (c: string, a?: Record<string, unknown>) => Promise<unknown> }
+      }).__TAURI_INTERNALS__
+      internals?.invoke?.('diag_report', { msg }).catch?.(() => {})
+    } catch {
+      // Diagnostic failure must never break seat registration.
+    }
+  }
   const sessions = ctx.get('sessions') as unknown as { subagentAddress(sessionId: string): unknown } | undefined
   if (sessions === undefined) {
     console.warn('[dsh-hub] model-select skipped: sessions service unavailable')
+    report('model-select:skipped:sessions')
     return
   }
   // ONLY slots + modelDirectories are hard dependencies — the same pair the
@@ -561,6 +576,7 @@ export function installModelSelect(ctx: ClientContext): void {
     const models = scope.get('modelDirectories') as unknown as ModelDirectoriesService | undefined
     if (slots === undefined || models === undefined) {
       console.warn('[dsh-hub] model-select skipped: slots/modelDirectories unavailable')
+      report('model-select:skipped:slots-or-modelDirectories')
       return
     }
     // Lazy settings scope: bind once on the first configure click and reuse
@@ -593,5 +609,6 @@ export function installModelSelect(ctx: ClientContext): void {
       },
     }, (props: ModelSelectProps) => ModelSelectNested(props)))
     console.log('[dsh-hub] model-select override installed')
+    report('model-select:installed')
   })
 }
