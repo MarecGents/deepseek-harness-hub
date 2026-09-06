@@ -209,7 +209,7 @@ info('P9 NSIS real-machine smoke steps (manual, AGENTS.md §5.2-8):', [
   'install build/<version>/DeepSeek Harness Hub_<version>_x64-setup.exe on a test machine',
   'first launch: placeholder page → navigates into dsh UI, no browser popup (踩坑 #54/#55)',
   'process tree: DeepSeek Harness Hub.exe + node sidecar; dsh.log at $DSH_HOME/dsh-hub/logs/',
-  'tray icon + menu render; plugins/5 mounted via _up_\\plugins assembly',
+  'tray icon + menu render; plugins/4 mounted via _up_\\plugins assembly',
   'quit via tray → quit.marker written, no auto-restart; second launch blocked by single-instance',
 ].join(' | '))
 

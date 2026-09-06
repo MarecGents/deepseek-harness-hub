@@ -1,6 +1,6 @@
 ># **`@marecgents/dsh-hub`** —— DeepSeek Harness（`dsh`）的桌面端框架：以原生 Tauri 2.x 窗口运行 dsh Web UI，提供托盘、主题同步、窗口记忆、右侧栏与系统通知。
 >
-> **版本状态（2026-09-06）**：**`0.1.6`**——Tauri 2.x 壳 + dsh web 插件层（dsh 0.1.2-rc.1 适配 + 三项修复：最大化记忆恢复、模型 seat scoped 注入修复、dsh-model-efforts 自定义模型思考强度插件）。NSIS 安装器**安装即用**（安装期自动下载私有 Node + dsh + 插件到安装目录，无需系统预装 Node），首启自动进 dsh UI；卸载走快速通道并清理自有 profile 条目（保留 `.dsh` 本体与用户数据）。功能全貌见 [FUNCTIONS.md](FUNCTIONS.md)（11 大类、每项带来源与测试状态）：会话标签栏、交互终端（自定义 Shell）、对话定位条、置顶会话、右键菜单全量接管 + 双语 i18n、15 套皮肤 + 背景图 + 桌面图标六面同步、权限策略档位、五个独立插件（含模型思考强度配置）、壳内拖放恢复、启动 Splash 皮肤配色。`0.0.2-rc.*` 与 `0.0.1-rc.14`（WebView2 壳 `dev-v1`，已冻结）为历史版本。
+> **版本状态（2026-09-06）**：**`0.1.6`**——Tauri 2.x 壳 + dsh web 插件层（dsh 0.1.2-rc.1 适配 + composer 模型与思考强度 seat 修复）。NSIS 安装器**安装即用**（安装期自动下载私有 Node + dsh + 插件到安装目录，无需系统预装 Node），首启自动进 dsh UI；卸载走快速通道并清理自有 profile 条目（保留 `.dsh` 本体与用户数据）。功能全貌见 [FUNCTIONS.md](FUNCTIONS.md)（11 大类、每项带来源与测试状态）：会话标签栏、交互终端（自定义 Shell）、对话定位条、置顶会话、右键菜单全量接管 + 双语 i18n、15 套皮肤 + 背景图 + 桌面图标六面同步、权限策略、composer 内联思考强度声明、四个独立插件、壳内拖放恢复、启动 Splash 皮肤配色。`0.0.2-rc.*` 与 `0.0.1-rc.14`（WebView2 壳 `dev-v1`，已冻结）为历史版本。
 
 [![npm version](https://img.shields.io/npm/v/@marecgents/dsh-hub)](https://www.npmjs.com/package/@marecgents/dsh-hub)
 [![npm rc](https://img.shields.io/npm/v/@marecgents/dsh-hub/rc)](https://www.npmjs.com/package/@marecgents/dsh-hub)
@@ -15,9 +15,9 @@
 
 | 分支 | 状态 | 说明 |
 |---|---|---|
-| `main` | 发布分支（**唯一合并目标**） | 已合并 dev-v2 → **`0.1.5`**（与 dev-v2 同步） |
+| `main` | 发布分支（**唯一合并目标**） | 已合并 dev-v2 → `0.1.4`；当前开发版修复保持在 dev-v2 `0.1.6` |
 | `dev-v1` | **永久冻结**（WebView2 时代存档） | 不再接收任何更新/同步；历史收尾 = `0.0.1-rc.13/rc.14`（WebView2 最终版） |
-| `dev-v2` | **唯一开发分支**（Tauri 2.x 壳） | 所有更新在此开发，merge 只到 main；当前 = `0.1.5`（已 merge 进 main；npm latest/rc = 0.1.5） |
+| `dev-v2` | **唯一开发分支**（Tauri 2.x 壳） | 所有更新在此开发，merge 只到 main；当前 = `0.1.6`（T1 调试版，未发布 npm） |
 
 ---
 
@@ -33,7 +33,7 @@
 - **窗口状态记忆与尺寸管理**：最大化状态、分辨率、主题等持久化到 `$DSH_HOME/dsh-hub/config.json`；套用保存尺寸前若处于最大化先退最大化、退出时恢复保存尺寸；无保存尺寸时默认**光标所在屏 3/4**（multi-monitor aware，无上限，下限 480×360）。
 - **主题跟随（system）**：MutationObserver 事件驱动，`apply_page_theme` 命令让标题栏深浅色、webview 背景与**窗口图标（icon-dark / icon-light 翻转）**实时跟随 dsh 页面主题（Tauri 壳 Rust Dwm 实现）。
 - **桌面图标（S6，PR #25 + 08-23 重构）**：设置卡可选 5 张鲸鱼娘图标（sad/happy/duo/maid/blue）或默认主题翻转鲸鱼；切换即时生效于**任务栏按钮（WM_SETICON ICON_BIG，PostMessageW 异步）+ 标题栏/Alt-Tab（ICON_SMALL）+ 托盘 + 开始菜单快捷方式 + 桌面快捷方式的 .lnk IconLocation 与 AUMID IconUri **统一指向 `icons\current.ico` 固定锚点**（rc.18：切换图标即重写锚点文件 + 通知 Explorer——**快捷方式移到任意文件夹图标仍跟随**，任务栏缓存经逐-lnk 通知 + ie4uinit 刷新） + 自绘标题栏图标（与任务栏/托盘同源真实 PNG `/api/dsh-hub/icons/*.png`）**——六面统一编排（`managers/icon.rs` IconManager：面级幂等 + 全局串行锁 + 单 worker/pending 合并，快速连续切换不卡死）；持久化于 `config.json` 的 `desktopIcon`；`.ico` 多尺寸资产由 `scripts/generate-desktop-icons.py` 生成并随 resources 打包到 `$INSTDIR\icons\`。
-- **模型选择（composer 嵌套菜单，PR #33）**：composer 模型 seat 替换为「provider → model」两级嵌套菜单 + 独立 thinking-effort 触发器——官方 `conversation.input.model` slot priority −1 遮蔽内置；**0.1.6 修复**：采用 scoped `ctx.inject(['modelDirectories'])` 在子 fiber 中等待服务就绪后注册，修复 dsh 0.1.2-rc.1 服务排序变化导致的静默跳过（旧 ctx.get 探测在 rc.1 apply 时 modelDirectories 可能尚未提供）；服务缺失仍自动降级内置 seat，不 PENDING 整个插件。
+- **模型选择（composer 默认 seat，PR #33）**：在对话输入框右下角以单一 trigger 显示「模型 · 思考强度」，打开后进入「模型 / 思考强度」两级菜单；priority −1 shadow 官方 `conversation.input.model` seat，模型与 effort 共用同一 session directory 和 `select` 链路。**0.1.6 修复**：采用 scoped `ctx.inject(['modelDirectories'])` 等待服务就绪后注册，修复 dsh 0.1.2-rc.1 服务排序导致的官方默认 seat 回退；自定义模型无 reasoning 元数据时，可在同一思考强度面板内声明标准档位，写入官方 `llm-pi-ai` 设置后由 Host catalog 返回正式选项；服务缺失仍降级内置 seat，不 PENDING 整个插件。
 - **会话标签栏（M2）**：标题栏内浏览器式会话多页标签（`SessionTabs.tsx` createPortal 渲染进 `#dsh-hub-titlebar .tb-title`）——点击切换、`+` 新建、`×` 关闭；**固定宽度 180px + 多标签弹性压缩**（浏览器式，溢出隐藏不滚动）；标签文字**居中、关闭 × 贴最右**、字号 13；**状态点**（等待琥珀 / 后台完成绿 / 运行蓝 + 脉冲动画）；右键菜单复用 `session-menu`（分叉/归档/复制路径/资源管理器）+ **内联重命名**（IME 组合输入不误提交）；**拖拽排序**（`session-tabs.ts` localStorage `dsh-hub:session-tabs` 持久化）；激活标签自动滚动入视；归档/删除会话自动移除标签（空快照不剪枝门控 + blank「新会话」占位）。
 - **交互终端（M4）**：底部 dock 真实交互终端（xterm.js 6.0.0 + node-pty）——`Ctrl+J` 开关；每 tab 一个独立会话（cwd = 打开时所在工作区）；**自定义 Shell（2026-08-26）**：默认终端可选 **PowerShell 5.1 / PowerShell 7 (pwsh) / 命令提示符 (cmd) / Bash (Git Bash / WSL)**——宿主先探测可用性（进程 PATH + 机器 PATH 扫描，**未安装的不列出**），设置面板仅显示已检测到的 shell，选择持久化（`terminal-prefs`），`ptyRetarget` 按 shell 语法重定向（PS `Set-Location` / cmd `cd /d` / bash `cd`）；多 tab + 懒挂载（切换重放 ring buffer）；**危险命令拦截**（`rm` / `Remove-Item` / `format` 等 UX 护栏，非安全边界）；输出走 SSE **JSON 信封**（`data: JSON.stringify(chunk)` + 15s 心跳）+ **进程级 token 鉴权**（`Authorization: Bearer` / EventSource `?token=`；token 经 `webserver/index-inject` 以 global `__DSH_HUB_TOKEN__` 注入页面，见 `src/index.ts`）；关闭 `taskkill /T /F` 杀整棵进程树防残留。（host：`src/services/pty-manager.ts`（`detectShells` + `createPty(shell)`）+ `src/server/terminal-pty-api.ts`（含 `GET /pty/shells`）+ `src/server/token.ts`；client：`pty-store.ts` / `terminal-dock.tsx` / `terminal-prefs.ts` / `xterm-css.ts`）
 - **S0 安全（M3）**：**Origin 白名单校验**——POST/PUT 等状态变更请求校验 `Origin`（loopback / `tauri:`），缺失 Origin 拒绝；GET/HEAD 跳过（DNS-rebinding 已由 Host 校验覆盖）（`server/host-guard.ts`，路由工厂共享）。
@@ -42,8 +42,7 @@
 - **permission-guard 插件（PR #37）**：独立 dsh 插件（`plugins/dsh-permission-guard/`）——逐命令权限白名单 + 四级能力拦截（auto / give-command / confirm / never）。
 - **project-memory 插件（PR #36）**：独立 dsh 插件（`plugins/dsh-project-memory/`）——每项目持久记忆（FACT.md + JOURNAL.jsonl，自动注入 systemPrompt.context + `memory_read`/`memory_log`/`memory_fact` 工具）。
 - **usage-stats 插件（PR #34）**：独立 dsh 插件（`plugins/dsh-usage-stats/`）——全会话 token 用量统计（按 provider/model 聚合 + 设置页可视化：汇总/各模型卡片/按天表格/趋势图/单价费用估算 + HTTP API；0.1.0 修复读取 500 与表格透背景图两处缺陷）；provider 名与服务端文案均双语（zh/en，跟随 dsh 语言设置，独立加载插件同样生效）。
-- **model-efforts 插件（0.1.6）**：独立 dsh 插件（`plugins/dsh-model-efforts/`）——自定义模型思考强度档位编辑器：settings.section（order 35）列出 llm-pi-ai 路由下的模型，per-model 选择继承/非推理(false)/自定义七档（off/low/medium/high/…）；双路写入（catalog 路由走 modelOverrides 逐键 path；手填 models 数组路由走整组数组 set）；**经官方 `llm-pi-ai` 设置命名空间直写**（`ctx.settingsScope.bind({namespace:'llm-pi-ai'}).mutate(ops, revision)`，revision 围栏防冲突；热生效，下一请求即用新档位，无需重启）；host half 为极简挂载壳（零路由、零 ACL）。
-  以上 5 个独立插件**双轨分发**（随 hub resources + 独立 npm 轨，package.json 均已 `private:false` 就绪），见 [BUILD.md §7](BUILD.md) 与 AGENTS.md §1.1。
+  以上 4 个独立插件**双轨分发**（随 hub resources + 独立 npm 轨，package.json 均已 `private:false` 就绪），见 [BUILD.md §7](BUILD.md) 与 AGENTS.md §1.1。
 - **设置页（一级）**：0.1.2 起为设置对话框一等页面（Agent 预设与用量统计之间），0.1.3 改为官方插件页风格三卡片（分辨率/常规设置/外观设置，默认折叠）+ 权限策略单列——窗口尺寸 / 主题 / 托盘行为 / 会话完成通知 / 提示音 / 多实例开关 / 界面皮肤 / 背景图 / 桌面图标。**皮肤 15 套**：内置 5（午夜蓝/旧纸张/终端绿/ZCode/极光紫）+ **Reasonix 官方 8**（rx-*，黑金/绯红地平线/青蓝舞台/熔炉金红/玫瑰晨光/鼠尾草微风/火花笔记/紫罗兰星光）+ **opencode 2**（oc-* 经典/石墨）——由**统一推导规则生成器**产出（1:1 直映射 + 定向混合 + dimmed 夹取 ≥3.5:1），每套浅/深 × 33 token + `docs/skins/*.md` 文档；选择器为官方 Setting-Cell + Menu（菜单项与 pill 带皮肤浅|深色块预览），皮肤名/描述走词典、随 dsh 语言切换。
 - **i18n（全量双语）**：hub 全部界面文案（设置卡/会话菜单/工作区菜单/皮肤名/空白右键菜单等）与 **usage-stats 插件**文案均收进 zh/en 词典（`src/client/locale.ts`；usage-stats 独立插件自带词典），语言源 = dsh 设置（General → Language）——官方 locale 插件写入的 `<html lang>`，切换即全量刷新。
 - **右键菜单语义**：WebView2 原生右键菜单已在 Rust 侧禁用（`SetAreDefaultContextMenusEnabled(false)`）；右键全部由 DOM 接管，四层优先级——**对象行（会话/工作区）→ 各自专属菜单**，**对话文本选中 → 复制菜单**（复制/添加到当前任务/在辅助对话中提问），**链接 → 链接菜单**（在浏览器中打开/复制链接地址），**输入框 → 编辑菜单**（撤销/重做/剪切/复制/粘贴/删除/全选），**空白处 → 刷新菜单**。链接左键点击在默认浏览器打开（`open_url` Tauri 命令）。
@@ -211,7 +210,6 @@ dsh-hub/
 ├── assets/                 # dsh favicon（SVG）+ backgrounds/（背景图）+ sounds/（提示音）
 ├── plugins/                # 独立 dsh 插件（双轨分发：独立 npm + 随 hub，见 BUILD.md §7）
 │   ├── dsh-findings-ledger/ # findings-ledger（PR #38）
-│   ├── dsh-model-efforts/  # model-efforts（0.1.6：自定义模型思考强度）
 │   ├── dsh-permission-guard/ # permission-guard（PR #37）
 │   ├── dsh-project-memory/  # project-memory（PR #36）
 │   └── dsh-usage-stats/     # usage-stats（PR #34）

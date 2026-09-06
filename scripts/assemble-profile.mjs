@@ -190,7 +190,29 @@ function assemble() {
   //    其他 id 的 patch），对用户自定义 patch 零影响。
   scrubLegacyPatch(join(profileDir, 'cordis.patch.yml'))
 
-  // 6. Assemble plugins/ (dual-track: bundled with hub, registered as bundles).
+  // 6. Remove the superseded settings-page effort plugin from older profiles.
+  //    This is intentionally an allow-list of one known package: do not sweep
+  //    arbitrary external plugins or user settings during an upgrade.
+  const removedBundles = ['@dsh-external/dsh-model-efforts']
+  const staleBundles = (manifest.dsh?.profile?.bundles ?? []).filter(name => removedBundles.includes(name))
+  if (staleBundles.length > 0) {
+    const cleaned = (manifest.dsh?.profile?.bundles ?? []).filter(name => !removedBundles.includes(name))
+    manifest.dsh = { ...manifest.dsh, profile: { ...manifest.dsh?.profile, bundles: cleaned } }
+    writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + '\n', 'utf8')
+    log(`removed superseded bundle(s): ${staleBundles.join(', ')}`)
+  }
+  const removedPluginLinks = removedBundles.map(name => join(nmDir, '@dsh-external', name.replace('@dsh-external/', '')))
+  for (const staleLink of removedPluginLinks) {
+    try {
+      const stat = lstatSync(staleLink)
+      if (stat.isSymbolicLink()) {
+        rmSync(staleLink, { recursive: true, force: true })
+        log(`removed superseded plugin junction ${staleLink}`)
+      }
+    } catch {}
+  }
+
+  // 7. Assemble plugins/ (dual-track: bundled with hub, registered as bundles).
   //    Junction each plugin into profile node_modules/@dsh-external/<name> and
   //    register the scoped name as a bundle entry (same mechanism as dsh-hub
   //    itself). Failures are non-fatal — hub assembly stays intact.

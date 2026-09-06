@@ -1,6 +1,6 @@
 # dsh-hub 功能清单（FUNCTIONS）
 
-> 当前版本：`0.1.6`（dev-v2，Tauri 2.x 壳 + dsh web 插件层，dsh 0.1.2-rc.1 适配 + 三项修复）。基线对照：官方 dsh（deepseek-harness）。更新：2026-09-06（v0.1.6 三项修复：最大化记忆恢复、模型 seat scoped 注入、dsh-model-efforts 插件）。
+> 当前版本：`0.1.6`（dev-v2，Tauri 2.x 壳 + dsh web 插件层，dsh 0.1.2-rc.1 适配 + composer 模型 seat 修复）。基线对照：官方 dsh（deepseek-harness）。更新：2026-09-06（composer 模型 seat 与 inline 思考强度声明修复）。
 > 本清单收录 **dsh-hub 相对官方 dsh 新增/改变的全部功能**，分门别类，每项带【来源】（PR 号 / 版本）与【测试状态】。
 > 测试状态标记：✅ = 真机或隔离环境实测通过 · 🔶 = 代码就绪、未系统真机验证 · ⚠️ = 部分/待收口 · ➖ = 历史（dev-v1 WebView2 时代，Tauri 后不适用）。
 > 更新：2026-09-06 · 依据全量 PR 清点（#1–#51）+ 源码盘点。
@@ -85,7 +85,7 @@
 | H2 | 自定义 Shell | bash / cmd / PowerShell 5.1 / pwsh 可选，先探测可用性、未安装不列出；默认 shell 持久化 | PR #40 | ✅ |
 | H3 | 终端安全 | SSE JSON 信封 + Bearer/`?token=` 常量时间比较 + Host/Origin 白名单；危险命令 UX 护栏 | rc.8 | ✅ |
 
-## I. 独立插件（双轨分发：随 hub NSIS + 独立 npm `@dsh-external/*`）
+## I. 独立插件与 composer 扩展
 
 | # | 插件 | 描述 | 来源 | 测试 |
 |---|------|------|------|------|
@@ -93,7 +93,7 @@
 | I2 | dsh-permission-guard | 逐命令权限白名单 + 四级拦截（auto/give-command/confirm/never）+ **policy 档位**（follow 联动会话官方预设：Full Access 只留 never 红线；read-only；strict）+ HTTP 路由 + systemPrompt 指南 | PR #37 | 🔶 决策矩阵模拟验证；真机会话拦截 🔶 |
 | I3 | dsh-project-memory | 每项目持久记忆（FACT.md + JOURNAL.jsonl 自动注入 systemPrompt.context）+ `memory_read`/`memory_log`/`memory_fact` 工具 | PR #36 | 🔶 |
 | I4 | dsh-findings-ledger | baseline 快照 + 变更对账 + 覆盖度报告（turn/end 自动出报告） | PR #38 | 🔶 |
-| I5 | dsh-model-efforts | 自定义模型思考强度档位编辑器（**0.1.6 新增**）：settings.section（order 35）列出 llm-pi-ai 路由/模型，per-model 编辑 reasoningEfforts 七档（off/low/medium/high/…）+ false 非推理开关；双路写入（catalog 路由逐键 modelOverrides / 手填路由整组 models 数组）；通过官方 settingsScope 直写 llm-pi-ai 命名空间（revision 围栏 + schema 校验），热生效 | 0.1.6 | 🔶 门禁通过；真机写入+菜单出现档位待验证 |
+| I5 | composer inline 思考强度声明 | 自定义模型无 Host reasoning 元数据时，在默认 composer 模型选择 seat 的「思考强度」面板内声明标准档位；写入官方 `llm-pi-ai` settings namespace 后由 Host catalog 返回正式 efforts，仍通过共享 `modelDirectories.select` 提交；不新增设置页、不单独分发插件 | 0.1.6 | 🔶 门禁通过；真机 composer 交互待验证 |
 
 ## J. 工作区与会话数据
 

@@ -6,7 +6,7 @@
 
 | 文件 | 职责 |
 |---|---|
-| `index.ts` | client 入口：`inject` 声明（slots/workspaces/sessions）、slot 声明合并（`settings.plugin.item`）、设置卡片 + 右侧栏装配、托盘桥 `__mgShellReady` |
+| `index.ts` | client 入口：`inject` 声明（slots/workspaces/sessions）、slot 声明合并（`settings.section`）、设置卡片 + 右侧栏装配、托盘桥 `__mgShellReady` |
 | `settings-card.tsx` | 设置卡片（DSH HUB 设置）：窗口尺寸/主题/托盘行为/通知/提示音/多实例开关/皮肤选择/桌面图标选择（S6，保存 → `set_desktop_icon` invoke）（Setting-Cell 行式），走 `/api/dsh-hub/config` |
 | `skins.ts` | 皮肤注册表：`DshSkin` 定义 + 15 套皮肤（内置 5：午夜蓝/旧纸张/终端绿/ZCode/极光紫；Reasonix 8：rx-noir-gold 等；opencode 2：oc-classic/oc-graphite，见 docs/skins/）+ `findSkin`/`applySkin` |
 | `backgrounds.ts` | 背景图注册表：`DshBackground` 定义 + 内置图片（远航）+ `applyBackground`（frame 层双层背景注入）/ `fetchStoredBackground` |
@@ -14,7 +14,7 @@
 | `right-sidebar-style.ts` | 右侧栏样式（CSS 字符串注入，`mg-rs-*` 前缀） |
 | `pin-conversations.ts` | 置顶会话：内容匹配行定位（零 CSS-hash）+ 置顶区/行按钮注入 + pins 状态机（dirtyDelta / ready 门控剪枝 / disposer 移除 DOM） |
 | `pin-conversations-style.ts` | 置顶区/行按钮样式（CSS 字符串注入，`mg-pin-*` 前缀） |
-| `model-select.tsx` | composer 模型嵌套菜单：slot `conversation.input.model` priority -1 阴影官方，自声明 `modelDirectories` 类型 |
+| `model-select.tsx` | composer 模型/思考强度嵌套菜单：slot `conversation.input.model` priority -1 阴影官方；自定义模型无 reasoning metadata 时在同一弹层内经官方 settingsScope 声明档位 |
 | `session-tabs.ts` | 会话标签 store：`tabAdd`/`tabRemove`/`tabReplaceOrder` + `useTabs`（useSyncExternalStore），localStorage `dsh-hub:session-tabs` 持久化（旧键 `dsh-hub.session-tabs` 一次性迁移，读旧写新删旧） |
 | `SessionTabs.tsx` | 会话标签栏：createPortal 渲染进标题栏 `#dsh-hub-titlebar .tb-title`——点击切换 / `+` 新建 / `×` 关闭 / 状态点（等待琥珀·完成绿·运行蓝+脉冲）/ 右键菜单复用 session-menu / 拖拽排序 / 内联重命名（IME 组合不误提交）/ 自动滚动 / 归档删除自动移除（空快照不剪枝门控，F1-F8） |
 | `locale.ts` | 词典与语言基建：zh/en flat 词典（~120 键）+ `t()` 插值 + `<html lang>` 订阅（官方 locale 插件写入，dsh 设置→General→Language）+ `useLocaleLang`/`skinText`；**非皮肤文案必须走词典，禁止硬编码中文** |
@@ -52,8 +52,8 @@
 ## client 注册规范
 
 1. **inject 声明**：`inject = ['slots', 'workspaces', 'sessions']` —— 缺 `workspaces` 会导致托盘"新建任务"静默失败（真实事故）。
-2. **slot 声明合并**：`declare module '@deepseek-ai/dsh-client-ui-slots'` 声明 `settings.plugin.item`，形状镜像 ui-settings-plugins 契约。
-3. **配置读写走自有 HTTP**：`fetch('/api/dsh-hub/config')`，**不**用 dsh settings 命名空间 RPC（第三方 ns 不被白名单暴露）。
+2. **slot 声明合并**：`declare module '@deepseek-ai/dsh-client-ui-slots'` 声明 `settings.section` 与 composer seat 形状，镜像 dsh rc.1 官方契约。模型 seat 的 `modelDirectories` 依赖通过 scoped `ctx.inject` 等待，不得改回 apply-time `ctx.get` 静默探测。
+3. **配置读写分域**：壳配置走自有 HTTP `fetch('/api/dsh-hub/config')`（第三方 ns 不被白名单暴露）；模型能力声明（如 composer 内联 `reasoningEfforts`）必须走官方 `settingsScope`/settings RPC，禁止直接改写 settings 文件。
 4. **保存逻辑**：只提交真正变化的字段（width/height 未改不提交）；新增配置字段必须同步 host 三处（接口/默认值/POST 白名单）。
 
 ## 数据订阅（body portal 上下文）

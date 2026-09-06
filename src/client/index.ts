@@ -14,8 +14,8 @@
  * this listener is mounted, so a tray click during the SPA boot is not lost.
  *
  * Registration follows the official client-plugin contract (see dsh-web-ui's
- * dsh-pet): declare the slot shape, then `slots.inject('settings.plugin.item',
- * ...)`.
+ * dsh-pet): declare the slot shapes, then register the current settings
+ * section contribution and composer model seat through `slots.inject`.
  *
  * @module dsh-hub/client
  */
@@ -70,8 +70,8 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
      * One top-level page of the settings dialog (nav rail). Declared at
      * runtime by ui-settings-general; mirrors its contract (order sorts the
      * nav, label renders the nav cell, inject supplies section props).
-     * 2026-09-01 audit: the legacy `settings.plugin.item` declaration was
-     * removed — the settings card ships as a first-class section now.
+     * 2026-09-01 audit: the legacy plugin-item declaration was removed — the
+     * settings card ships as a first-class section now.
      */
     'settings.section': { kind: 'list'; scope: 'root'; owner: SettingsSectionOwnerProps }
   }

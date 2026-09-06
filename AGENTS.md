@@ -17,7 +17,7 @@
    改任一必须同步全部，并重新 `npm run build && npm run build:client`。
 3. **启动门控不可破坏**：`cordis.patch.yml` 的 `disabled: !!js process.env.DSH_HUB_LAUNCHED !== '1'` 保证普通 `dsh web` 不加载桌面壳。任何改动不得让 CLI 模式加载壳/插件页。
 4. **多实例防护不可削弱**：默认拒绝与已运行的 dsh 共存（`allowMultipleInstances=false`）。多个 dsh 共享 `$DSH_HOME` 会话存储，同会话双写会损坏会话日志（seq 冲突，已实际发生并需手工修复，见 [docs/关键踩坑记录.md#24](docs/关键踩坑记录.md)）。任何修改不得默认放开共存。
-5. **settings 命名空间约束**：`settingsNamespace('dsh-hub')` 强制小写 kebab-case；带 scope 的包名（`@marecgents/dsh-hub`）不能用作 settings ns 或 API 前缀。第三方配置 UI 一律走插件自有 HTTP 路由 `/api/dsh-hub/*`。
+5. **settings 命名空间约束**：`settingsNamespace('dsh-hub')` 强制小写 kebab-case；带 scope 的包名（`@marecgents/dsh-hub`）不能用作 settings ns 或 API 前缀。壳配置 UI 走插件自有 HTTP 路由 `/api/dsh-hub/*`；需要修改官方模型能力（如 `llm-pi-ai.reasoningEfforts`）时，必须复用官方 `settingsScope`/settings RPC，禁止直接改写 settings 文件。
 6. **发布前检查不可跳过**：每次 `npm publish` 之前**必须**运行 `node scripts/verify-release.mjs` 且**全部 PASS**（含「干净安装 → 首启装配」冒烟），FAIL 立即停止排查，**禁止发布**。发布流程与检查细则见 §5（rc.10–rc.13 曾因跳过"全新环境安装验证"连发 4 版首启即崩的包，见 [docs/关键踩坑记录.md#33](docs/关键踩坑记录.md)）。
 7. **开发流程必须遵循 PROCESS_QUALITY**：任何开发任务（迁移、功能、修复、文档、发布）**必须严格遵循 [PROCESS_QUALITY.md](PROCESS_QUALITY.md) 的 SOP（标准作业程序）与质量管理规范**——含阶段输入/输出/门禁（Gate）逐项核查、验收表、回归基线、DMAIC 改进循环。**禁止跳过阶段门禁**；与本文件铁律冲突时，以本文件（AGENTS.md）为准。
 8. **bug 修复必须遵循 BUG_FIX_SOP.md**（五阶段：复现/测量/根因/方案审查/实施验证；先测量后下结论；链路探针用完即删；修复沉淀进踩坑记录）。官方弹层类 UI 在本环境可能不可达（合成事件与真实事件均失败，实测）——依赖官方 UI 入口前先判别其可用性，功能落点优先官方数据层 API。（详见 [BUG_FIX_SOP.md](BUG_FIX_SOP.md)）
