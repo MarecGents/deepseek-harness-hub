@@ -45,8 +45,9 @@ const CSS = [
   '._dshnms_menu{z-index:20;border:1px solid var(--dsw-alias-border-inverted);background:var(--dsw-specific-menu);width:min(260px,100vw - 32px);max-height:min(420px,100vh - 96px);box-shadow:var(--dsw-shadow-lv3);color:var(--dsw-alias-label-primary);--dsh-scrollbar-thumb:var(--dsw-alias-scrollbar-bg-l2);--dsh-scrollbar-thumb-hover:var(--dsw-alias-scrollbar-hover-l2);border-radius:12px;flex-direction:column;padding:4px;display:flex;position:absolute;bottom:calc(100% + 8px);right:0;overflow:hidden;transition:width .12s}',
   '._dshnms_menuDual{width:min(520px,100vw - 32px)}',
   '._dshnms_columns{min-height:0;flex:1 1 auto;display:flex;flex-direction:row}',
-  '._dshnms_col{min-width:0;min-height:0;flex:1 1 50%;display:flex;flex-direction:column}',
-  '._dshnms_colRight{border-left:1px solid var(--dsw-alias-border-l2)}',
+  '._dshnms_col{min-width:0;min-height:0;flex:0 0 260px;display:flex;flex-direction:column}',
+  '._dshnms_colRight{min-width:0;min-height:0;flex:1 1 auto;display:flex;flex-direction:column;border-left:1px solid var(--dsw-alias-border-l2);animation:_dshnms_slideIn .12s ease-out}',
+  '@keyframes _dshnms_slideIn{from{opacity:0;transform:translateX(-6px)}to{opacity:1;transform:none}}',
   '._dshnms_colActive{background:var(--dsw-alias-interactive-bg-hover)}',
   '._dshnms_chevronLeft{transform:rotate(180deg)}',
   '._dshnms_status,._dshnms_empty{color:var(--dsw-alias-label-tertiary);padding:10px;font-size:13px;line-height:20px}',
@@ -387,13 +388,6 @@ function ModelSelectNested({ locked, available, directory, load, select, configu
       <span className={c.cellLabel}>{t('menu.back')}</span>
     </button>
   )
-  const effortCell = (
-    <button ref={leftRef()} type="button" role="menuitem" className={c.cell} onClick={() => setPane('effort')}>
-      <span className={c.cellLabel}>{t('menu.effort')}</span>
-      <span className={c.cellValue}>{effortLabel}</span>
-      <IconChevronRightOutline14 className={c.cellChevron} />
-    </button>
-  )
   const statusBlock = (
     <>
       {state.status === 'loading' && <div className={c.status}>{t('status.loading')}</div>}
@@ -416,7 +410,6 @@ function ModelSelectNested({ locked, available, directory, load, select, configu
   const providersPane = (
     <>
       {backCell(leftRef())}
-      {effortCell}
       {statusBlock}
       <div className={clsx(c.groups, 'scrollable')}>
         {state.groups.map((group) => (
@@ -432,7 +425,6 @@ function ModelSelectNested({ locked, available, directory, load, select, configu
   const modelPane = (
     <div className={c.columns}>
       <div className={c.col} role="group" aria-label={t('menu.providers')}>
-        {effortCell}
         {statusBlock}
         <div className={clsx(c.groups, 'scrollable')}>
           {state.groups.map((group) => {
@@ -453,7 +445,6 @@ function ModelSelectNested({ locked, available, directory, load, select, configu
         </div>
       </div>
       <div className={clsx(c.col, c.colRight)} role="group" aria-label={t('menu.model')}>
-        {backCell(rightRef())}
         <div className={c.header}>
           <span className={c.headerName}>{activeGroupObj ? t('menu.models', { name: activeGroupObj.name }) : ''}</span>
         </div>
@@ -482,7 +473,6 @@ function ModelSelectNested({ locked, available, directory, load, select, configu
 
   const effortPane = (
     <>
-      {backCell(leftRef())}
       {reasoning === undefined && configureEfforts !== undefined && (
         <button ref={leftRef()} type="button" role="menuitem" className={c.cell} disabled={busy} onClick={configure}>
           <span className={c.cellLabel}>{configuring ? t('config.busy') : t('config.efforts')}</span>
