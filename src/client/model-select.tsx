@@ -256,7 +256,7 @@ function ModelSelectNested({ locked, available, directory, load, select, configu
     {open && <div id={`${id}-menu`} className={c.menu} role="menu" aria-label={t('menu.aria')} aria-busy={state.status === 'loading' || busy}>
       {pane === 'root' && <>
         <button ref={itemRef()} type="button" role="menuitem" className={c.cell} onClick={() => setPane('model')}><span className={c.cellLabel}>{t('menu.model')}</span><span className={c.cellValue}>{modelLabel}</span><IconChevronRightOutline14 className={c.cellChevron} /></button>
-        {(reasoning !== undefined || configureEfforts !== undefined) && <button ref={itemRef()} type="button" role="menuitem" className={c.cell} onClick={() => setPane('effort')}><span className={c.cellLabel}>{t('menu.effort')}</span><span className={c.cellValue}>{effortLabel ?? t('effort.providerDefault')}</span><IconChevronRightOutline14 className={c.cellChevron} /></button>}
+        {(reasoning !== undefined || (configureEfforts !== undefined && state.current !== null)) && <button ref={itemRef()} type="button" role="menuitem" className={c.cell} onClick={() => setPane('effort')}><span className={c.cellLabel}>{t('menu.effort')}</span><span className={c.cellValue}>{effortLabel ?? t('effort.providerDefault')}</span><IconChevronRightOutline14 className={c.cellChevron} /></button>}
       </>}
       {pane === 'model' && <>
         {back}
