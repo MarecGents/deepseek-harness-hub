@@ -13,7 +13,7 @@
  * the catalog and the same pane shows the host-validated effort choices.
  */
 
-import { useCallback, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import { Component, useCallback, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
 import clsx from 'clsx'
 import {
   IconCheckOutline16,
@@ -169,6 +169,45 @@ const STANDARD_EFFORTS: Record<string, string | null> = {
   high: 'high',
   xhigh: 'xhigh',
   max: 'max',
+}
+
+/**
+ * Crash-safe directory stub. If the inject factory throws (e.g.
+ * directoryFor(subagentAddress) fails for a session), returning this
+ * degraded face keeps the seat rendering instead of being abdicated by the
+ * renderer's error boundary (which would hand the seat back to the official
+ * component). The stable snapshot reference keeps useSyncExternalStore from
+ * re-rendering forever.
+ */
+const STUB_DIRECTORY_SNAPSHOT: DirectorySnapshot = {
+  current: null, groups: [], failures: [], status: 'idle', error: null,
+}
+const STUB_DIRECTORY: ModelSelectProps['directory'] = {
+  subscribe: () => () => {},
+  getSnapshot: () => STUB_DIRECTORY_SNAPSHOT,
+}
+
+/** Error boundary that reports render crashes to dsh.log, then lets the
+ * error propagate so the slot renderer's own boundary abdicates (official
+ * seat takes over) — but now we know exactly why. */
+class ModelSelectErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
+  state = { error: null as Error | null }
+  static getDerivedStateFromError(error: Error): { error: Error } { return { error } }
+  componentDidCatch(error: Error): void {
+    try {
+      const internals = (window as unknown as {
+        __TAURI_INTERNALS__?: { invoke?: (c: string, a?: Record<string, unknown>) => Promise<unknown> }
+      }).__TAURI_INTERNALS__
+      internals?.invoke?.('diag_report', { msg: 'model-select:render-crash:' + String(error?.message ?? error) }).catch?.(() => {})
+    } catch {
+      // Diagnostics must never mask the original error.
+    }
+  }
+  render(): ReactNode {
+    // No state-based fallback: rethrow semantics are preserved by not
+    // swapping children — the slot boundary above will abdicate us.
+    return this.props.children
+  }
 }
 
 function ModelSelectNested({ locked, available, directory, load, select, configureEfforts }: ModelSelectProps) {
@@ -597,17 +636,36 @@ export function installModelSelect(ctx: ClientContext): void {
       name: 'conversation.input.model',
       priority: -1,
       inject: (sessionId: string) => {
-        const directory = models.directoryFor(sessionId)
-        const available = sessions.subagentAddress(sessionId) === undefined
+        // The inject factory runs on every session-scoped render. Any throw
+        // here (directoryFor/subagentAddress) would abdicate the hub entry
+        // via the renderer error boundary and hand the seat back to the
+        // official component — exactly what "installed but official menu"
+        // looks like. Degrade to a safe face instead; the crash is still
+        // reported to dsh.log.
+        let directory: ModelSelectProps['directory'] = STUB_DIRECTORY
+        let available = false
+        try {
+          directory = models.directoryFor(sessionId).store as unknown as ModelSelectProps['directory']
+          available = sessions.subagentAddress(sessionId) === undefined
+        } catch (error) {
+          try {
+            const internals = (window as unknown as {
+              __TAURI_INTERNALS__?: { invoke?: (c: string, a?: Record<string, unknown>) => Promise<unknown> }
+            }).__TAURI_INTERNALS__
+            internals?.invoke?.('diag_report', { msg: 'model-select:inject-crash:' + String(error instanceof Error ? error.message : error) }).catch?.(() => {})
+          } catch {
+            // Diagnostics must never break the seat.
+          }
+        }
         return {
           available,
-          directory: directory.store as unknown as ModelSelectProps['directory'],
-          load: () => { if (available) directory.load().catch(() => {}) },
-          select: (selection: Selection) => available ? directory.select(selection).then(() => true, () => false) : Promise.resolve(false),
+          directory,
+          load: () => { if (available) models.directoryFor(sessionId).load().catch(() => {}) },
+          select: (selection: Selection) => available ? models.directoryFor(sessionId).select(selection).then(() => true, () => false) : Promise.resolve(false),
           configureEfforts: (selection: Selection) => declareStandardEfforts(obtainEffortsScope(), selection),
         }
       },
-    }, (props: ModelSelectProps) => ModelSelectNested(props)))
+    }, (props: ModelSelectProps) => <ModelSelectErrorBoundary><ModelSelectNested {...props} /></ModelSelectErrorBoundary>))
     console.log('[dsh-hub] model-select override installed')
     report('model-select:installed')
   })
