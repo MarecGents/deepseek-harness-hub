@@ -42,7 +42,13 @@ const CSS = [
   '._dshnms_triggerLabel{text-overflow:ellipsis;white-space:nowrap;min-width:0;overflow:hidden}',
   '._dshnms_chevron{color:var(--dsw-alias-label-caption);flex:none;transition:transform .12s}',
   '._dshnms_chevronOpen{transform:rotate(180deg)}',
-  '._dshnms_menu{z-index:20;border:1px solid var(--dsw-alias-border-inverted);background:var(--dsw-specific-menu);width:min(260px,100vw - 32px);max-height:min(420px,100vh - 96px);box-shadow:var(--dsw-shadow-lv3);color:var(--dsw-alias-label-primary);--dsh-scrollbar-thumb:var(--dsw-alias-scrollbar-bg-l2);--dsh-scrollbar-thumb-hover:var(--dsw-alias-scrollbar-hover-l2);border-radius:12px;flex-direction:column;padding:4px;display:flex;position:absolute;bottom:calc(100% + 8px);right:0;overflow:hidden}',
+  '._dshnms_menu{z-index:20;border:1px solid var(--dsw-alias-border-inverted);background:var(--dsw-specific-menu);width:min(260px,100vw - 32px);max-height:min(420px,100vh - 96px);box-shadow:var(--dsw-shadow-lv3);color:var(--dsw-alias-label-primary);--dsh-scrollbar-thumb:var(--dsw-alias-scrollbar-bg-l2);--dsh-scrollbar-thumb-hover:var(--dsw-alias-scrollbar-hover-l2);border-radius:12px;flex-direction:column;padding:4px;display:flex;position:absolute;bottom:calc(100% + 8px);right:0;overflow:hidden;transition:width .12s}',
+  '._dshnms_menuDual{width:min(520px,100vw - 32px)}',
+  '._dshnms_columns{min-height:0;flex:1 1 auto;display:flex;flex-direction:row}',
+  '._dshnms_col{min-width:0;min-height:0;flex:1 1 50%;display:flex;flex-direction:column}',
+  '._dshnms_colRight{border-left:1px solid var(--dsw-alias-border-l2)}',
+  '._dshnms_colActive{background:var(--dsw-alias-interactive-bg-hover)}',
+  '._dshnms_chevronLeft{transform:rotate(180deg)}',
   '._dshnms_status,._dshnms_empty{color:var(--dsw-alias-label-tertiary);padding:10px;font-size:13px;line-height:20px}',
   '._dshnms_error,._dshnms_warning{background:var(--dsw-alias-interactive-bg-hover-danger);color:var(--dsw-alias-state-error-primary);border-radius:8px;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:4px;padding:7px 8px;font-size:12px;line-height:18px;display:flex}',
   '._dshnms_warning{background:var(--dsw-alias-bg-module-platform);color:var(--dsw-alias-state-warn-label)}',
@@ -77,7 +83,8 @@ if (typeof document !== 'undefined' && document.querySelector('style[data-plugin
 }
 const c = {
   root: '_dshnms_root', triggerRow: '_dshnms_triggerRow', trigger: '_dshnms_trigger', triggerEffort: '_dshnms_triggerEffort',
-  triggerLabel: '_dshnms_triggerLabel', chevron: '_dshnms_chevron', chevronOpen: '_dshnms_chevronOpen', menu: '_dshnms_menu',
+  triggerLabel: '_dshnms_triggerLabel', chevron: '_dshnms_chevron', chevronOpen: '_dshnms_chevronOpen', chevronLeft: '_dshnms_chevronLeft',
+  menu: '_dshnms_menu', menuDual: '_dshnms_menuDual', columns: '_dshnms_columns', col: '_dshnms_col', colRight: '_dshnms_colRight', colActive: '_dshnms_colActive',
   status: '_dshnms_status', empty: '_dshnms_empty', error: '_dshnms_error', warning: '_dshnms_warning', retry: '_dshnms_retry',
   groups: '_dshnms_groups', option: '_dshnms_option', optionCopy: '_dshnms_optionCopy', modelName: '_dshnms_modelName',
   description: '_dshnms_description', selected: '_dshnms_selected', check: '_dshnms_check', cell: '_dshnms_cell', cellLabel: '_dshnms_cellLabel',
@@ -87,7 +94,7 @@ const c = {
 const zh = {
   'trigger.fallback': '选择模型', 'trigger.selectAria': '选择模型',
   'trigger.aria': '选择模型：{model}', 'trigger.ariaEffort': '选择模型：{model}，思考强度：{effort}',
-  'menu.aria': '模型与思考强度', 'menu.model': '模型', 'menu.effort': '思考强度', 'menu.back': '返回',
+  'menu.aria': '模型与思考强度', 'menu.model': '模型', 'menu.effort': '思考强度', 'menu.back': '返回', 'menu.providers': '供应商',
   'menu.models': '{name} · 选择模型', 'effort.providerDefault': '默认', 'status.loading': '正在刷新模型列表…',
   'error.action': '模型操作失败：{message}', 'error.rejected': '选择被拒绝',
   'action.reload': '重新加载', 'warning.groupLoad': '{name} 加载失败：{message}',
@@ -97,7 +104,7 @@ const zh = {
 const en = {
   'trigger.fallback': 'Select model', 'trigger.selectAria': 'Select model',
   'trigger.aria': 'Select model: {model}', 'trigger.ariaEffort': 'Select model: {model}, reasoning effort: {effort}',
-  'menu.aria': 'Model and reasoning effort', 'menu.model': 'Model', 'menu.effort': 'Reasoning effort', 'menu.back': 'Back',
+  'menu.aria': 'Model and reasoning effort', 'menu.model': 'Model', 'menu.effort': 'Reasoning effort', 'menu.back': 'Back', 'menu.providers': 'Providers',
   'menu.models': '{name} · Select model', 'effort.providerDefault': 'Default', 'status.loading': 'Refreshing model list…',
   'error.action': 'Model action failed: {message}', 'error.rejected': 'Selection rejected',
   'action.reload': 'Reload', 'warning.groupLoad': '{name} failed to load: {message}',
@@ -181,7 +188,11 @@ function ModelSelectNested({ locked, available, directory, load, select, configu
   const rootRef = useRef<HTMLDivElement>(null)
   const modelTriggerRef = useRef<HTMLButtonElement>(null)
   const effortTriggerRef = useRef<HTMLButtonElement>(null)
-  const itemRefs = useRef<(HTMLButtonElement | null)[]>([])
+  // Column-scoped focus lists: left column (providers) and right column
+  // (models) keep independent roving focus in dual-column mode (R3-C finding C).
+  const leftItemRefs = useRef<(HTMLButtonElement | null)[]>([])
+  const rightItemRefs = useRef<(HTMLButtonElement | null)[]>([])
+  const providerRefs = useRef<Array<{ node: HTMLButtonElement; groupId: string }>>([])
   const id = useId()
 
   const choices = useMemo(() => state.groups.flatMap((group) => group.models.map((model) => ({
@@ -235,18 +246,39 @@ function ModelSelectNested({ locked, available, directory, load, select, configu
     if (restoreFocus) queueMicrotask(() => { (lastOpenedRef.current === 'effort' ? effortTriggerRef : modelTriggerRef).current?.focus() })
   }
   const goBack = (): void => {
-    if (pane === 'model' || pane === 'effort') { setPane('providers'); return }
+    if (pane === 'model') { collapseModels(); return }
+    if (pane === 'effort') { setPane('providers'); return }
     if (pane === 'providers') { close(true) }
   }
-  const moveFocus = (offset: number): void => {
-    const items = itemRefs.current.filter((item): item is HTMLButtonElement => item !== null)
+  const moveFocus = (offset: number, refs: (HTMLButtonElement | null)[]): void => {
+    const items = refs.filter((item): item is HTMLButtonElement => item !== null)
     if (items.length === 0) return
     const active = items.findIndex((item) => item === document.activeElement)
     items[(Math.max(active, 0) + offset + items.length) % items.length]?.focus()
   }
   const onRootKeyDown = (event: React.KeyboardEvent<HTMLDivElement>): void => {
-    if (event.key === 'Escape' && open) { event.preventDefault(); goBack(); return }
-    if (open && (event.key === 'ArrowDown' || event.key === 'ArrowUp')) { event.preventDefault(); moveFocus(event.key === 'ArrowDown' ? 1 : -1) }
+    if (!open) return
+    if (event.key === 'Escape') { event.preventDefault(); goBack(); return }
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault()
+      const inRight = pane === 'model' && rightItemRefs.current.some((item) => item === document.activeElement)
+      moveFocus(event.key === 'ArrowDown' ? 1 : -1, inRight ? rightItemRefs.current : leftItemRefs.current)
+      return
+    }
+    if (event.key === 'ArrowRight') {
+      event.preventDefault()
+      if (pane === 'providers') {
+        const hit = providerRefs.current.find((p) => p.node === document.activeElement)
+        if (hit !== undefined) openModels(hit.groupId)
+      } else if (pane === 'model') {
+        rightItemRefs.current[0]?.focus()
+      }
+      return
+    }
+    if (event.key === 'ArrowLeft') {
+      event.preventDefault()
+      if (pane === 'model') { collapseModels() } else if (pane === 'providers') { close(true) }
+    }
   }
   const onBlur = (event: React.FocusEvent<HTMLDivElement>): void => {
     if (event.relatedTarget instanceof Node && rootRef.current?.contains(event.relatedTarget)) return
@@ -283,28 +315,48 @@ function ModelSelectNested({ locked, available, directory, load, select, configu
   }
 
   const modelLabel = currentChoice ? currentChoice.model.name : t('trigger.fallback')
-  itemRefs.current = []
-  let itemIndex = 0
-  const itemRef = (): ((node: HTMLButtonElement | null) => void) => { const at = itemIndex++; return (node) => { itemRefs.current[at] = node } }
+  leftItemRefs.current = []; rightItemRefs.current = []; providerRefs.current = []
+  let leftIndex = 0; let rightIndex = 0
+  const leftRef = (): ((node: HTMLButtonElement | null) => void) => { const at = leftIndex++; return (node) => { leftItemRefs.current[at] = node } }
+  const rightRef = (): ((node: HTMLButtonElement | null) => void) => { const at = rightIndex++; return (node) => { rightItemRefs.current[at] = node } }
+  const providerCellRef = (groupId: string): ((node: HTMLButtonElement | null) => void) => {
+    const at = leftIndex++
+    return (node) => {
+      leftItemRefs.current[at] = node
+      if (node !== null) providerRefs.current.push({ node, groupId })
+    }
+  }
   const activeGroupObj = activeGroup === null ? undefined : state.groups.find((g) => g.id === activeGroup)
 
-  const backCell = (
-    <button ref={itemRef()} type="button" role="menuitem" className={c.cell} onClick={goBack}>
+  const openModels = (groupId: string): void => {
+    setActiveGroup(groupId); setPane('model')
+    queueMicrotask(() => { rightItemRefs.current[0]?.focus() })
+  }
+  const switchGroup = (groupId: string): void => {
+    setActiveGroup(groupId)
+    queueMicrotask(() => { rightItemRefs.current[0]?.focus() })
+  }
+  const collapseModels = (): void => {
+    const g = activeGroup
+    setPane('providers'); setActiveGroup(null)
+    if (g !== null) queueMicrotask(() => { providerRefs.current.find((p) => p.groupId === g)?.node.focus() })
+  }
+
+  const backCell = (ref: (node: HTMLButtonElement | null) => void) => (
+    <button ref={ref} type="button" role="menuitem" className={c.cell} onClick={goBack}>
       <IconChevronLeftOutline14 className={c.back} />
       <span className={c.cellLabel}>{t('menu.back')}</span>
     </button>
   )
-
-  const providersPane = (
+  const effortCell = (
+    <button ref={leftRef()} type="button" role="menuitem" className={c.cell} onClick={() => setPane('effort')}>
+      <span className={c.cellLabel}>{t('menu.effort')}</span>
+      <span className={c.cellValue}>{effortLabel}</span>
+      <IconChevronRightOutline14 className={c.cellChevron} />
+    </button>
+  )
+  const statusBlock = (
     <>
-      {backCell}
-      {(reasoning !== undefined || (configureEfforts !== undefined && state.current !== null)) && (
-        <button ref={itemRef()} type="button" role="menuitem" className={c.cell} onClick={() => setPane('effort')}>
-          <span className={c.cellLabel}>{t('menu.effort')}</span>
-          <span className={c.cellValue}>{effortLabel}</span>
-          <IconChevronRightOutline14 className={c.cellChevron} />
-        </button>
-      )}
       {state.status === 'loading' && <div className={c.status}>{t('status.loading')}</div>}
       {state.error !== null && lastActionRef.current === 'load' && (
         <div className={c.error}>
@@ -319,9 +371,17 @@ function ModelSelectNested({ locked, available, directory, load, select, configu
         </div>
       ))}
       {state.groups.length === 0 && state.status === 'ready' && <div className={c.empty}>{t('empty.providers')}</div>}
+    </>
+  )
+
+  const providersPane = (
+    <>
+      {backCell(leftRef())}
+      {effortCell}
+      {statusBlock}
       <div className={clsx(c.groups, 'scrollable')}>
         {state.groups.map((group) => (
-          <button key={group.id} ref={itemRef()} type="button" role="menuitem" className={c.cell} onClick={() => { setActiveGroup(group.id); setPane('model') }}>
+          <button key={group.id} ref={providerCellRef(group.id)} type="button" role="menuitem" className={c.cell} onClick={() => openModels(group.id)}>
             <span className={c.cellLabel}>{group.name}</span>
             <IconChevronRightOutline14 className={c.cellChevron} />
           </button>
@@ -331,38 +391,61 @@ function ModelSelectNested({ locked, available, directory, load, select, configu
   )
 
   const modelPane = (
-    <>
-      {backCell}
-      <div className={c.header}>
-        <span className={c.headerName}>{activeGroupObj ? t('menu.models', { name: activeGroupObj.name }) : ''}</span>
-      </div>
-      {activeGroupObj && (
+    <div className={c.columns}>
+      <div className={c.col} role="group" aria-label={t('menu.providers')}>
+        {effortCell}
+        {statusBlock}
         <div className={clsx(c.groups, 'scrollable')}>
-          {activeGroupObj.models.map((model) => {
-            const selected = state.current?.provider === activeGroupObj.id && state.current.model === model.id
+          {state.groups.map((group) => {
+            const active = activeGroup === group.id
             return (
-              <button key={model.id} ref={itemRef()} type="button" role="menuitemradio" aria-checked={selected}
-                className={clsx(c.option, selected && c.selected)} title={model.name} disabled={busy}
-                onClick={() => choose({ provider: activeGroupObj.id, model: model.id })}>
-                <span className={c.optionCopy}>
-                  <span className={c.modelName}>{model.name}</span>
-                  {model.description !== undefined && <span className={c.description}>{model.description}</span>}
-                </span>
-                <span className={c.check}>{selected ? <IconCheckOutline16 /> : null}</span>
+              <button key={group.id} ref={providerCellRef(group.id)} type="button" role="menuitem"
+                aria-expanded={active} className={clsx(c.cell, active && c.colActive)}
+                onClick={() => {
+                  if (active) { collapseModels(); return }
+                  if (pane === 'model') { switchGroup(group.id); return }
+                  openModels(group.id)
+                }}>
+                <span className={c.cellLabel}>{group.name}</span>
+                <IconChevronRightOutline14 className={clsx(c.cellChevron, active && c.chevronLeft)} />
               </button>
             )
           })}
         </div>
-      )}
-      {state.status === 'ready' && choices.length === 0 && <div className={c.empty}>{t('empty.models')}</div>}
-    </>
+      </div>
+      <div className={clsx(c.col, c.colRight)} role="group" aria-label={t('menu.model')}>
+        {backCell(rightRef())}
+        <div className={c.header}>
+          <span className={c.headerName}>{activeGroupObj ? t('menu.models', { name: activeGroupObj.name }) : ''}</span>
+        </div>
+        {activeGroupObj && (
+          <div className={clsx(c.groups, 'scrollable')}>
+            {activeGroupObj.models.map((model) => {
+              const selected = state.current?.provider === activeGroupObj.id && state.current.model === model.id
+              return (
+                <button key={model.id} ref={rightRef()} type="button" role="menuitemradio" aria-checked={selected}
+                  className={clsx(c.option, selected && c.selected)} title={model.name} disabled={busy}
+                  onClick={() => choose({ provider: activeGroupObj.id, model: model.id })}>
+                  <span className={c.optionCopy}>
+                    <span className={c.modelName}>{model.name}</span>
+                    {model.description !== undefined && <span className={c.description}>{model.description}</span>}
+                  </span>
+                  <span className={c.check}>{selected ? <IconCheckOutline16 /> : null}</span>
+                </button>
+              )
+            })}
+          </div>
+        )}
+        {activeGroupObj !== undefined && activeGroupObj.models.length === 0 && <div className={c.empty}>{t('empty.models')}</div>}
+      </div>
+    </div>
   )
 
   const effortPane = (
     <>
-      {backCell}
+      {backCell(leftRef())}
       {reasoning === undefined && configureEfforts !== undefined && (
-        <button ref={itemRef()} type="button" role="menuitem" className={c.cell} disabled={busy} onClick={configure}>
+        <button ref={leftRef()} type="button" role="menuitem" className={c.cell} disabled={busy} onClick={configure}>
           <span className={c.cellLabel}>{configuring ? t('config.busy') : t('config.efforts')}</span>
           <IconChevronRightOutline14 className={c.cellChevron} />
         </button>
@@ -374,7 +457,7 @@ function ModelSelectNested({ locked, available, directory, load, select, configu
         </div>
       )}
       {effortChoices.length === 0 ? <div className={c.empty}>{t('empty.efforts')}</div> : effortChoices.map((level) => (
-        <button key={level.key} ref={itemRef()} type="button" role="menuitemradio" aria-checked={effectiveEffort === level.effort}
+        <button key={level.key} ref={leftRef()} type="button" role="menuitemradio" aria-checked={effectiveEffort === level.effort}
           className={clsx(c.option, effectiveEffort === level.effort && c.selected)} disabled={busy}
           onClick={() => chooseEffort(level.effort)}>
           <span className={c.optionCopy}>
@@ -391,11 +474,11 @@ function ModelSelectNested({ locked, available, directory, load, select, configu
     <div ref={rootRef} className={c.root} onKeyDown={onRootKeyDown} onBlur={onBlur}>
       <div className={c.triggerRow}>
         <button ref={modelTriggerRef} type="button" className={c.trigger} aria-label={t('trigger.selectAria')}
-          aria-haspopup="menu" aria-expanded={open && pane === 'providers'} aria-controls={open ? `${id}-menu` : undefined}
+          aria-haspopup="menu" aria-expanded={open && (pane === 'providers' || pane === 'model')} aria-controls={open ? `${id}-menu` : undefined}
           title={modelLabel} disabled={locked}
-          onClick={() => { if (open && pane === 'providers') close(); else showProviders() }}>
+          onClick={() => { if (open && (pane === 'providers' || pane === 'model')) close(); else showProviders() }}>
           <span className={c.triggerLabel}>{modelLabel}</span>
-          <IconChevronDownOutline14 className={clsx(c.chevron, open && pane === 'providers' && c.chevronOpen)} />
+          <IconChevronDownOutline14 className={clsx(c.chevron, open && (pane === 'providers' || pane === 'model') && c.chevronOpen)} />
         </button>
         <button ref={effortTriggerRef} type="button" className={c.triggerEffort} aria-label={t('menu.effort')}
           aria-haspopup="menu" aria-expanded={open && pane === 'effort'} aria-controls={open ? `${id}-menu` : undefined}
@@ -406,7 +489,7 @@ function ModelSelectNested({ locked, available, directory, load, select, configu
         </button>
       </div>
       {open && (
-        <div id={`${id}-menu`} className={c.menu} role="menu" aria-label={t('menu.aria')} aria-busy={state.status === 'loading' || busy}>
+        <div id={`${id}-menu`} className={clsx(c.menu, pane === 'model' && c.menuDual)} role="menu" aria-label={t('menu.aria')} aria-busy={state.status === 'loading' || busy}>
           {pane === 'providers' && providersPane}
           {pane === 'model' && modelPane}
           {pane === 'effort' && effortPane}

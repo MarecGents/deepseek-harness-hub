@@ -84,15 +84,17 @@ export interface SettingsSectionOwnerProps {
 }
 
 /**
- * Required services: slots (card), workspaces + sessions (tray + sidebar data).
- * NOTE: modelDirectories is deliberately NOT on this list — the model-seat
- * override (model-select.tsx) waits for it via a scoped `ctx.inject` child
- * fiber, so a missing service still degrades to the "built-in seat" instead
- * of pending the whole plugin (2026-09-06: replaced the apply-time ctx.get
- * probe, which silently skipped registration under dsh 0.1.2-rc.1 service
- * ordering).
+ * Required services: slots (card), workspaces + sessions (tray + sidebar data),
+ * modelDirectories (composer model-seat override). modelDirectories is
+ * provided by ui-model-selection, an unconditional web-app bundle row
+ * (web-app/cordis.patch.yml:282), so the web profile always has it; the
+ * top-level declaration guarantees installModelSelect runs only after the
+ * service is live (cordis PENDING-until-provided + notify-on-activate). The
+ * scoped ctx.inject inside installModelSelect stays as the fault-isolation
+ * layer: a child fiber pending never trips the boot audit (boot.ts
+ * assertEntriesActive only inspects entry fibers).
  */
-export const inject = ['slots', 'workspaces', 'sessions']
+export const inject = ['slots', 'workspaces', 'sessions', 'modelDirectories']
 
 /** Resolve the current session's workspace from the client runtime. */
 function currentWorkspace(ctx: ClientContext): { path?: string; id?: string } | null {
