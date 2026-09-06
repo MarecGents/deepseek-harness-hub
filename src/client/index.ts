@@ -85,16 +85,20 @@ export interface SettingsSectionOwnerProps {
 
 /**
  * Required services: slots (card), workspaces + sessions (tray + sidebar data),
- * modelDirectories (composer model-seat override). modelDirectories is
- * provided by ui-model-selection, an unconditional web-app bundle row
- * (web-app/cordis.patch.yml:282), so the web profile always has it; the
- * top-level declaration guarantees installModelSelect runs only after the
- * service is live (cordis PENDING-until-provided + notify-on-activate). The
- * scoped ctx.inject inside installModelSelect stays as the fault-isolation
- * layer: a child fiber pending never trips the boot audit (boot.ts
- * assertEntriesActive only inspects entry fibers).
+ * modelDirectories (composer model-seat override), remote + remote.session
+ * (the model directory's wire face — ModelDirectoryResolver reads
+ * `this.ctx.remote.session` when directoryFor() runs, and cordis binds that
+ * read to the CALLER fiber's context, resolving through the parent chain;
+ * the official ui-model-selection declares the same pair at top level).
+ * modelDirectories is provided by ui-model-selection, an unconditional
+ * web-app bundle row (web-app/cordis.patch.yml:282), so the web profile
+ * always has it; the top-level declaration guarantees installModelSelect
+ * runs only after the service is live (cordis PENDING-until-provided +
+ * notify-on-activate). The scoped ctx.inject inside installModelSelect stays
+ * as the fault-isolation layer: a child fiber pending never trips the boot
+ * audit (boot.ts assertEntriesActive only inspects entry fibers).
  */
-export const inject = ['slots', 'workspaces', 'sessions', 'modelDirectories']
+export const inject = ['slots', 'workspaces', 'sessions', 'modelDirectories', 'remote', 'remote.session']
 
 /** Resolve the current session's workspace from the client runtime. */
 function currentWorkspace(ctx: ClientContext): { path?: string; id?: string } | null {

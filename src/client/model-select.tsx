@@ -641,9 +641,11 @@ export function installModelSelect(ctx: ClientContext): void {
         // via the renderer error boundary and hand the seat back to the
         // official component — exactly what "installed but official menu"
         // looks like. Degrade to a safe face instead; the crash is still
-        // reported to dsh.log.
+        // reported to dsh.log. available stays true so the seat renders
+        // (an empty directory shows the providers list with a retry path)
+        // rather than returning null and hiding the menu entirely.
         let directory: ModelSelectProps['directory'] = STUB_DIRECTORY
-        let available = false
+        let available = true
         try {
           directory = models.directoryFor(sessionId).store as unknown as ModelSelectProps['directory']
           available = sessions.subagentAddress(sessionId) === undefined
