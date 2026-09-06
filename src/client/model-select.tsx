@@ -466,22 +466,34 @@ export function installModelSelect(ctx: ClientContext): void {
     console.warn('[dsh-hub] model-select skipped: sessions service unavailable')
     return
   }
-  // All three services are declared in the scoped inject table (matching the
-  // official ui-model-selection pattern): the fiber only runs once every
-  // dependency is active, so the undefined guards below are pure defense.
-  // settingsScope is provided by ui-settings, an unconditional web-bundle
-  // row, so it is always present in the supported profile.
-  ctx.inject(['slots', 'modelDirectories', 'settingsScope'], (scope: ClientContext) => {
+  // ONLY slots + modelDirectories are hard dependencies — the same pair the
+  // official ui-model-selection declares. The seat registration must never
+  // wait on settingsScope: a stalled settings service would keep this child
+  // fiber PENDING forever and the OFFICIAL seat would win by default, which
+  // user-visible tests mistook for "the override is missing". settingsScope
+  // is fetched lazily on the first configure click (ui-settings is an
+  // unconditional web-app row, so the binder exists by any click time).
+  ctx.inject(['slots', 'modelDirectories'], (scope: ClientContext) => {
     const slots = scope.get('slots')
     const models = scope.get('modelDirectories') as unknown as ModelDirectoriesService | undefined
-    const binder = scope.get('settingsScope') as unknown as SettingsScopeBinder | undefined
-    if (slots === undefined || models === undefined || binder === undefined) {
-      console.warn('[dsh-hub] model-select skipped: slots/modelDirectories/settingsScope unavailable')
+    if (slots === undefined || models === undefined) {
+      console.warn('[dsh-hub] model-select skipped: slots/modelDirectories unavailable')
       return
     }
-    // Bind once at apply time (official pattern): the controller is captured
-    // by the configure closure; binding per click would leak effects.
-    const effortsScope = binder.bind<{ providers?: Record<string, SettingsProvider> }>({ namespace: 'llm-pi-ai' })
+    // Lazy settings scope: bind once on the first configure click and reuse
+    // the controller afterwards (bind registers an effect, so per-click bind
+    // would leak; the disposer is owned by this scoped fiber).
+    let effortsScope: SettingsScope | undefined
+    let binderFetched = false
+    const obtainEffortsScope = (): SettingsScope | undefined => {
+      if (binderFetched) return effortsScope
+      binderFetched = true
+      const binder = scope.get('settingsScope') as unknown as SettingsScopeBinder | undefined
+      if (binder !== undefined) {
+        effortsScope = binder.bind<{ providers?: Record<string, SettingsProvider> }>({ namespace: 'llm-pi-ai' })
+      }
+      return effortsScope
+    }
     slots.inject('conversation.input.model', () => slots.register({
       name: 'conversation.input.model',
       priority: -1,
@@ -493,7 +505,7 @@ export function installModelSelect(ctx: ClientContext): void {
           directory: directory.store as unknown as ModelSelectProps['directory'],
           load: () => { if (available) directory.load().catch(() => {}) },
           select: (selection: Selection) => available ? directory.select(selection).then(() => true, () => false) : Promise.resolve(false),
-          configureEfforts: (selection: Selection) => declareStandardEfforts(effortsScope, selection),
+          configureEfforts: (selection: Selection) => declareStandardEfforts(obtainEffortsScope(), selection),
         }
       },
     }, (props: ModelSelectProps) => ModelSelectNested(props)))
