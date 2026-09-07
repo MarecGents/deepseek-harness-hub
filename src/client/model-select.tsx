@@ -42,6 +42,7 @@ const CSS = [
   '._dshnms_triggerLabel{text-overflow:ellipsis;white-space:nowrap;min-width:0;overflow:hidden}',
   '._dshnms_chevron{color:var(--dsw-alias-label-caption);flex:none;transition:transform .12s}',
   '._dshnms_chevronOpen{transform:rotate(180deg)}',
+  'body.mg-dshnms-open [data-composer-seat]{z-index:60 !important}',
   '._dshnms_menu{z-index:2000;border:1px solid var(--dsw-alias-border-inverted);background:var(--dsw-specific-menu);width:min(260px,100vw - 32px);max-height:min(420px,100vh - 96px);box-shadow:var(--dsw-shadow-lv3);color:var(--dsw-alias-label-primary);--dsh-scrollbar-thumb:var(--dsw-alias-scrollbar-bg-l2);--dsh-scrollbar-thumb-hover:var(--dsw-alias-scrollbar-hover-l2);border-radius:12px;flex-direction:column;padding:4px;display:flex;position:absolute;bottom:calc(100% + 8px);left:0;overflow:hidden;transition:width .12s}',
   '._dshnms_menuDual{width:min(520px,100vw - 32px)}',
   '._dshnms_columns{min-height:0;flex:1 1 auto;display:flex;flex-direction:row}',
@@ -188,6 +189,21 @@ const STUB_DIRECTORY: ModelSelectProps['directory'] = {
   getSnapshot: () => STUB_DIRECTORY_SNAPSHOT,
 }
 
+/** Diagnostic uplink to dsh.log. The desktop shell's Folder log target does
+ * NOT capture browser console.log, so seat registration and lift events are
+ * reported through the same diag_report channel pins/session-focus use —
+ * this is the only page-side signal that lands in dsh.log. */
+function report(msg: string): void {
+  try {
+    const internals = (window as unknown as {
+      __TAURI_INTERNALS__?: { invoke?: (c: string, a?: Record<string, unknown>) => Promise<unknown> }
+    }).__TAURI_INTERNALS__
+    internals?.invoke?.('diag_report', { msg }).catch?.(() => {})
+  } catch {
+    // Diagnostic failure must never break seat registration.
+  }
+}
+
 /** Error boundary that reports render crashes to dsh.log, then lets the
  * error propagate so the slot renderer's own boundary abdicates (official
  * seat takes over) — but now we know exactly why. */
@@ -261,10 +277,23 @@ function ModelSelectNested({ locked, available, directory, load, select, configu
   const reload = useCallback(() => { lastActionRef.current = 'load'; load() }, [load])
 
   useEffect(() => {
+    // Lift the composer seat above the right sidebar while the menu is open
+    // (Round-3 reviewed: specificity + !important beats the official rule;
+    // z 60 sits above the sidebar's 50 and below every tool layer's 1000).
+    if (open) {
+      document.body.classList.add('mg-dshnms-open')
+      report('model-select:seat-lift:on')
+    } else {
+      document.body.classList.remove('mg-dshnms-open')
+      report('model-select:seat-lift:off')
+    }
     if (!open) return
     const closeOutside = (event: MouseEvent): void => { if (!rootRef.current?.contains(event.target as Node)) setOpen(false) }
     document.addEventListener('mousedown', closeOutside)
-    return () => { document.removeEventListener('mousedown', closeOutside) }
+    return () => {
+      document.body.classList.remove('mg-dshnms-open')
+      document.removeEventListener('mousedown', closeOutside)
+    }
   }, [open])
   if (!available) return null
 
@@ -572,20 +601,7 @@ async function declareStandardEfforts(scope: SettingsScope | undefined, selectio
 
 /** Register the model selector in the official composer seat. */
 export function installModelSelect(ctx: ClientContext): void {
-  // Diagnostic uplink (dsh.log): the desktop shell's Folder log target does
-  // NOT capture browser console.log, so seat registration success/failure is
-  // reported through the same diag_report channel pins/session-focus use —
-  // this is the only page-side signal that lands in ~/.dsh/dsh-hub/logs/dsh.log.
-  const report = (msg: string): void => {
-    try {
-      const internals = (window as unknown as {
-        __TAURI_INTERNALS__?: { invoke?: (c: string, a?: Record<string, unknown>) => Promise<unknown> }
-      }).__TAURI_INTERNALS__
-      internals?.invoke?.('diag_report', { msg }).catch?.(() => {})
-    } catch {
-      // Diagnostic failure must never break seat registration.
-    }
-  }
+  // Diagnostics go through the module-level report() (diag_report uplink).
   const sessions = ctx.get('sessions') as unknown as { subagentAddress(sessionId: string): unknown } | undefined
   if (sessions === undefined) {
     console.warn('[dsh-hub] model-select skipped: sessions service unavailable')
