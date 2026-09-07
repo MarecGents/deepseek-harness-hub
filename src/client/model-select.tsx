@@ -43,10 +43,10 @@ const CSS = [
   '._dshnms_chevron{color:var(--dsw-alias-label-caption);flex:none;transition:transform .12s}',
   '._dshnms_chevronOpen{transform:rotate(180deg)}',
   'body.mg-dshnms-open [data-composer-seat]{z-index:60 !important}',
-  '._dshnms_menu{z-index:2000;border:1px solid var(--dsw-alias-border-inverted);background:var(--dsw-specific-menu);width:min(260px,100vw - 32px);max-height:min(420px,100vh - 96px);box-shadow:var(--dsw-shadow-lv3);color:var(--dsw-alias-label-primary);--dsh-scrollbar-thumb:var(--dsw-alias-scrollbar-bg-l2);--dsh-scrollbar-thumb-hover:var(--dsw-alias-scrollbar-hover-l2);border-radius:12px;flex-direction:column;padding:4px;display:flex;position:absolute;bottom:calc(100% + 8px);left:0;overflow:hidden;transition:width .12s}',
-  '._dshnms_menuDual{width:min(520px,100vw - 32px)}',
+  '._dshnms_menu{z-index:2000;border:1px solid var(--dsw-alias-border-inverted);background:var(--dsw-specific-menu);width:max-content;max-width:min(420px,100vw - 32px);max-height:min(420px,100vh - 96px);box-shadow:var(--dsw-shadow-lv3);color:var(--dsw-alias-label-primary);--dsh-scrollbar-thumb:var(--dsw-alias-scrollbar-bg-l2);--dsh-scrollbar-thumb-hover:var(--dsw-alias-scrollbar-hover-l2);border-radius:12px;flex-direction:column;padding:4px;display:flex;position:absolute;bottom:calc(100% + 8px);left:0;overflow:hidden}',
+  '._dshnms_menuDual{max-width:min(560px,100vw - 32px)}',
   '._dshnms_columns{min-height:0;flex:1 1 auto;display:flex;flex-direction:row}',
-  '._dshnms_col{min-width:0;min-height:0;flex:0 0 260px;display:flex;flex-direction:column}',
+  '._dshnms_col{min-width:0;min-height:0;flex:0 0 auto;display:flex;flex-direction:column}',
   '._dshnms_colRight{min-width:0;min-height:0;flex:1 1 auto;display:flex;flex-direction:column;border-left:1px solid var(--dsw-alias-border-l2);animation:_dshnms_slideIn .12s ease-out}',
   '@keyframes _dshnms_slideIn{from{opacity:0;transform:translateX(-6px)}to{opacity:1;transform:none}}',
   '._dshnms_colActive{background:var(--dsw-alias-interactive-bg-hover)}',
@@ -277,14 +277,21 @@ function ModelSelectNested({ locked, available, directory, load, select, configu
   const reload = useCallback(() => { lastActionRef.current = 'load'; load() }, [load])
 
   useEffect(() => {
-    // Lift the composer seat above the right sidebar while the menu is open
-    // (Round-3 reviewed: specificity + !important beats the official rule;
-    // z 60 sits above the sidebar's 50 and below every tool layer's 1000).
+    // Lift the composer seat above the right sidebar while the menu is open.
+    // Two mechanisms, belt-and-suspenders:
+    //  1. body class + CSS rule (specificity + !important beats the official
+    //     seat rule) — may be skipped by a stale injected <style> tag;
+    //  2. inline z-index on the seat element itself — immune to CSS injection
+    //     order and selector matching; `data-composer-seat` is the official
+    //     stable contract (hub already uses it in terminal-dock/right-sidebar).
+    const seat = document.querySelector<HTMLElement>('[data-composer-seat]')
     if (open) {
       document.body.classList.add('mg-dshnms-open')
+      if (seat !== null) seat.style.zIndex = '60'
       report('model-select:seat-lift:on')
     } else {
       document.body.classList.remove('mg-dshnms-open')
+      if (seat !== null) seat.style.zIndex = ''
       report('model-select:seat-lift:off')
     }
     if (!open) return
@@ -292,6 +299,8 @@ function ModelSelectNested({ locked, available, directory, load, select, configu
     document.addEventListener('mousedown', closeOutside)
     return () => {
       document.body.classList.remove('mg-dshnms-open')
+      const seatCleanup = document.querySelector<HTMLElement>('[data-composer-seat]')
+      if (seatCleanup !== null) seatCleanup.style.zIndex = ''
       document.removeEventListener('mousedown', closeOutside)
     }
   }, [open])
