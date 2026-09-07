@@ -14,6 +14,7 @@
  */
 
 import { Component, useCallback, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import clsx from 'clsx'
 import {
   IconCheckOutline16,
@@ -42,7 +43,7 @@ const CSS = [
   '._dshnms_triggerLabel{text-overflow:ellipsis;white-space:nowrap;min-width:0;overflow:hidden}',
   '._dshnms_chevron{color:var(--dsw-alias-label-caption);flex:none;transition:transform .12s}',
   '._dshnms_chevronOpen{transform:rotate(180deg)}',
-  '._dshnms_menu{z-index:2000;border:1px solid var(--dsw-alias-border-inverted);background:var(--dsw-specific-menu);width:min(260px,100vw - 32px);max-height:min(420px,100vh - 96px);box-shadow:var(--dsw-shadow-lv3);color:var(--dsw-alias-label-primary);--dsh-scrollbar-thumb:var(--dsw-alias-scrollbar-bg-l2);--dsh-scrollbar-thumb-hover:var(--dsw-alias-scrollbar-hover-l2);border-radius:12px;flex-direction:column;padding:4px;display:flex;position:absolute;bottom:calc(100% + 8px);left:0;overflow:hidden;transition:width .12s}',
+  '._dshnms_menu{z-index:2000;border:1px solid var(--dsw-alias-border-inverted);background:var(--dsw-specific-menu);width:min(260px,100vw - 32px);max-height:min(420px,100vh - 96px);box-shadow:var(--dsw-shadow-lv3);color:var(--dsw-alias-label-primary);--dsh-scrollbar-thumb:var(--dsw-alias-scrollbar-bg-l2);--dsh-scrollbar-thumb-hover:var(--dsw-alias-scrollbar-hover-l2);border-radius:12px;flex-direction:column;padding:4px;display:flex;position:fixed;bottom:auto;left:auto;overflow:hidden;transition:width .12s}',
   '._dshnms_menuDual{width:min(520px,100vw - 32px)}',
   '._dshnms_columns{min-height:0;flex:1 1 auto;display:flex;flex-direction:row}',
   '._dshnms_col{min-width:0;min-height:0;flex:0 0 260px;display:flex;flex-direction:column}',
@@ -228,6 +229,12 @@ function ModelSelectNested({ locked, available, directory, load, select, configu
   const rootRef = useRef<HTMLDivElement>(null)
   const modelTriggerRef = useRef<HTMLButtonElement>(null)
   const effortTriggerRef = useRef<HTMLButtonElement>(null)
+  // Portal menu: rendered into document.body so it escapes the composer
+  // seat's isolated stacking context (sticky z-index 7 caps every child
+  // z-index; the body-level right sidebar at z-index 50 always wins).
+  // menuRef lets closeOutside ignore clicks inside the portaled menu.
+  const menuRef = useRef<HTMLDivElement>(null)
+  const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null)
   // Column-scoped focus lists: left column (providers) and right column
   // (models) keep independent roving focus in dual-column mode (R3-C finding C).
   const leftItemRefs = useRef<(HTMLButtonElement | null)[]>([])
@@ -262,7 +269,13 @@ function ModelSelectNested({ locked, available, directory, load, select, configu
 
   useEffect(() => {
     if (!open) return
-    const closeOutside = (event: MouseEvent): void => { if (!rootRef.current?.contains(event.target as Node)) setOpen(false) }
+    const closeOutside = (event: MouseEvent): void => {
+      const target = event.target as Node
+      // The menu is portaled to document.body, so it is NOT inside rootRef —
+      // clicks inside the menu must not close it (6bc029a regression).
+      if (menuRef.current?.contains(target)) return
+      if (!rootRef.current?.contains(target)) setOpen(false)
+    }
     document.addEventListener('mousedown', closeOutside)
     return () => { document.removeEventListener('mousedown', closeOutside) }
   }, [open])
@@ -272,17 +285,28 @@ function ModelSelectNested({ locked, available, directory, load, select, configu
     epochRef.current += 1
     lastOpenedRef.current = 'providers'
     setPane('providers'); setActiveGroup(null); setOpen(true)
+    positionMenu()
     if (state.status !== 'loading') reload()
   }
   const showEffort = (): void => {
     epochRef.current += 1
     lastOpenedRef.current = 'effort'
     setPane('effort'); setOpen(true)
+    positionMenu()
     if (state.status !== 'loading') reload()
+  }
+  const positionMenu = (): void => {
+    const trigger = (lastOpenedRef.current === 'effort' ? effortTriggerRef : modelTriggerRef).current
+    if (trigger === null) return
+    const rect = trigger.getBoundingClientRect()
+    // Menu opens upward from the trigger row, right-aligned to the trigger's
+    // right edge (left-anchored: the provider column stays put when the
+    // dual-column menu widens to the right).
+    setMenuPos({ top: rect.top - 8, left: rect.right - 260 })
   }
   const close = (restoreFocus = false): void => {
     epochRef.current += 1
-    setOpen(false); setPane('providers'); setActiveGroup(null)
+    setOpen(false); setPane('providers'); setActiveGroup(null); setMenuPos(null)
     if (restoreFocus) queueMicrotask(() => { (lastOpenedRef.current === 'effort' ? effortTriggerRef : modelTriggerRef).current?.focus() })
   }
   const goBack = (): void => {
@@ -516,12 +540,14 @@ function ModelSelectNested({ locked, available, directory, load, select, configu
           <IconChevronDownOutline14 className={clsx(c.chevron, open && pane === 'effort' && c.chevronOpen)} />
         </button>
       </div>
-      {open && (
-        <div id={`${id}-menu`} className={clsx(c.menu, pane === 'model' && c.menuDual)} role="menu" aria-label={t('menu.aria')} aria-busy={state.status === 'loading' || busy}>
+      {open && menuPos !== null && createPortal(
+        <div ref={menuRef} id={`${id}-menu`} className={clsx(c.menu, pane === 'model' && c.menuDual)} role="menu" aria-label={t('menu.aria')} aria-busy={state.status === 'loading' || busy}
+          style={{ top: menuPos.top, left: menuPos.left }}>
           {pane === 'providers' && providersPane}
           {pane === 'model' && modelPane}
           {pane === 'effort' && effortPane}
-        </div>
+        </div>,
+        document.body,
       )}
       {toast !== null && (
         <Toast key={toast.seq} text={toast.text} icon={<IconWarningOutline16 />}
