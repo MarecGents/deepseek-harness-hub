@@ -1,0 +1,4 @@
+# Generated artifacts must stay LF on every platform: the export script
+# writes LF, and a CRLF checkout (Windows autocrlf) makes the CI
+# "Verify skin-colors.json is up-to-date" step fail on `git diff --exit-code`.
+src-tauri/src/skin-colors.json text eol=lf
