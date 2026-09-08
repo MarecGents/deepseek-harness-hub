@@ -13,7 +13,7 @@
  * the catalog and the same pane shows the host-validated effort choices.
  */
 
-import { Component, useCallback, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
+import { Component, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
 import clsx from 'clsx'
 import {
   IconCheckOutline16,
@@ -42,8 +42,13 @@ const CSS = [
   '._dshnms_triggerLabel{text-overflow:ellipsis;white-space:nowrap;min-width:0;overflow:hidden}',
   '._dshnms_chevron{color:var(--dsw-alias-label-caption);flex:none;transition:transform .12s}',
   '._dshnms_chevronOpen{transform:rotate(180deg)}',
-  'body.mg-dshnms-open [data-composer-seat]{z-index:60 !important}',
-  '._dshnms_menu{z-index:2000;border:1px solid var(--dsw-alias-border-inverted);background:var(--dsw-specific-menu);width:max-content;max-width:min(420px,100vw - 32px);max-height:min(420px,100vh - 96px);box-shadow:var(--dsw-shadow-lv3);color:var(--dsw-alias-label-primary);--dsh-scrollbar-thumb:var(--dsw-alias-scrollbar-bg-l2);--dsh-scrollbar-thumb-hover:var(--dsw-alias-scrollbar-hover-l2);border-radius:12px;flex-direction:column;padding:4px;display:flex;position:absolute;bottom:calc(100% + 8px);left:0;overflow:hidden}',
+  // Seat lift without !important (AGENTS.md §3 exempts only backgrounds/skins):
+  // html body prefix raises specificity to (0,4,0), above the official seat
+  // rule (.root[data-phase='active'] .composerSeat, 0,3,0). The inline
+  // z-index in the open effect is the primary mechanism; this rule is the
+  // re-mount fallback (inline styles are lost when the seat node is replaced).
+  'html body.mg-dshnms-open [data-composer-seat]{z-index:60}',
+  '._dshnms_menu{z-index:2000;border:1px solid var(--dsw-alias-border-inverted);background:var(--dsw-specific-menu);width:max-content;min-width:min(240px,100vw - 32px);max-width:min(420px,100vw - 32px);max-height:min(420px,100vh - 96px);box-shadow:var(--dsw-shadow-lv3);color:var(--dsw-alias-label-primary);--dsh-scrollbar-thumb:var(--dsw-alias-scrollbar-bg-l2);--dsh-scrollbar-thumb-hover:var(--dsw-alias-scrollbar-hover-l2);border-radius:12px;flex-direction:column;padding:4px;display:flex;position:absolute;bottom:calc(100% + 8px);left:0;overflow:hidden}',
   '._dshnms_menuDual{max-width:min(560px,100vw - 32px)}',
   '._dshnms_columns{min-height:0;flex:1 1 auto;display:flex;flex-direction:row}',
   '._dshnms_col{min-width:0;min-height:0;flex:0 0 auto;display:flex;flex-direction:column}',
@@ -126,7 +131,7 @@ interface ModelSelectProps {
   directory: { subscribe(fn: () => void): () => void; getSnapshot(): DirectorySnapshot }
   load(): void
   select(selection: Selection): Promise<boolean>
-  configureEfforts?: (selection: Selection) => Promise<boolean>
+  configureEfforts?: (selection: Selection) => Promise<boolean | undefined>
 }
 interface DirectorySnapshot {
   current: Selection | null
@@ -234,6 +239,11 @@ function ModelSelectNested({ locked, available, directory, load, select, configu
   const [activeGroup, setActiveGroup] = useState<string | null>(null)
   const [toast, setToast] = useState<{ seq: number; text: string } | null>(null)
   const [configuring, setConfiguring] = useState(false)
+  // Right-edge alignment of the menu relative to the opening trigger
+  // (model vs effort button). Fixed 260px offsets caused the effort menu to
+  // pop over the model button (ad10510 regression, reverted).
+  const [menuAlign, setMenuAlign] = useState<{ right: number } | null>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
   const toastSeq = useRef(0)
   const lastActionRef = useRef<'load' | 'select'>('load')
   // Menu-generation guard: a selection settling after the menu was closed
@@ -273,14 +283,14 @@ function ModelSelectNested({ locked, available, directory, load, select, configu
         ...(reasoning.defaultEffort === undefined ? [{ key: 'provider-default', effort: undefined, label: t('effort.providerDefault') }] : []),
         ...reasoning.efforts.map((level) => ({ key: `effort:${level.id}`, effort: level.id, label: level.name, ...(level.description === undefined ? {} : { description: level.description }) })),
       ], [reasoning])
-  const busy = state.status === 'selecting' || configuring
+  const busy = state.status === 'selecting' || state.status === 'loading' || configuring
   const reload = useCallback(() => { lastActionRef.current = 'load'; load() }, [load])
 
   useEffect(() => {
     // Lift the composer seat above the right sidebar while the menu is open.
     // Two mechanisms, belt-and-suspenders:
-    //  1. body class + CSS rule (specificity + !important beats the official
-    //     seat rule) — may be skipped by a stale injected <style> tag;
+    //  1. body class + CSS rule (specificity (0,4,0) beats the official seat
+    //     rule (0,3,0) without !important) — survives seat re-mounts;
     //  2. inline z-index on the seat element itself — immune to CSS injection
     //     order and selector matching; `data-composer-seat` is the official
     //     stable contract (hub already uses it in terminal-dock/right-sidebar).
@@ -304,23 +314,57 @@ function ModelSelectNested({ locked, available, directory, load, select, configu
       document.removeEventListener('mousedown', closeOutside)
     }
   }, [open])
+
+  // After the menu renders, clamp the left edge inside the root when the
+  // menu is wider than the space to its left (dual-column 560px case).
+  // Functional update + reference reuse: when the clamped value equals the
+  // current one, return the previous state object so React bails out
+  // (Object.is on the same reference). Without this, every clamp pass
+  // creates a fresh { right } object and the effect re-triggers forever —
+  // React #185 (d63190c regression, fixed here).
+  useLayoutEffect(() => {
+    if (!open || menuAlign === null) return
+    const menu = menuRef.current
+    const root = rootRef.current
+    if (menu === null || root === null) return
+    const menuW = menu.offsetWidth
+    setMenuAlign((prev) => {
+      if (prev === null) return prev
+      if (prev.right + menuW <= root.offsetWidth) return prev
+      const clamped = Math.max(0, root.offsetWidth - menuW)
+      return prev.right === clamped ? prev : { right: clamped }
+    })
+  }, [open, menuAlign, pane, activeGroup])
   if (!available) return null
 
   const showProviders = (): void => {
     epochRef.current += 1
     lastOpenedRef.current = 'providers'
     setPane('providers'); setActiveGroup(null); setOpen(true)
+    positionMenu()
     if (state.status !== 'loading') reload()
   }
   const showEffort = (): void => {
     epochRef.current += 1
     lastOpenedRef.current = 'effort'
     setPane('effort'); setOpen(true)
+    positionMenu()
     if (state.status !== 'loading') reload()
+  }
+  // Right-align the menu to the trigger that opened it (official right:0
+  // semantics). Fixed 260px offsets made the effort menu pop over the model
+  // button (ad10510 regression) — the offset is derived from the trigger's
+  // actual position instead.
+  const positionMenu = (): void => {
+    const root = rootRef.current
+    const trigger = (lastOpenedRef.current === 'effort' ? effortTriggerRef : modelTriggerRef).current
+    if (root === null || trigger === null) return
+    const right = Math.max(0, root.offsetWidth - (trigger.offsetLeft + trigger.offsetWidth))
+    setMenuAlign({ right })
   }
   const close = (restoreFocus = false): void => {
     epochRef.current += 1
-    setOpen(false); setPane('providers'); setActiveGroup(null)
+    setOpen(false); setPane('providers'); setActiveGroup(null); setMenuAlign(null)
     if (restoreFocus) queueMicrotask(() => { (lastOpenedRef.current === 'effort' ? effortTriggerRef : modelTriggerRef).current?.focus() })
   }
   const goBack = (): void => {
@@ -381,15 +425,21 @@ function ModelSelectNested({ locked, available, directory, load, select, configu
   }
   const configure = (): void => {
     if (!configureEfforts || state.current === null || configuring) return
+    const epoch = epochRef.current
     setConfiguring(true)
     void configureEfforts({ provider: state.current.provider, model: state.current.model }).then((ok) => {
-      if (ok) { load(); return }
-      toastSeq.current += 1
-      setToast({ seq: toastSeq.current, text: t('config.failed') })
+      if (epochRef.current !== epoch) return
+      if (ok === true) { load(); return }
+      if (ok === false) {
+        toastSeq.current += 1
+        setToast({ seq: toastSeq.current, text: t('config.failed') })
+      }
+      // undefined = not applicable (catalog-served route / scope unavailable) — stay silent.
     }, () => {
+      if (epochRef.current !== epoch) return
       toastSeq.current += 1
       setToast({ seq: toastSeq.current, text: t('config.failed') })
-    }).finally(() => setConfiguring(false))
+    }).finally(() => { if (epochRef.current === epoch) setConfiguring(false) })
   }
 
   const modelLabel = currentChoice ? currentChoice.model.name : t('trigger.fallback')
@@ -555,7 +605,8 @@ function ModelSelectNested({ locked, available, directory, load, select, configu
         </button>
       </div>
       {open && (
-        <div id={`${id}-menu`} className={clsx(c.menu, pane === 'model' && c.menuDual)} role="menu" aria-label={t('menu.aria')} aria-busy={state.status === 'loading' || busy}>
+        <div ref={menuRef} id={`${id}-menu`} className={clsx(c.menu, pane === 'model' && c.menuDual)} role="menu" aria-label={t('menu.aria')} aria-busy={state.status === 'loading' || busy}
+          style={menuAlign === null ? undefined : { left: 'auto', right: menuAlign.right }}>
           {pane === 'providers' && providersPane}
           {pane === 'model' && modelPane}
           {pane === 'effort' && effortPane}
@@ -580,14 +631,23 @@ function ModelSelectNested({ locked, available, directory, load, select, configu
  * the custom-model case this action exists for. Success is judged by reading
  * the declared value back (mutate never throws on rejection; it recovers and
  * resolves, so the read-back is the only reliable failure signal).
+ * @returns true = declared; false = write failed; undefined = not applicable
+ * (scope unavailable / not writable / catalog-served route with no declared
+ * models — the caller stays silent instead of showing a failure toast).
  */
-async function declareStandardEfforts(scope: SettingsScope | undefined, selection: Selection): Promise<boolean> {
-  if (scope === undefined) return false
+async function declareStandardEfforts(scope: SettingsScope | undefined, selection: Selection): Promise<boolean | undefined> {
+  if (scope === undefined) return undefined
   const before = scope.getSnapshot()
-  if (before.status !== 'ready' || before.writable !== true || before.revision === undefined) return false
+  if (before.status !== 'ready' || before.revision === undefined) return undefined
+  if (before.writable !== true) return undefined
   const provider = before.value?.providers?.[selection.provider]
-  if (provider === undefined) return false
+  if (provider === undefined) return undefined
   const models = Array.isArray(provider.models) ? provider.models : []
+  // Catalog-served routes materialize an absent `models` as [] (llm-pi-ai
+  // schema default); writing [] back can never declare efforts there (the
+  // read-back stays undefined), so this action only exists for user-declared
+  // routes — fail fast as "not applicable" instead of a misleading toast.
+  if (models.length === 0) return undefined
   const efforts = { ...STANDARD_EFFORTS }
   const ops = [{
     op: 'set' as const,
@@ -676,7 +736,7 @@ export function installModelSelect(ctx: ClientContext): void {
         return {
           available,
           directory,
-          load: () => { if (available) models.directoryFor(sessionId).load().catch(() => {}) },
+          load: () => { if (available) { try { void models.directoryFor(sessionId).load().catch(() => { /* surfaced on the store */ }) } catch { /* STUB path: directoryFor throws synchronously; the menu stays open on the empty state */ } } },
           select: (selection: Selection) => available ? models.directoryFor(sessionId).select(selection).then(() => true, () => false) : Promise.resolve(false),
           configureEfforts: (selection: Selection) => declareStandardEfforts(obtainEffortsScope(), selection),
         }
