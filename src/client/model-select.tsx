@@ -48,8 +48,8 @@ const CSS = [
   // z-index in the open effect is the primary mechanism; this rule is the
   // re-mount fallback (inline styles are lost when the seat node is replaced).
   'html body.mg-dshnms-open [data-composer-seat]{z-index:60}',
-  '._dshnms_menu{z-index:2000;border:1px solid var(--dsw-alias-border-inverted);background:var(--dsw-specific-menu);width:max-content;min-width:min(240px,100vw - 32px);max-width:min(420px,100vw - 32px);max-height:min(420px,100vh - 96px);box-shadow:var(--dsw-shadow-lv3);color:var(--dsw-alias-label-primary);--dsh-scrollbar-thumb:var(--dsw-alias-scrollbar-bg-l2);--dsh-scrollbar-thumb-hover:var(--dsw-alias-scrollbar-hover-l2);border-radius:12px;flex-direction:column;padding:4px;display:flex;position:absolute;bottom:calc(100% + 8px);left:0;overflow:hidden}',
-  '._dshnms_menuDual{max-width:min(560px,100vw - 32px)}',
+  '._dshnms_menu{z-index:2000;border:1px solid var(--dsw-alias-border-inverted);background:var(--dsw-specific-menu);width:max-content;min-width:min(240px,100vw - 32px);max-height:min(420px,100vh - 96px);box-shadow:var(--dsw-shadow-lv3);color:var(--dsw-alias-label-primary);--dsh-scrollbar-thumb:var(--dsw-alias-scrollbar-bg-l2);--dsh-scrollbar-thumb-hover:var(--dsw-alias-scrollbar-hover-l2);border-radius:12px;flex-direction:column;padding:4px;display:flex;position:absolute;bottom:calc(100% + 8px);left:0;overflow:hidden}',
+  '._dshnms_menuDual{}',
   '._dshnms_columns{min-height:0;flex:1 1 auto;display:flex;flex-direction:row}',
   '._dshnms_col{min-width:0;min-height:0;flex:0 0 auto;display:flex;flex-direction:column}',
   '._dshnms_colRight{min-width:0;min-height:0;flex:1 1 auto;display:flex;flex-direction:column;border-left:1px solid var(--dsw-alias-border-l2);animation:_dshnms_slideIn .12s ease-out}',
@@ -315,23 +315,22 @@ function ModelSelectNested({ locked, available, directory, load, select, configu
     }
   }, [open])
 
-  // After the menu renders, clamp the left edge inside the root when the
-  // menu is wider than the space to its left (dual-column 560px case).
-  // Functional update + reference reuse: when the clamped value equals the
-  // current one, return the previous state object so React bails out
-  // (Object.is on the same reference). Without this, every clamp pass
-  // creates a fresh { right } object and the effect re-triggers forever —
-  // React #185 (d63190c regression, fixed here).
+  // After the menu renders, re-position it so the menu centre aligns with the
+  // centre of the trigger that opened it.  If the clamped position equals the
+  // current one the previous state object is returned so React bails out
+  // (Object.is), preventing the infinite-loop that d63190c had (#185).
   useLayoutEffect(() => {
     if (!open || menuAlign === null) return
     const menu = menuRef.current
     const root = rootRef.current
-    if (menu === null || root === null) return
+    const trigger = (lastOpenedRef.current === 'effort' ? effortTriggerRef : modelTriggerRef).current
+    if (menu === null || root === null || trigger === null) return
     const menuW = menu.offsetWidth
+    const triggerCenter = trigger.offsetLeft + trigger.offsetWidth / 2
+    const idealRight = Math.round(root.offsetWidth - triggerCenter - menuW / 2)
+    const clamped = Math.max(0, Math.min(idealRight, root.offsetWidth - menuW))
     setMenuAlign((prev) => {
       if (prev === null) return prev
-      if (prev.right + menuW <= root.offsetWidth) return prev
-      const clamped = Math.max(0, root.offsetWidth - menuW)
       return prev.right === clamped ? prev : { right: clamped }
     })
   }, [open, menuAlign, pane, activeGroup])
