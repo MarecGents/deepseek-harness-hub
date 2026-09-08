@@ -38,7 +38,9 @@ on:
 
 jobs:
   check:
-    runs-on: ubuntu-latest
+    # build-client.mjs is Windows-only (cmd + mklink junctions to the global
+    # dsh CLI's vendored SDK tree), so this gate must run on Windows.
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v5
 
