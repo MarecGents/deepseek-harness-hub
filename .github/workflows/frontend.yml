@@ -22,6 +22,8 @@ on:
       - 'tsdown.config.ts'
       - 'cordis.patch.yml'
       - '.github/workflows/frontend.yml'
+      - '.gitattributes'
+      - 'src-tauri/src/skin-colors.json'
   pull_request:
     branches: [main]
     paths:
