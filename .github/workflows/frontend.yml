@@ -50,6 +50,13 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # build-client.mjs resolves the client SDK packages (@deepseek-ai/dsh-*)
+      # from the GLOBAL @deepseek-ai/dsh CLI's vendored dependency tree — the
+      # SDK packages are not published to npm as an installable set. CI has no
+      # global dsh, so install the same CLI the release pipeline uses.
+      - name: Install global dsh CLI (client SDK tree for build:client)
+        run: npm install -g @deepseek-ai/dsh@0.1.2-rc.1 --no-audit --no-fund
+
       # tsdown links the @deepseek-ai/dsh-* SDK packages via junction when
       # they are missing — on CI the install-v1 registry metadata makes the
       # packages exist already, but keep the same build order as the release
