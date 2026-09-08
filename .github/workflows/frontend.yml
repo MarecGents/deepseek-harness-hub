@@ -79,6 +79,14 @@ jobs:
           node scripts/export-skin-colors.mjs
           if ! git diff --exit-code src-tauri/src/skin-colors.json; then
             echo "::error::src-tauri/src/skin-colors.json is out of date. Run 'node scripts/export-skin-colors.mjs' locally and commit."
+            echo "--- git diff ---"
+            git diff src-tauri/src/skin-colors.json | head -60
+            echo "--- line endings (CR count) ---"
+            grep -c $'\r' src-tauri/src/skin-colors.json || true
+            echo "--- git config ---"
+            git config core.autocrlf
+            echo "--- file type ---"
+            file src-tauri/src/skin-colors.json
             exit 1
           fi
 
