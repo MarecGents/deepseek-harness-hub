@@ -1,0 +1,32 @@
+{
+  "name": "@dsh-external/dsh-hub-auth-shim",
+  "version": "0.1.0",
+  "description": "回环自动登录兜底：外壳不带 token 导航首页时补一次带 token 的跳转（白屏兜底，不降级鉴权）",
+  "private": false,
+  "type": "module",
+  "main": "./lib/index.js",
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "exports": {
+    ".": "./lib/index.js"
+  },
+  "files": [
+    "lib",
+    "cordis.patch.yml"
+  ],
+  "scripts": {
+    "check": "node --check lib/index.js",
+    "test": "node --test test/"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.0.2"
+  },
+  "license": "BSD-3-Clause",
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  }
+}
