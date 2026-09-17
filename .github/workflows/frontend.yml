@@ -26,6 +26,7 @@ on:
       - '.gitattributes'
       - 'src-tauri/src/skin-colors.json'
       - 'lib/**'
+      - 'scripts/dsh-platform-modules.json'
   pull_request:
     branches: [main]
     paths:
@@ -40,6 +41,7 @@ on:
       - 'cordis.patch.yml'
       - '.github/workflows/frontend.yml'
       - 'lib/**'
+      - 'scripts/dsh-platform-modules.json'
   workflow_dispatch: {}
 
 jobs:

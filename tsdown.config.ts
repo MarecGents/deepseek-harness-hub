@@ -6,19 +6,28 @@
  * modules kept external (the frozen module table supplies them).
  */
 import { defineConfig } from 'tsdown'
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 
 /** Plugin id stamped into the __ModuleLoader__.load handoff (== package name). */
 const PLUGIN_ID = '@marecgents/dsh-hub'
 
-/** Specifiers the dsh boot module table shares (must stay external). */
-const PLATFORM_MODULES = [
-  'react', 'react/jsx-runtime', 'react-dom', 'react-dom/client', '@deepseek-ai/cordis',
-  '@deepseek-ai/dsh-client-ui-slots',
-  '@deepseek-ai/dsh-client-web-react',
-  '@deepseek-ai/dsh-client-ui-primitives',
-  '@deepseek-ai/dsh-client-ui-attachment',
-  '@deepseek-ai/dsh-client-schema-form',
-]
+/**
+ * Specifiers the dsh boot module table shares (must stay external).
+ *
+ * Read from a committed snapshot rather than the locally installed dsh: the
+ * table differs between dsh releases, so probing the machine would make `lib/`
+ * differ between machines carrying different dsh versions — exactly the drift
+ * verify-release P3 rejects. The snapshot is refreshed deliberately:
+ *   node scripts/dsh-platform-modules.mjs --write-snapshot
+ * and reconciled against the installed dsh by verify-platform-modules.mjs.
+ */
+const PLATFORM_MODULES: string[] = JSON.parse(
+  readFileSync(
+    fileURLToPath(new URL('./scripts/dsh-platform-modules.json', import.meta.url)),
+    'utf8'
+  )
+).modules
 
 /** A specifier the frozen module table answers. */
 function isPlatformModule(id: string): boolean {

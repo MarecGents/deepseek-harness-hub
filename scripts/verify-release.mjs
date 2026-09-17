@@ -21,6 +21,9 @@
  *       web profile must end up scoped-assembled (bundles contains the
  *       scoped name, junction at node_modules/@marecgents/dsh-hub → pkg).
  *   P5  npmjs dist-tags report (run after publish; informational here).
+ *   P6  platform-module baseline still valid for the installed dsh
+ *       (verify-platform-modules; WARN/SKIP pass, only an unreachable
+ *       snapshot entry FAILs — see docs/关键踩坑记录.md #111).
  *
  * Exit code 0 = all checks passed (safe to publish); 1 = FAIL (stop).
  *
@@ -33,6 +36,8 @@ import { existsSync, mkdirSync, readFileSync, rmSync, readlinkSync } from 'node:
 import { homedir, tmpdir } from 'node:os'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
+
+import { reconcilePlatformModules } from './verify-platform-modules.mjs'
 
 const PACKAGE_ROOT = dirname(dirname(fileURLToPath(import.meta.url)))
 const PACKAGE_JSON = JSON.parse(readFileSync(join(PACKAGE_ROOT, 'package.json'), 'utf8'))
@@ -197,6 +202,12 @@ check('P4 fresh-machine install+assemble smoke', smoke.ok, smoke.detail)
 
 // P5 report
 console.log(`\nINFO  npmjs dist-tags (registry direct): ${distTags()}`)
+
+// P6 platform-module baseline — a snapshot entry the installed dsh cannot
+// answer would throw when a bundle requires it. WARN (host gained entries) and
+// SKIP (no dsh on this machine) are informational, not release blockers.
+const platform = reconcilePlatformModules()
+check('P6 platform-module baseline valid for installed dsh', platform.status !== 'FAIL', `${platform.status} — ${platform.detail}`)
 
 const failed = results.filter((r) => !r.ok)
 console.log(`\n[verify-release] ${failed.length === 0 ? 'ALL PASS — safe to publish' : `${failed.length} FAILED — DO NOT PUBLISH`}`)

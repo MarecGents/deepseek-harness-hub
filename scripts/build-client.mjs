@@ -10,6 +10,15 @@
  * the browser loads the bundle through dsh's client-modules, which serves the
  * platform modules from its own frozen module table — nothing here is a
  * runtime dependency.
+ *
+ * After tsdown it asserts two artifacts contracts (both were real regressions,
+ * see docs/关键踩坑记录.md #110 and #111):
+ *   1. portability — no build-machine absolute path or line ending survives;
+ *   2. module contract — every require() is answerable by the dsh frozen table,
+ *      and no table member is inlined twice.
+ *
+ * @module dsh-hub/scripts/build-client
+ * @category Helper
  */
 
 import { spawnSync } from 'node:child_process'
@@ -17,42 +26,13 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-const PACKAGE_ROOT = dirname(dirname(fileURLToPath(import.meta.url)))
+import { resolveDshSdkScope } from './dsh-sdk-scope.mjs'
+import {
+  findPlatformContractViolations,
+  readPlatformModulesSnapshot,
+} from './dsh-platform-modules.mjs'
 
-/** The @deepseek-ai scope inside the installed dsh CLI's dependency tree. */
-function dshSdkScope() {
-  // The dsh CLI is installed globally; its client SDK packages live inside
-  // the dsh package's own node_modules (a vendored, self-contained tree).
-  const candidates = []
-  const globalRoot = spawnSync(process.env.ComSpec ?? 'cmd', ['/d', '/s', '/c', 'npm root -g'], {
-    encoding: 'utf8', windowsHide: true,
-  })
-  if (globalRoot.status === 0) {
-    const root = globalRoot.stdout.trim()
-    // dsh package may be hoisted (root/@deepseek-ai/dsh/...) or nested
-    // (root/@deepseek-ai/dsh/node_modules/...).
-    for (const dshDir of [
-      join(root, '@deepseek-ai', 'dsh', 'node_modules', '@deepseek-ai'),
-      join(root, 'node_modules', '@deepseek-ai', 'dsh', 'node_modules', '@deepseek-ai'),
-    ]) {
-      if (existsSync(join(dshDir, 'dsh-client-modules', 'package.json'))) candidates.push(dshDir)
-    }
-  }
-  if (process.env.DSH_CMD && existsSync(process.env.DSH_CMD)) {
-    const cliDir = dirname(process.env.DSH_CMD)
-    for (const dshDir of [
-      join(cliDir, 'node_modules', '@deepseek-ai'),
-      join(dirname(cliDir), 'node_modules', '@deepseek-ai', 'dsh', 'node_modules', '@deepseek-ai'),
-      join(dirname(dirname(cliDir)), 'node_modules', '@deepseek-ai', 'dsh', 'node_modules', '@deepseek-ai'),
-    ]) {
-      if (existsSync(join(dshDir, 'dsh-client-modules', 'package.json'))) candidates.push(dshDir)
-    }
-  }
-  for (const candidate of candidates) {
-    if (existsSync(join(candidate, 'dsh-client-modules', 'package.json'))) return candidate
-  }
-  throw new Error('build-client: could not locate the @deepseek-ai/dsh client SDK tree (npm root -g or DSH_CMD)')
-}
+const PACKAGE_ROOT = dirname(dirname(fileURLToPath(import.meta.url)))
 
 /** Packages this bundle imports (directly or transitively). */
 const SDK_PACKAGES = [
@@ -71,7 +51,7 @@ const SDK_PACKAGES = [
 ]
 
 function linkSdk() {
-  const scope = dshSdkScope()
+  const scope = resolveDshSdkScope()
   const targetScope = join(PACKAGE_ROOT, 'node_modules', '@deepseek-ai')
   mkdirSync(targetScope, { recursive: true })
   let linked = 0
@@ -174,6 +154,36 @@ function assertPortableArtifacts() {
   }
 }
 
+/**
+ * Assert the bundle's module contract against the committed frozen-table
+ * baseline. Both failure directions are fatal at plugin load: a require() the
+ * dsh kernel cannot answer throws when the plugin materializes, and inlining a
+ * table member hands out a second instance of a module the host already serves.
+ */
+function assertPlatformContract() {
+  const snapshot = readPlatformModulesSnapshot()
+  const bundle = readFileSync(join(PACKAGE_ROOT, 'lib', 'client.js'), 'utf8')
+  const { unresolvable, duplicated } = findPlatformContractViolations(bundle, snapshot.modules)
+
+  if (unresolvable.length === 0 && duplicated.length === 0) {
+    console.log(
+      `[build-client] platform contract ok (baseline ${snapshot.baseline}, ${snapshot.modules.length} modules)`
+    )
+    return
+  }
+  if (unresolvable.length > 0) {
+    console.error('[build-client] ✗ bundle requires modules the dsh frozen table does not answer:')
+    for (const id of unresolvable) console.error(`    ${id}`)
+    console.error('    The plugin throws at materialization. Supply it via dsh.client.external instead.')
+  }
+  if (duplicated.length > 0) {
+    console.error('[build-client] ✗ bundle inlines modules the host already provides (duplicate instances):')
+    for (const id of duplicated) console.error(`    ${id}`)
+    console.error('    Add it to the baseline snapshot if the host table really answers it.')
+  }
+  process.exit(1)
+}
+
 function main() {
   linkSdk()
   const run = spawnSync('npx', ['tsdown'], {
@@ -185,6 +195,7 @@ function main() {
   if (run.status !== 0) process.exit(run.status ?? 1)
   normalizeArtifacts()
   assertPortableArtifacts()
+  assertPlatformContract()
 }
 
 main()
