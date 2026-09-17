@@ -16,6 +16,7 @@ on:
       - 'src/**'
       - 'plugins/**'
       - 'scripts/verify-*.mjs'
+      - 'scripts/build-client.mjs'
       - 'package.json'
       - 'package-lock.json'
       - 'tsconfig.json'
@@ -24,18 +25,21 @@ on:
       - '.github/workflows/frontend.yml'
       - '.gitattributes'
       - 'src-tauri/src/skin-colors.json'
+      - 'lib/**'
   pull_request:
     branches: [main]
     paths:
       - 'src/**'
       - 'plugins/**'
       - 'scripts/verify-*.mjs'
+      - 'scripts/build-client.mjs'
       - 'package.json'
       - 'package-lock.json'
       - 'tsconfig.json'
       - 'tsdown.config.ts'
       - 'cordis.patch.yml'
       - '.github/workflows/frontend.yml'
+      - 'lib/**'
   workflow_dispatch: {}
 
 jobs:

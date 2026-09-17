@@ -13,7 +13,7 @@
  */
 
 import { spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -92,6 +92,88 @@ function linkSdk() {
   console.log(`[build-client] linked ${linked} SDK packages from ${scope}`)
 }
 
+/** Absolute-path test: drive letter, UNC, or POSIX root. `\0` virtual modules are not paths. */
+function isAbsoluteModulePath(p) {
+  if (p.startsWith('\\0')) return false
+  return /^[A-Za-z]:[\\/]/.test(p) || /^\\\\/.test(p) || p.startsWith('/')
+}
+
+/**
+ * Absolutize a module path to its portable form: repo-relative when the module
+ * lives inside the package, otherwise relative to the nearest `node_modules/`.
+ * `basePrefix` is prepended (`../` when the consumer resolves from `lib/`).
+ */
+function normalizeModulePath(absPath, basePrefix = '') {
+  const fwd = absPath.replace(/\\/g, '/')
+  const rootFwd = PACKAGE_ROOT.replace(/\\/g, '/')
+  if (fwd.startsWith(`${rootFwd}/`)) return basePrefix + fwd.slice(rootFwd.length + 1)
+  const cut = fwd.lastIndexOf('/node_modules/')
+  return basePrefix + (cut >= 0 ? fwd.slice(cut + 1) : fwd)
+}
+
+/**
+ * Portable artifacts: the bundler stamps module paths into `//#region`
+ * comments and sourcemap `sources`, and captures each source file verbatim in
+ * `sourcesContent`. Both leak the build machine — an absolute path whenever a
+ * dependency resolves outside the package (junctions), and the working-tree
+ * line endings. Normalizing here keeps `lib/` byte-identical across machines,
+ * which is what verify-release P3 compares.
+ */
+function normalizeArtifacts() {
+  const jsPath = join(PACKAGE_ROOT, 'lib', 'client.js')
+  const mapPath = join(PACKAGE_ROOT, 'lib', 'client.js.map')
+  const leaks = []
+
+  const js = readFileSync(jsPath, 'utf8')
+  const jsOut = js.replace(/\/\/#region ([^\r\n]*)/g, (whole, p) => {
+    if (!isAbsoluteModulePath(p)) return whole
+    leaks.push(`client.js region: ${p}`)
+    return `//#region ${normalizeModulePath(p)}`
+  })
+  if (jsOut !== js) writeFileSync(jsPath, jsOut)
+
+  const map = JSON.parse(readFileSync(mapPath, 'utf8'))
+  map.sources = (map.sources ?? []).map((s) => {
+    if (!isAbsoluteModulePath(s)) return s
+    leaks.push(`client.js.map source: ${s}`)
+    return normalizeModulePath(s, '../')
+  })
+  if (Array.isArray(map.sourcesContent)) {
+    map.sourcesContent = map.sourcesContent.map((s) =>
+      typeof s === 'string' ? s.replace(/\r\n/g, '\n') : s
+    )
+  }
+  writeFileSync(mapPath, JSON.stringify(map))
+
+  const remaining = leaks.length
+  console.log(
+    remaining === 0
+      ? '[build-client] artifacts already portable (no absolute paths)'
+      : `[build-client] normalized ${remaining} absolute module path(s)`
+  )
+  return leaks
+}
+
+/**
+ * Fail loudly when a module path still is not portable after normalization —
+ * that means a dependency resolved outside both the package and any
+ * `node_modules/`, and the artifact would differ per machine.
+ */
+function assertPortableArtifacts() {
+  const js = readFileSync(join(PACKAGE_ROOT, 'lib', 'client.js'), 'utf8')
+  const map = JSON.parse(readFileSync(join(PACKAGE_ROOT, 'lib', 'client.js.map'), 'utf8'))
+  const offenders = [
+    ...[...js.matchAll(/\/\/#region ([^\r\n]*)/g)].map((m) => m[1]).filter(isAbsoluteModulePath),
+    ...(map.sources ?? []).filter(isAbsoluteModulePath),
+  ]
+  if (offenders.length > 0) {
+    console.error('[build-client] ✗ artifacts still contain absolute module paths:')
+    for (const p of offenders.slice(0, 10)) console.error(`    ${p}`)
+    console.error('    A dependency probably resolves outside the package — check node_modules links.')
+    process.exit(1)
+  }
+}
+
 function main() {
   linkSdk()
   const run = spawnSync('npx', ['tsdown'], {
@@ -101,6 +183,8 @@ function main() {
     env: { ...process.env },
   })
   if (run.status !== 0) process.exit(run.status ?? 1)
+  normalizeArtifacts()
+  assertPortableArtifacts()
 }
 
 main()

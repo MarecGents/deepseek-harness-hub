@@ -253,6 +253,8 @@ npm run build:client
 
 > ⚠️ 执行 `npm i` 新依赖会清掉 `build-client` 建立的 SDK junction（`@deepseek-ai/dsh-*`），装完必须重新运行 `npm run build:client`。
 
+> `build:client` 结束前会归一化产物（`//#region` 与 sourcemap 的绝对路径、`sourcesContent` 行尾），使 `lib/` 在不同机器/目录构建下字节一致——这是 verify-release P3「lib 零漂移」成立的前提。若归一化后仍有绝对路径残留，构建直接失败并打印命中条目（见 `docs/关键踩坑记录.md` #110）。
+
 ## 依赖
 
 | 类型 | 主要依赖 |
