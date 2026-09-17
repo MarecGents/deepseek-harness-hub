@@ -30,7 +30,7 @@ import {
   IconPanelLeftOutline16,
   IconPlayOutline16,
   IconRightUpOutline16,
-  IconSendOutline16,
+  IconSendOutline14,
   IconThinkOutline16,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import { RIGHT_SIDEBAR_CSS_CLASSES as c } from './right-sidebar-style.ts'
@@ -742,14 +742,14 @@ function Overview(props: {
           <StatCard icon={IconRightUpOutline16} label="速度" value={`${formatTokensPerSecond(tps ?? 0)} tok/s`} />
           <StatCard icon={IconCheckOutline16} label="缓存命中" value={`${cacheHit ?? 0}%`} />
           <StatCard icon={IconDownloadOutline16} label="输入 Tokens" value={`${formatTokens(inputTokens ?? 0)} tok`} />
-          <StatCard icon={IconSendOutline16} label="输出 Tokens" value={`${formatTokens(outputTokens ?? 0)} tok`} />
+          <StatCard icon={IconSendOutline14} label="输出 Tokens" value={`${formatTokens(outputTokens ?? 0)} tok`} />
         </div>
       </div>
       <div className={c.section}>
         <div className={c.sectionTitle}>本轮对话 Token</div>
         <div className={c.statGrid}>
           <StatCard icon={IconDownloadOutline16} label="本轮输入" value={`${formatTokens(billedInputTokens(turn))} tok`} />
-          <StatCard icon={IconSendOutline16} label="本轮输出" value={`${formatTokens(turn.outputTokens)} tok`} />
+          <StatCard icon={IconSendOutline14} label="本轮输出" value={`${formatTokens(turn.outputTokens)} tok`} />
           <StatCard icon={IconCheckOutline16} label="本轮缓存命中" value={`${turnCache}%`} />
           <StatCard icon={IconDataOutline16} label="本轮总计" value={`${formatTokens(turnTotalValue)} tok`} />
         </div>
