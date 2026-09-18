@@ -33,8 +33,6 @@ import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import { DesktopSettingsCard, type DesktopSettingsCardProps } from './settings-card.tsx'
 import { injectCardStyle, injectChatVisibilityStyle } from './style.ts'
 import { t } from './locale.ts'
-import { RightSidebar } from './right-sidebar.tsx'
-import { injectRightSidebarStyle } from './right-sidebar-style.ts'
 import { applySkin, fetchStoredSkin, hasUserPickedSkin } from './skins.ts'
 import { applyBackground, fetchStoredBackground, hasUserPickedBackground } from './backgrounds.ts'
 import { installPinnedConversations } from './pin-conversations.ts'
@@ -293,9 +291,9 @@ export function apply(ctx: ClientContext): void {
     console.warn('[dsh-hub] model-select install failed:', error)
   }
 
-  // Inject the card + right-sidebar stylesheets (idempotent).
+  // Inject the card stylesheet (idempotent). The right-sidebar stylesheet went
+  // with the sidebar itself (退役 2026-09-18, see the block further down).
   injectCardStyle()
-  injectRightSidebarStyle()
   // Long-history rendering aid: content-visibility on chat rows (browser
   // skips off-screen layout/paint when a session's DOM grows large).
   injectChatVisibilityStyle()
@@ -360,26 +358,24 @@ export function apply(ctx: ClientContext): void {
     console.warn('[dsh-hub] permission-policy chip injection failed:', error)
   }
 
-  // Right sidebar: mount a body portal like dsh-better-sidebar. This keeps
-  // the sidebar independent of the official details column (so blank/new
-  // conversations can still expand it) and lets the official details panel
-  // coexist immediately to its left when dsh opens tool details.
-  try {
-    ctx.effect(() => {
-      const host = document.createElement('div')
-      host.id = 'dsh-hub-right-sidebar-root'
-      host.setAttribute('data-dsh-hub-right-sidebar', '')
-      document.body.appendChild(host)
-      const root: Root = createRoot(host)
-      root.render(createElement(RightSidebar, { ctx }))
-      return () => {
-        root.unmount()
-        host.remove()
-      }
-    }, 'dsh-hub: right sidebar mount')
-  } catch (error) {
-    console.warn('[dsh-hub] right sidebar mount failed:', error)
-  }
+  // Right sidebar: RETIRED 2026-09-18 (decision 退役自研右栏). The hub's own
+  // right sidebar (概览 / 文件 / Git) was written against dsh 0.1.5's
+  // `sessions.list.current`. dsh 0.1.6-alpha.2 removed that field from
+  // SessionListState ("view selection remains outside the Controller"), so
+  // `sessions?.current` was permanently undefined and EVERY figure in the
+  // panel — context tokens, turns/steps, LLM time, workspace file counts —
+  // silently read 0. Meanwhile 0.1.6 ships its own right sidebar family
+  // (dsh-client-ui-sidebar / -right / -files / -browser / -documentpreview /
+  // -terminal), so ours was dead weight on top of a first-class one.
+  //
+  // The implementation is kept unmodified in ./right-sidebar.tsx and
+  // ./right-sidebar-style.ts. Restoring the sidebar needs exactly three things
+  // back: the two imports at the top of this file, the
+  // `injectRightSidebarStyle()` call next to `injectCardStyle()`, and this
+  // ctx.effect block (see git history or index.ts.bak-sidebar-retire-20260918).
+  //
+  // Note the terminal entry survives: Ctrl+J toggles the bottom dock
+  // (onTerminalKey below) and the dock mounts independently.
 
   // Title-bar session tabs (顶部会话标签栏): a browser-style tab strip at the
   // top, portaled into the titlebar (#dsh-hub-titlebar .tb-title). The host
