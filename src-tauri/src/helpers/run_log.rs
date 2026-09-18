@@ -16,7 +16,9 @@ use std::path::Path;
 pub fn rotate_run_log(log_dir: &Path) {
     let current = log_dir.join("dsh.log");
     // 空文件（上次启动即崩/即退）不值得占用一代，保留更早的有效现场。
-    let has_content = std::fs::metadata(&current).map(|m| m.len() > 0).unwrap_or(false);
+    let has_content = std::fs::metadata(&current)
+        .map(|m| m.len() > 0)
+        .unwrap_or(false);
     if !has_content {
         return;
     }
@@ -39,7 +41,8 @@ mod tests {
     use super::*;
 
     fn tmpdir(tag: &str) -> std::path::PathBuf {
-        let dir = std::env::temp_dir().join(format!("dsh-hub-run-log-{tag}-{}", std::process::id()));
+        let dir =
+            std::env::temp_dir().join(format!("dsh-hub-run-log-{tag}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         dir
@@ -51,8 +54,14 @@ mod tests {
         std::fs::write(dir.join("dsh.log"), "current").unwrap();
         std::fs::write(dir.join("dsh.log.prev"), "older").unwrap();
         rotate_run_log(&dir);
-        assert_eq!(std::fs::read_to_string(dir.join("dsh.log.prev")).unwrap(), "current");
-        assert_eq!(std::fs::read_to_string(dir.join("dsh.log.prev2")).unwrap(), "older");
+        assert_eq!(
+            std::fs::read_to_string(dir.join("dsh.log.prev")).unwrap(),
+            "current"
+        );
+        assert_eq!(
+            std::fs::read_to_string(dir.join("dsh.log.prev2")).unwrap(),
+            "older"
+        );
         assert!(!dir.join("dsh.log").exists());
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -64,7 +73,10 @@ mod tests {
         rotate_run_log(&dir); // dsh.log 不存在
         std::fs::write(dir.join("dsh.log"), "").unwrap();
         rotate_run_log(&dir); // dsh.log 为空
-        assert_eq!(std::fs::read_to_string(dir.join("dsh.log.prev")).unwrap(), "older");
+        assert_eq!(
+            std::fs::read_to_string(dir.join("dsh.log.prev")).unwrap(),
+            "older"
+        );
         assert!(!dir.join("dsh.log.prev2").exists());
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -76,8 +88,14 @@ mod tests {
         std::fs::write(dir.join("dsh.log.prev"), "b").unwrap();
         std::fs::write(dir.join("dsh.log.prev2"), "c").unwrap();
         rotate_run_log(&dir);
-        assert_eq!(std::fs::read_to_string(dir.join("dsh.log.prev")).unwrap(), "a");
-        assert_eq!(std::fs::read_to_string(dir.join("dsh.log.prev2")).unwrap(), "b");
+        assert_eq!(
+            std::fs::read_to_string(dir.join("dsh.log.prev")).unwrap(),
+            "a"
+        );
+        assert_eq!(
+            std::fs::read_to_string(dir.join("dsh.log.prev2")).unwrap(),
+            "b"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
