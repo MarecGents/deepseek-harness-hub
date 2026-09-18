@@ -253,6 +253,14 @@ npm run build:client
 
 > ⚠️ 执行 `npm i` 新依赖会清掉 `build-client` 建立的 SDK junction（`@deepseek-ai/dsh-*`），装完必须重新运行 `npm run build:client`。
 
+> `build:client` 结束前会归一化产物（`//#region` 与 sourcemap 的绝对路径、`sourcesContent` 行尾），使 `lib/` 在不同机器/目录构建下字节一致——这是 verify-release P3「lib 零漂移」成立的前提。若归一化后仍有绝对路径残留，构建直接失败并打印命中条目（见 `docs/关键踩坑记录.md` #110）。
+
+> client bundle 的 external 名单（打包期不内联、由 dsh 宿主的冻结模块表在运行时代答的包）来自仓库快照 `scripts/dsh-platform-modules.json`，**不是**探测本机 dsh——本机 `dsh` 版本差异会让产物不一致。dsh 升级后刷新快照并核对：
+> ```sh
+> node scripts/dsh-platform-modules.mjs --write-snapshot   # 从本机 dsh 重新提取（会改快照，确认后再提交）
+> node scripts/verify-platform-modules.mjs                 # 对账：快照里的条目本机 dsh 必须都能答（见踩坑 #111）
+> ```
+
 ## 依赖
 
 | 类型 | 主要依赖 |

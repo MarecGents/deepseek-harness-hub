@@ -1,4 +1,9 @@
-# Generated artifacts must stay LF on every platform: the export script
-# writes LF, and a CRLF checkout (Windows autocrlf) makes the CI
-# "Verify skin-colors.json is up-to-date" step fail on `git diff --exit-code`.
+# Generated artifacts must stay LF on every platform. The export/build steps
+# write LF, but a Windows CRLF checkout (core.autocrlf) rewrites the working
+# tree, and the CI gates compare bytes: "Verify skin-colors.json is
+# up-to-date" trips on `git diff --exit-code`, and verify-release P3 reports
+# every lib/ file as phantom drift — except files with no newline at all
+# (lib/client.js.map), which is the fingerprint of a line-ending mismatch
+# rather than real content drift.
 src-tauri/src/skin-colors.json text eol=lf
+lib/** text eol=lf

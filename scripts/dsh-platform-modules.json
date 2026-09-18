@@ -1,0 +1,14 @@
+{
+  "baseline": "0.1.2-rc.1",
+  "modules": [
+    "react",
+    "react/jsx-runtime",
+    "react-dom",
+    "react-dom/client",
+    "@deepseek-ai/cordis",
+    "@deepseek-ai/dsh-client-store",
+    "@deepseek-ai/dsh-client-ui-slots",
+    "@deepseek-ai/dsh-client-ui-primitives"
+  ],
+  "source": "dsh-web-frontend/dist/assets/index-Df-65__b.js"
+}

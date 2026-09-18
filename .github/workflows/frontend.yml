@@ -16,6 +16,7 @@ on:
       - 'src/**'
       - 'plugins/**'
       - 'scripts/verify-*.mjs'
+      - 'scripts/build-client.mjs'
       - 'package.json'
       - 'package-lock.json'
       - 'tsconfig.json'
@@ -24,18 +25,23 @@ on:
       - '.github/workflows/frontend.yml'
       - '.gitattributes'
       - 'src-tauri/src/skin-colors.json'
+      - 'lib/**'
+      - 'scripts/dsh-platform-modules.json'
   pull_request:
     branches: [main]
     paths:
       - 'src/**'
       - 'plugins/**'
       - 'scripts/verify-*.mjs'
+      - 'scripts/build-client.mjs'
       - 'package.json'
       - 'package-lock.json'
       - 'tsconfig.json'
       - 'tsdown.config.ts'
       - 'cordis.patch.yml'
       - '.github/workflows/frontend.yml'
+      - 'lib/**'
+      - 'scripts/dsh-platform-modules.json'
   workflow_dispatch: {}
 
 jobs:
@@ -75,12 +81,14 @@ jobs:
       # src/client/skins.ts. The export script is pure Node (no build
       # artifacts required), so it can run at any point after `npm ci`.
       - name: Verify skin-colors.json is up-to-date
+        # windows-latest runs `run:` blocks under pwsh, so POSIX syntax
+        # (if ! ...; then ... fi) needs an explicit bash shell.
+        shell: bash
         run: |
           node scripts/export-skin-colors.mjs
           if ! git diff --exit-code src-tauri/src/skin-colors.json; then
-            DIFF=$(git diff src-tauri/src/skin-colors.json | head -40 | sed 's/%/%25/g; s/\r/%0D/g; s/\n/%0A/g')
-            CR=$(grep -c $'\r' src-tauri/src/skin-colors.json || true)
-            echo "::error::skin-colors out of date. CR=$CR autocrlf=$(git config core.autocrlf) diff: $DIFF"
+            echo "::error::skin-colors.json is out of date - run: node scripts/export-skin-colors.mjs"
+            git diff --stat src-tauri/src/skin-colors.json
             exit 1
           fi
 

@@ -51,8 +51,140 @@ function buildCss(skin: DshSkin): string {
 }
 
 /**
+ * Reasonix native palette — the exact `:root` / `[data-theme="light"]` /
+ * `[data-theme-style="…"]` values from Reasonix's own `styles.css`, reduced to
+ * the sixteen tokens its surface/direction contract actually declares.
+ */
+interface ReasonixCore {
+  bg: string
+  bgSoft: string
+  bgElev: string
+  bgElev2: string
+  sidebar: string
+  sidebarHover: string
+  border: string
+  borderSoft: string
+  fg: string
+  fgDim: string
+  fgFaint: string
+  accent: string
+  accentFg: string
+  /** `rgba(…)` wash — Reasonix declares its accent tints as alpha, not hex. */
+  accentSoft: string
+  accentStrong: string
+  code: string
+}
+
+const HEX6 = /^#?([0-9a-f]{6})$/i
+
+function rgbOf(color: string): [number, number, number] {
+  const m = color.match(HEX6)
+  if (m === null) throw new Error(`unsupported color: ${color}`)
+  const n = parseInt(m[1], 16)
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255]
+}
+
+function hexOf(rgb: number[]): string {
+  return `#${rgb
+    .map((v) => Math.round(Math.min(255, Math.max(0, v))).toString(16).padStart(2, '0'))
+    .join('')}`
+}
+
+function mix(a: string, b: string, t: number): string {
+  const [ar, ag, ab] = rgbOf(a)
+  const [br, bg, bb] = rgbOf(b)
+  return hexOf([ar + (br - ar) * t, ag + (bg - ag) * t, ab + (bb - ab) * t])
+}
+
+/** Composite an `rgba()` color over an opaque base — dsw tokens want hex. */
+function over(color: string, base: string): string {
+  const m = color.match(/rgba?\(([^)]+)\)/)
+  if (m === null) return color
+  const parts = m[1].split(',').map((s) => parseFloat(s.trim()))
+  const [r, g, b] = parts
+  const a = parts[3] ?? 1
+  const [br, bg, bb] = rgbOf(base)
+  return hexOf([r * a + br * (1 - a), g * a + bg * (1 - a), b * a + bb * (1 - a)])
+}
+
+/**
+ * Derivation rule: Reasonix core palette → dsw token set.
+ *
+ * The main roles map 1:1 (bg/fg/accent/border/code). Everything Reasonix does
+ * not name — the third border step, the dimmed label, the accent washes used
+ * for selected rows and bubbles — is derived with the fixed coefficients
+ * below, so all seven Reasonix skins stay internally consistent. `dimmed`
+ * lands ~72% of the way to bg (Reasonix's own `--fg-faint` is already the
+ * 3.5:1 floor, so this stays legible).
+ */
+function reasonixPalette(p: ReasonixCore): { alias: Palette; specific: Palette } {
+  const border = p.border.startsWith('rgba') ? over(p.border, p.bg) : p.border
+  const borderSoft = p.borderSoft.startsWith('rgba') ? over(p.borderSoft, p.bg) : p.borderSoft
+  return {
+    alias: {
+      'bg-base': p.bg,
+      'bg-layer-1': p.bgSoft,
+      'bg-layer-2': p.bgElev,
+      'bg-layer-3': p.bgElev2,
+      'bg-overlay': p.bgElev,
+      'label-primary': p.fg,
+      'label-secondary': p.fgDim,
+      'label-tertiary': p.fgFaint,
+      'label-dimmed': mix(p.fgFaint, p.bg, 0.28),
+      'border-l1': borderSoft,
+      'border-l2': border,
+      'border-l3': mix(border, p.fgFaint, 0.35),
+      'brand-primary': p.accent,
+      'brand-primary-invert': p.accentFg,
+      'brand-text': p.accentFg,
+      'button-primary-fill': p.accent,
+      'button-primary-hover': p.accentStrong,
+      'button-primary-dimmed': over(p.accentSoft, p.bgElev2),
+      'interactive-bg-hover': p.sidebarHover,
+      'interactive-bg-active': over(p.accentSoft, p.bg),
+      'markdown-code-block': p.code,
+      'markdown-inline-code': p.bgElev2,
+      'scrollbar-bg-l1': border,
+      'scrollbar-hover-l1': mix(border, p.fgFaint, 0.4),
+      'bg-module-platform': p.bgElev2,
+      'tooltip-bg': p.bgElev2,
+      'toast-bg': p.bgElev2,
+    },
+    specific: {
+      'sidebar-fill': p.sidebar,
+      'sidebar-nav-item-active-accent': p.accent,
+      'sidebar-nav-item-active': over(p.accentSoft, p.bgElev),
+      'sidebar-nav-item-hover': p.sidebarHover,
+      menu: p.bgElev,
+      bubble: over(p.accentSoft, p.bgElev),
+      'bubble-highlight': over(p.accentSoft, p.bgElev2),
+    },
+  }
+}
+
+function reasonixSkin(
+  id: string,
+  name: string,
+  description: string,
+  light: ReasonixCore,
+  dark: ReasonixCore,
+): DshSkin {
+  const l = reasonixPalette(light)
+  const d = reasonixPalette(dark)
+  return {
+    id,
+    name,
+    description,
+    light: l.alias,
+    dark: d.alias,
+    specific: { light: l.specific, dark: d.specific },
+  }
+}
+
+/**
  * The built-in skins. Palettes are original compositions over the dsw alias
- * token set; adjust freely.
+ * token set; adjust freely. The `rx-*` group is the Reasonix-native set — see
+ * `reasonixSkin` for the mapping rule.
  */
 export const SKINS: DshSkin[] = [
   {
@@ -481,6 +613,152 @@ export const SKINS: DshSkin[] = [
       },
     },
   },
+  // Reasonix-native skins — palettes transcribed from Reasonix's own
+  // `desktop/frontend/src/styles.css`: the default `:root` + light block, plus
+  // the six `[data-theme-style="…"]` direction overrides. Unlike the theme-pack
+  // ports that follow, these are Reasonix's *shipping* look — `rx-core` is what
+  // Reasonix looks like out of the box, and the six directions are the ones its
+  // theme dropdown offers. Directions declare only a partial token set, so the
+  // undeclared surfaces (bg-elev-2, sidebar, borders-soft, code) are derived
+  // with the uniform mix rule in `reasonixPalette`.
+  reasonixSkin(
+    'rx-core',
+    'Reasonix 默认',
+    'Reasonix 原生默认——墨黑底 + 铜橙强调',
+    {
+      bg: '#f7f8fb', bgSoft: '#eef2f7', bgElev: '#ffffff', bgElev2: '#f2f5f9',
+      sidebar: '#f9f9f9', sidebarHover: '#e8edf4', border: '#d8dee8', borderSoft: '#e7ebf2',
+      fg: '#111827', fgDim: '#4b5563', fgFaint: '#8a94a6',
+      accent: '#2f5fa8', accentFg: '#ffffff', accentSoft: 'rgba(47,95,168,0.12)',
+      accentStrong: '#244f91', code: '#f2f5f9',
+    },
+    {
+      bg: '#090a0c', bgSoft: '#111319', bgElev: '#191b22', bgElev2: '#222631',
+      sidebar: '#0c0e12', sidebarHover: '#181c24', border: '#343945', borderSoft: '#252a34',
+      fg: '#f4f5f7', fgDim: '#c0c4cc', fgFaint: '#858b96',
+      accent: '#d97757', accentFg: '#1a0f0a', accentSoft: 'rgba(217,119,87,0.14)',
+      accentStrong: '#e58a6b', code: '#111319',
+    },
+  ),
+  reasonixSkin(
+    'rx-graphite',
+    '石墨',
+    'Reasonix 方向 Graphite——冷灰墨底 + 朱橙强调',
+    {
+      bg: '#f4f3ef', bgSoft: '#f0efe9', bgElev: '#ffffff', bgElev2: '#f7f6f2',
+      sidebar: '#f7f6f2', sidebarHover: '#eae8e1', border: '#dedbd3', borderSoft: '#eae7e0',
+      fg: '#1a1a18', fgDim: '#57564f', fgFaint: '#8a887e',
+      accent: '#d94f22', accentFg: '#ffffff', accentSoft: 'rgba(217,79,34,0.12)',
+      accentStrong: '#bd4319', code: '#f0efe9',
+    },
+    {
+      bg: '#0c0d10', bgSoft: '#101115', bgElev: '#15161a', bgElev2: '#1c1d22',
+      sidebar: '#0a0b0e', sidebarHover: '#1a1c21',
+      border: 'rgba(255,255,255,0.1)', borderSoft: 'rgba(255,255,255,0.055)',
+      fg: '#f1f1ef', fgDim: '#a7a8ad', fgFaint: '#74757a',
+      accent: '#ff6a3d', accentFg: '#1a0a05', accentSoft: 'rgba(255,106,61,0.14)',
+      accentStrong: '#ff8158', code: '#101115',
+    },
+  ),
+  reasonixSkin(
+    'rx-aurora',
+    '极光',
+    'Reasonix 方向 Aurora——深紫夜底 + 薰衣草强调',
+    {
+      bg: '#f6f3fb', bgSoft: '#efeaf8', bgElev: '#fdfcff', bgElev2: '#f4f0fb',
+      sidebar: '#f9f6fd', sidebarHover: '#e9e2f6', border: '#ddd4ee', borderSoft: '#ebe5f7',
+      fg: '#1c1630', fgDim: '#584f76', fgFaint: '#8b82a8',
+      accent: '#6b4ee6', accentFg: '#ffffff', accentSoft: 'rgba(107,78,230,0.12)',
+      accentStrong: '#5739cc', code: '#efeaf8',
+    },
+    {
+      bg: '#0e0d18', bgSoft: '#121120', bgElev: '#17162a', bgElev2: '#1f1d36',
+      sidebar: '#0c0b15', sidebarHover: '#1c1a30',
+      border: 'rgba(255,255,255,0.07)', borderSoft: 'rgba(255,255,255,0.045)',
+      fg: '#ecebf7', fgDim: '#a9a4c6', fgFaint: '#736e91',
+      accent: '#8b7cff', accentFg: '#0f0b22', accentSoft: 'rgba(139,124,255,0.15)',
+      accentStrong: '#a094ff', code: '#121120',
+    },
+  ),
+  reasonixSkin(
+    'rx-slate',
+    '岩板',
+    'Reasonix 方向 Slate——炭蓝底 + 天青强调',
+    {
+      bg: '#f5f6f9', bgSoft: '#eef0f4', bgElev: '#ffffff', bgElev2: '#f2f4f8',
+      sidebar: '#f8f9fb', sidebarHover: '#e7ebf1', border: '#d9dee7', borderSoft: '#e8ecf2',
+      fg: '#131820', fgDim: '#4d5665', fgFaint: '#868f9e',
+      accent: '#2f6fd8', accentFg: '#ffffff', accentSoft: 'rgba(47,111,216,0.12)',
+      accentStrong: '#2559b8', code: '#eef0f4',
+    },
+    {
+      bg: '#0d0f12', bgSoft: '#0f1216', bgElev: '#15181d', bgElev2: '#1d2128',
+      sidebar: '#0b0d10', sidebarHover: '#1a1e24',
+      border: 'rgba(255,255,255,0.08)', borderSoft: 'rgba(255,255,255,0.05)',
+      fg: '#e7eaf0', fgDim: '#9aa2b1', fgFaint: '#6b7381',
+      accent: '#4d8df6', accentFg: '#08111f', accentSoft: 'rgba(77,141,246,0.15)',
+      accentStrong: '#6ba0f8', code: '#0f1216',
+    },
+  ),
+  reasonixSkin(
+    'rx-carbon',
+    '碳素',
+    'Reasonix 方向 Carbon——暖炭底 + 青绿强调',
+    {
+      bg: '#f6f4f0', bgSoft: '#efece6', bgElev: '#ffffff', bgElev2: '#f4f1ec',
+      sidebar: '#f9f7f4', sidebarHover: '#e9e5dd', border: '#ded9d0', borderSoft: '#eae6df',
+      fg: '#1c1a16', fgDim: '#57534a', fgFaint: '#8a857a',
+      accent: '#12897a', accentFg: '#ffffff', accentSoft: 'rgba(18,137,122,0.12)',
+      accentStrong: '#0d6d61', code: '#efece6',
+    },
+    {
+      bg: '#0e0d0c', bgSoft: '#100f0e', bgElev: '#171614', bgElev2: '#1f1e1b',
+      sidebar: '#0c0b0a', sidebarHover: '#1c1b18',
+      border: 'rgba(255,250,240,0.08)', borderSoft: 'rgba(255,250,240,0.05)',
+      fg: '#ede9e3', fgDim: '#a59f95', fgFaint: '#766f65',
+      accent: '#2dd4bf', accentFg: '#04211d', accentSoft: 'rgba(45,212,191,0.14)',
+      accentStrong: '#5ce0cf', code: '#100f0e',
+    },
+  ),
+  reasonixSkin(
+    'rx-nocturne',
+    '夜曲',
+    'Reasonix 方向 Nocturne——深靛底 + 靛蓝强调',
+    {
+      bg: '#f6f5fb', bgSoft: '#efedf7', bgElev: '#fdfcff', bgElev2: '#f4f2fa',
+      sidebar: '#f9f8fc', sidebarHover: '#e9e6f3', border: '#dcd8ec', borderSoft: '#eae8f5',
+      fg: '#191733', fgDim: '#544f75', fgFaint: '#87819f',
+      accent: '#5b62e8', accentFg: '#ffffff', accentSoft: 'rgba(91,98,232,0.12)',
+      accentStrong: '#474ecf', code: '#efedf7',
+    },
+    {
+      bg: '#101019', bgSoft: '#13131e', bgElev: '#191a27', bgElev2: '#212231',
+      sidebar: '#0e0e16', sidebarHover: '#1e1f2c',
+      border: 'rgba(255,255,255,0.08)', borderSoft: 'rgba(255,255,255,0.05)',
+      fg: '#eceaf3', fgDim: '#a6a2bd', fgFaint: '#726e8b',
+      accent: '#818cf8', accentFg: '#0d0f24', accentSoft: 'rgba(129,140,248,0.15)',
+      accentStrong: '#9aa3fa', code: '#13131e',
+    },
+  ),
+  reasonixSkin(
+    'rx-amber',
+    '琥珀',
+    'Reasonix 方向 Amber——默认底 + 琥珀强调',
+    {
+      bg: '#f7f8fb', bgSoft: '#eef2f7', bgElev: '#ffffff', bgElev2: '#f2f5f9',
+      sidebar: '#f9f9f9', sidebarHover: '#e8edf4', border: '#d8dee8', borderSoft: '#e7ebf2',
+      fg: '#111827', fgDim: '#4b5563', fgFaint: '#8a94a6',
+      accent: '#dd5b28', accentFg: '#ffffff', accentSoft: 'rgba(221,91,40,0.12)',
+      accentStrong: '#c24a1b', code: '#f2f5f9',
+    },
+    {
+      bg: '#090a0c', bgSoft: '#111319', bgElev: '#191b22', bgElev2: '#222631',
+      sidebar: '#0c0e12', sidebarHover: '#181c24', border: '#343945', borderSoft: '#252a34',
+      fg: '#f4f5f7', fgDim: '#c0c4cc', fgFaint: '#858b96',
+      accent: '#d4632f', accentFg: '#1a0e07', accentSoft: 'rgba(212,99,47,0.14)',
+      accentStrong: '#e07744', code: '#111319',
+    },
+  ),
   {
     // Ported from the Reasonix desktop "Noir Gold" official theme
     // (desktop/themes/official/official-noir-gold/theme.json). Literal

@@ -8,6 +8,8 @@ const {
   matchAny,
   capabilityKey,
   lastEventValue,
+  sessionPolicyOf,
+  deploymentDefaultMode,
   decide,
   denialFor,
   readonlyDenial,
@@ -22,6 +24,7 @@ describe('__internals', () => {
   it('exposes all helpers as non-undefined values', () => {
     const entries = {
       wildcardToRegExp, matchAny, capabilityKey, lastEventValue,
+      sessionPolicyOf, deploymentDefaultMode,
       decide, denialFor, readonlyDenial, isHostAllowed,
       isOriginAllowed, toJsonSchema, DEFAULT_CONFIG,
     }
@@ -120,6 +123,75 @@ describe('lastEventValue', () => {
   it('returns undefined for missing session/events', () => {
     assert.equal(lastEventValue({}, 'sandbox/mode'), undefined)
     assert.equal(lastEventValue({ agent: { session: { events: 'nope' } } }, 'sandbox/mode'), undefined)
+  })
+})
+
+// 2026-09-18 fix: dsh 0.1.6 has no `agent.session.events`, so the knobs are
+// read from the host services. These cases pin the service-first path, the
+// graceful undefined, and "a throwing provider never breaks a tool call".
+describe('sessionPolicyOf', () => {
+  const agentWith = (services) => ({
+    session: { id: 's1' },
+    ctx: { get: (name) => services[name] },
+  })
+
+  it('reads both knobs from the host services', () => {
+    const agent = agentWith({
+      sandboxPolicy: { resolve: ({ session }) => ({ mode: 'danger-full-access', sessionId: session.id }) },
+      approval: { effectivePolicy: () => 'never' },
+    })
+    assert.deepEqual(sessionPolicyOf(agent), { mode: 'danger-full-access', approval: 'never' })
+  })
+
+  it('passes the calling session to both providers', () => {
+    const seen = {}
+    const agent = agentWith({
+      sandboxPolicy: { resolve: (req) => { seen.mode = req.session.id; return { mode: 'workspace-write' } } },
+      approval: { effectivePolicy: (session) => { seen.approval = session.id; return 'ask' } },
+    })
+    sessionPolicyOf(agent)
+    assert.deepEqual(seen, { mode: 's1', approval: 's1' })
+  })
+
+  it('still reports a single readable knob', () => {
+    const agent = agentWith({ approval: { effectivePolicy: () => 'never' } })
+    assert.deepEqual(sessionPolicyOf(agent), { mode: undefined, approval: 'never' })
+  })
+
+  it('returns undefined without an agent, a session, or any provider', () => {
+    assert.equal(sessionPolicyOf(undefined), undefined)
+    assert.equal(sessionPolicyOf({ session: { id: 's1' } }), undefined)
+    assert.equal(sessionPolicyOf(agentWith({})), undefined)
+    assert.equal(sessionPolicyOf({ session: { id: 's1' }, ctx: {} }), undefined)
+  })
+
+  it('survives providers that throw', () => {
+    const agent = agentWith({
+      sandboxPolicy: { resolve: () => { throw new Error('boom') } },
+      approval: { effectivePolicy: () => 'ask' },
+    })
+    assert.deepEqual(sessionPolicyOf(agent), { mode: undefined, approval: 'ask' })
+  })
+})
+
+describe('deploymentDefaultMode', () => {
+  const pluginCtx = (services) => ({ get: (name) => services[name] })
+
+  it('reads the deployment default without a session', () => {
+    assert.equal(
+      deploymentDefaultMode(pluginCtx({ sandboxPolicy: { defaultMode: 'danger-full-access' } })),
+      'danger-full-access',
+    )
+  })
+
+  it('returns undefined without a provider or a string mode', () => {
+    assert.equal(deploymentDefaultMode(undefined), undefined)
+    assert.equal(deploymentDefaultMode(pluginCtx({})), undefined)
+    assert.equal(deploymentDefaultMode(pluginCtx({ sandboxPolicy: {} })), undefined)
+  })
+
+  it('survives a throwing getter', () => {
+    assert.equal(deploymentDefaultMode({ get: () => { throw new Error('boom') } }), undefined)
   })
 })
 
@@ -285,6 +357,7 @@ describe('toJsonSchema', () => {
 describe('DEFAULT_CONFIG', () => {
   it('ships the strict default posture with four tiers', () => {
     assert.equal(DEFAULT_CONFIG.policy, 'follow')
+    assert.equal(DEFAULT_CONFIG.onUnknownPolicy, 'allowlist')
     assert.equal(DEFAULT_CONFIG.defaultTier, 'confirm')
     for (const tier of ['auto', 'give-command', 'confirm', 'never']) {
       assert.ok(Array.isArray(DEFAULT_CONFIG.tiers[tier]), `tiers.${tier} must be a list`)
