@@ -13,6 +13,9 @@
 //
 // 另外支持 dsh 直接输出格式（rc.7 实测）：
 //   - `dsh web: http://127.0.0.1:<port>` — 解析此行获取端口
+//   - `dsh web: http://127.0.0.1:<port>/?token=<…>` — 0.1.2-rc.1 起 web 面板
+//     带 launch-token（无 token 访问 401），完整 URL 由 parse_dsh_ready_url
+//     解析并存入 NodeState.web_url，导航优先使用（旧核心无 token 时回退拼接）
 //
 // 退出语义（对齐 launcher.mjs L341-372）：
 //   - quit.marker 存在 → 不重启（用户主动退出）
@@ -53,6 +56,22 @@ fn parse_dsh_ready_port(line: &str) -> Option<u16> {
         }
     }
     None
+}
+
+/// 解析 dsh web 输出行中的完整就绪 URL（含 `?token=`）。
+/// 0.1.2-rc.1 起 web 面板启用 launch-token 鉴权：无 token 访问一律 401
+/// （签名 cookie 又绑定 host:port，`--port 0` 每次端口都变，缓存救不了），
+/// 导航必须使用完整打印 URL。解析失败返回 None（调用方退回端口拼接）。
+fn parse_dsh_ready_url(line: &str) -> Option<String> {
+    let rest = line.trim().strip_prefix("dsh web: ")?;
+    if !rest.starts_with("http://127.0.0.1:") {
+        return None;
+    }
+    // stdout 可能混入第三方插件输出：拒绝带空白/控制字符的行，且至少要有路径。
+    if rest.contains(char::is_whitespace) || !rest.contains('/') {
+        return None;
+    }
+    Some(rest.to_string())
 }
 
 /// 执行 tauri-shell.ts 经 stdout 上行的请求行（SOP D-1：stdio JSON-RPC）。
@@ -174,6 +193,9 @@ fn dispatch_dsh_cmd(app: &tauri::AppHandle, cmd_json: &str) {
 pub struct NodeState {
     pub child: Mutex<Option<Child>>,
     pub port: Mutex<Option<u16>>,
+    /// dsh 打印的完整就绪 URL（含 `?token=`；0.1.2+ token 鉴权导航用）。
+    /// 与 port 同一行写入且先于 port：读方看到 port=Some 时 web_url 必已可见。
+    pub web_url: Mutex<Option<String>>,
     pub ready: Mutex<bool>,
     /// dsh web 进程的 stdin 管道（rc.14 tray-helper 模式：壳下行托盘命令 →
     /// 独立进程管道 → host 插件 → 页面 dispatchPageEvent 带重试）。
@@ -187,6 +209,7 @@ impl NodeState {
         Self {
             child: Mutex::new(None),
             port: Mutex::new(None),
+            web_url: Mutex::new(None),
             ready: Mutex::new(false),
             stdin: Mutex::new(None),
             restart_count: AtomicU32::new(0),
@@ -646,6 +669,8 @@ fn spawn_inner(state: Arc<NodeState>, app: tauri::AppHandle) -> Result<(), Strin
     // 重启后端口会变：先清 READY 状态，supervisor 重新等新端口。
     *state.ready.lock().unwrap() = false;
     *state.port.lock().unwrap() = None;
+    // 重启后端口/token 都会变：完整 URL 一并作废，等新 READY 行重填。
+    *state.web_url.lock().unwrap() = None;
 
     let dsh_cmd = find_dsh().ok_or("dsh not found in PATH/npm global")?;
 
@@ -729,6 +754,11 @@ fn spawn_output_readers(
                 Ok(l) => {
                     info!("dsh-stdout: {}", l);
                     if let Some(port) = parse_dsh_ready_port(&l) {
+                        // 先存完整 URL 再置 port：导航方以 port 为就绪信号，
+                        // Mutex 释放顺序保证读到 port=Some 时 web_url 已可见。
+                        if let Some(url) = parse_dsh_ready_url(&l) {
+                            *state_ready.web_url.lock().unwrap() = Some(url);
+                        }
                         *state_ready.ready.lock().unwrap() = true;
                         *state_ready.port.lock().unwrap() = Some(port);
                         // READY 到达 = 本轮启动成功，连续崩溃计数归零。
@@ -833,17 +863,23 @@ fn wait_restart_ready_and_navigate(state: &NodeState, app: &tauri::AppHandle) {
                         "node: restart READY verified — {addr} reachable, navigating main window"
                     );
                     if let Some(win) = app.get_webview_window("main") {
-                        if let Ok(url) = tauri::Url::parse(&format!("http://127.0.0.1:{port}")) {
+                        // 0.1.2+ token 鉴权：优先用新 READY 行的完整 URL（含
+                        // ?token）；与 port 同行先写，读到 port 即可见。
+                        let url_text = state
+                            .web_url
+                            .lock()
+                            .unwrap()
+                            .clone()
+                            .unwrap_or_else(|| format!("http://127.0.0.1:{port}"));
+                        if let Ok(url) = tauri::Url::parse(&url_text) {
                             if let Err(e) = win.navigate(url) {
                                 warn!("node: supervisor navigate failed: {e}");
                             } else {
-                                info!("node: supervisor navigated main window to http://127.0.0.1:{port}");
+                                info!("node: supervisor navigated main window to {url_text}");
                             }
                         } else {
                             // URL 解析失败（u16 端口理论上不会）——退 eval 兜底。
-                            if let Err(e) =
-                                win.eval(format!("location.href='http://127.0.0.1:{port}'"))
-                            {
+                            if let Err(e) = win.eval(format!("location.href='{url_text}'")) {
                                 warn!("node: supervisor eval fallback failed: {e}");
                             }
                         }
@@ -980,7 +1016,7 @@ pub fn stop_dsh(state: &NodeState) {
 
 #[cfg(test)]
 mod tests {
-    use super::parse_dsh_ready_port;
+    use super::{parse_dsh_ready_port, parse_dsh_ready_url};
 
     #[test]
     fn parses_dsh_web_line() {
@@ -1012,5 +1048,33 @@ mod tests {
             parse_dsh_ready_port("dsh web: http://127.0.0.1:65535 trailing"),
             Some(65535)
         );
+    }
+
+    #[test]
+    fn parses_dsh_web_url_with_token() {
+        // 0.1.2-rc.1 实测输出形态：路径 + token 查询参数。
+        assert_eq!(
+            parse_dsh_ready_url("dsh web: http://127.0.0.1:7031/?token=XBWUL5fvvTD8"),
+            Some("http://127.0.0.1:7031/?token=XBWUL5fvvTD8".to_string())
+        );
+        // 旧核心无 token：无路径也要能取回，导航方才能回退拼接。
+        assert_eq!(
+            parse_dsh_ready_url("dsh web: http://127.0.0.1:8279"),
+            Some("http://127.0.0.1:8279".to_string())
+        );
+    }
+
+    #[test]
+    fn url_parser_rejects_non_ready_lines() {
+        assert_eq!(parse_dsh_ready_url("plain log line"), None);
+        assert_eq!(parse_dsh_ready_url("DSH_EVENT {\"port\":1}"), None);
+        // 非 127.0.0.1 回环地址不采纳（stdout 可被第三方插件污染）。
+        assert_eq!(parse_dsh_ready_url("dsh web: http://0.0.0.0:8279"), None);
+        // 带空白/控制字符的 URL 不采纳。
+        assert_eq!(
+            parse_dsh_ready_url("dsh web: http://127.0.0.1:8279/ evil"),
+            None
+        );
+        assert_eq!(parse_dsh_ready_url(""), None);
     }
 }

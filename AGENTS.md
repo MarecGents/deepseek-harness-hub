@@ -1,4 +1,5 @@
 # AGENTS.md — dsh-hub 开发约束（总纲）
+> Model division discipline (Ollama Pro quota, all projects): see `G:\Zcode\PC问题\AGENTS.md` §7.5 — request strategy (read/think more, return less, fill context first) and document handoff workflow (K3 thinks → docs → cheap model executes), only for per-request-billed models.
 
 > **本文件是 dsh-hub 的全部开发 harness（总纲）。** 开发/修改任何部分之前，**必须**先阅读本文件，并阅读 [PROCESS_QUALITY.md](PROCESS_QUALITY.md)（SOP + 质量管理流程约束，铁律 7）与对应职能目录下的子 harness（见文末「分层 harness 索引」）。
 >

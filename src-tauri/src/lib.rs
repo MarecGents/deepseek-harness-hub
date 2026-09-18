@@ -13,10 +13,12 @@
 //   0. 先建窗（占位页 frontendDist ../dev/index.html + shell-init.js 标题栏/Splash）
 //   1. 多实例检测前置（T4.2 双通道）
 //   2. 启动 Node sidecar（T4.1）→ spawn dsh web --port 0
-//   3. 等 stdout READY（dsh web: http://127.0.0.1:N）
+//   3. 等 stdout READY（dsh web: http://127.0.0.1:N[?token=…]）
 //   4. READY 先验证再导航（TCP 探测确认）
-//   5. win.navigate("http://127.0.0.1:N") 复用窗口（不重建；initialization_script
-//      每次导航重新注入，Splash/标题栏依然生效）
+//   5. win.navigate 导航到 READY 行 URL——0.1.2-rc.1 起 dsh web 带 launch-token
+//      鉴权，优先用完整 URL（含 ?token=），旧核心回退 "http://127.0.0.1:N"
+//      （复用窗口不重建；initialization_script 每次导航重新注入，Splash/标题栏
+//      依然生效）
 
 // 分层（SPT 架构借鉴，2026-08-18 重构）：
 //   managers/ = 壳 Manager（tray/node/window/single_instance）
@@ -911,7 +913,16 @@ pub fn run() {
                 // dsh 页自带同款 Splash 覆盖层（同底色/同鲸鱼脉冲）接管视觉。
                 let _ = nav_win.eval("window.__mgFadeout && window.__mgFadeout()");
                 std::thread::sleep(std::time::Duration::from_millis(240));
-                let url = format!("http://127.0.0.1:{port}");
+                // 0.1.2-rc.1 起 web 面板启用 launch-token 鉴权，无 token 访问
+                // 一律 401（白屏）；优先用 sidecar 打印的完整 URL（含 ?token=），
+                // 旧核心无该行时回退端口拼接。web_url 与 port 同行先写，读到
+                // port=Some 时 web_url 必已可见。
+                let url = nav_state
+                    .web_url
+                    .lock()
+                    .unwrap()
+                    .clone()
+                    .unwrap_or_else(|| format!("http://127.0.0.1:{port}"));
                 info!("m4: navigating to {}", url);
                 match tauri::Url::parse(&url) {
                     Ok(u) => {
