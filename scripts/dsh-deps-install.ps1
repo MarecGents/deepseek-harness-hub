@@ -19,7 +19,9 @@
     3. Download the zip (Invoke-WebRequest, Start-BitsTransfer fallback), Expand-Archive,
        move the inner node-vX.Y.Z-win-x64/ contents into <InstallDir>\dsh-hub-win\node\.
     4. Probe >= 4 npm registries the same way, then run the private npm:
-       npm install -g @deepseek-ai/dsh pnpm --prefix <InstallDir>\dsh-hub-win --registry <fastest>
+       npm install -g @deepseek-ai/dsh@<pinned $DshVersion> pnpm --prefix <InstallDir>\dsh-hub-win --registry <fastest>
+       The dsh version is PINNED (see $DshVersion), never the npm latest tag, so the
+       private runtime always matches the harness that writes this machine's session logs.
     5. Progress is written to stdout as "DEP: <phase>" lines so the NSIS installer
        (nsExec::ExecToLog) can merge them into its detail log.
 
@@ -61,6 +63,13 @@ try { [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::S
 
 # ── Constants ───────────────────────────────────────────────────────────
 $NodeVersion   = '24.19.0'
+# Pinned dsh runtime. MUST match the harness that writes this machine's session
+# logs: a build whose known-event vocabulary lacks a type the writer emitted
+# refuses to interpret the whole log (fail-closed). npm's latest tag currently
+# points at 0.1.5-rc.2, which cannot read the per-turn workspace/changes events
+# written by the 0.1.6 line, so an unpinned install silently downgrades the
+# private runtime. Do not drop this pin without checking both sides.
+$DshVersion    = '0.1.6-alpha.2'
 $NodeMajorMin  = 24
 $ZipName       = "node-v$NodeVersion-win-x64.zip"
 $HubDirName    = 'dsh-hub-win'
@@ -186,6 +195,13 @@ function Test-PrivateDepsReady {
   try {
     $v = (& $NodeExe $DshEntry --version 2>$null | Out-String).Trim()
     if ($LASTEXITCODE -ne 0 -or $v -notmatch '\d+\.\d+') { return $false }
+    # Version drift: a runtime answering a version other than the pin cannot read
+    # (or be read by) sessions the other build writes, so report "not ready" and
+    # let the install step replace it.
+    if ($v -notmatch [regex]::Escape($DshVersion)) {
+      Write-Dep "notice: private dsh reports $v, pinned $DshVersion -> reinstall"
+      return $false
+    }
   } catch { return $false }
   return $true
 }
@@ -265,12 +281,12 @@ function Ensure-ShimNode {
   return $true
 }
 
-# npm install -g @deepseek-ai/dsh @marecgents/dsh-hub pnpm into the private prefix.
+# npm install -g @deepseek-ai/dsh@$DshVersion @marecgents/dsh-hub pnpm into the private prefix.
 function Install-PrivateDeps {
   param([string]$Registry)
   Write-Dep "75% installing @deepseek-ai/dsh + @marecgents/dsh-hub + pnpm via npm (registry: $Registry)"
   $env:Path = "$NodeDir;$env:Path"
-  & $NpmCmd install -g @deepseek-ai/dsh @marecgents/dsh-hub pnpm --prefix $Root --registry $Registry --no-audit --no-fund --loglevel error
+  & $NpmCmd install -g "@deepseek-ai/dsh@$DshVersion" @marecgents/dsh-hub pnpm --prefix $Root --registry $Registry --no-audit --no-fund --loglevel error
   if ($LASTEXITCODE -ne 0) {
     Exit-Fail -Msg "npm global install failed (exit $LASTEXITCODE)"
   }
