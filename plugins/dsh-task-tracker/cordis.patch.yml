@@ -1,0 +1,6 @@
+# dsh-task-tracker bundle patch — mounts the plugin when this package is
+# listed in a profile's dsh.profile.bundles (declared by package.json
+# dsh.bundle.patch). Top-level YAML array of loader patch entries.
+- insert:
+    - id: '@dsh-external/dsh-task-tracker'
+      name: '@dsh-external/dsh-task-tracker'
