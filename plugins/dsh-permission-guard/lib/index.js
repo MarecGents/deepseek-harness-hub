@@ -15,6 +15,20 @@
  *   - Config file reads are cached by mtime/size; permission_reload forces a
  *     cache invalidation.
  *   - presentCall returns { card: 'generic', title, description } objects.
+ *   - THE `follow` POLICY READS HOST SERVICES, NOT SESSION EVENTS (2026-09-18
+ *     fix). dsh 0.1.6 dropped the 0.1.5 `agent.session.events` array — a
+ *     session face carries `header` / `surface.nodes` / `append()` / `id`, and
+ *     the mode/approval knobs fold into session PROJECTIONS. The old event scan
+ *     therefore returned undefined on every call, `follow` silently fell
+ *     through to the allowlist, and with approval prompts disabled that is a
+ *     hard deny even inside a Full Access session (real incident: every
+ *     non-allowlisted tool — skill / present / findings_* / memory_* — and
+ *     every shell command not starting with an allowlisted prefix was refused
+ *     while the session sat at danger-full-access + approval never).
+ *     The knobs now come from `sandboxPolicy.resolve()` and
+ *     `approval.effectivePolicy()` on the calling agent's context; the event
+ *     scan survives only as a last-resort fallback for older harnesses, and an
+ *     unreadable state is REPORTED once instead of degrading quietly.
  *
  * Four tiers:
  *   auto          run automatically (allow)
@@ -51,6 +65,11 @@ const DEFAULT_CONFIG = {
   // read-only allowlist only); 'strict' always applies this allowlist; 
   // 'read-only' unconditionally allows only the read-only allowlist.
   policy: 'follow',
+  // What `follow` does when the session's knobs cannot be read at all — an
+  // agentless execution (no `exec.agent`) or a harness without the policy
+  // providers. 'allowlist' (default) keeps the allowlist gate; 'allow' skips
+  // the gate. Either way the condition is reported once, never silently.
+  onUnknownPolicy: 'allowlist',
   defaultTier: 'confirm',
   rules: [
     { match: 'bash=*', tier: 'confirm' },
@@ -187,6 +206,59 @@ function lastEventValue(exec, type) {
   return undefined
 }
 
+/**
+ * Per-session sandbox mode + approval policy, read from the HOST SERVICES.
+ *
+ * Source of truth in dsh 0.1.6 (verified against the shipped packages):
+ *   - `dsh-sandbox-policy` registers the `sandboxPolicy` service; its
+ *     `resolve({ session }).mode` folds the session's last `sandbox/mode`
+ *     event through the `sandboxMode` session projection and falls back to the
+ *     deployment default.
+ *   - `dsh-user-approval` registers the `approval` service; its
+ *     `effectivePolicy(session)` returns 'ask' | 'never'.
+ * Both are reached through the calling agent's context (`agent.ctx.get(...)`),
+ * exactly as `dsh-api-terminal-controller` does when it resolves the cwd.
+ *
+ * @param agent - the guard execution's `exec.agent` (may be undefined).
+ * @returns {{ mode?: string, approval?: string } | undefined} undefined when
+ *   neither knob could be read (agentless execution, or providers absent).
+ */
+function sessionPolicyOf(agent) {
+  const session = agent?.session
+  const agentCtx = agent?.ctx
+  if (session === undefined || agentCtx?.get === undefined) return undefined
+  let mode
+  let approval
+  try {
+    const sandbox = agentCtx.get('sandboxPolicy')
+    if (typeof sandbox?.resolve === 'function') mode = sandbox.resolve({ session })?.mode
+  } catch { /* provider absent or throwing -> knob stays unknown */ }
+  try {
+    const approvals = agentCtx.get('approval')
+    if (typeof approvals?.effectivePolicy === 'function') approval = approvals.effectivePolicy(session)
+  } catch { /* provider absent or throwing -> knob stays unknown */ }
+  if (mode === undefined && approval === undefined) return undefined
+  return { mode, approval }
+}
+
+/**
+ * The deployment-default sandbox mode, read without a session. This is the
+ * only sane reference for an AGENTLESS guard call, which belongs to no
+ * session. Read lazily off the plugin context so provider mount order cannot
+ * matter.
+ *
+ * @returns {string | undefined} 'read-only' | 'workspace-write' |
+ *   'danger-full-access', or undefined without a provider.
+ */
+function deploymentDefaultMode(pluginCtx) {
+  try {
+    const sandbox = pluginCtx?.get?.('sandboxPolicy')
+    return typeof sandbox?.defaultMode === 'string' ? sandbox.defaultMode : undefined
+  } catch {
+    return undefined
+  }
+}
+
 // ── policy write (update only the policy field of the raw config) ────────
 function writePolicy(policy) {
   const p = configPath()
@@ -291,13 +363,27 @@ function readonlyDenial(config, key, label) {
   return '权限拦截（' + label + '）：此操作不在只读放行列表 → ' + key
 }
 
-const GUIDANCE = '## 权限分级（dsh-permission-guard）\n\n当前会话启用逐命令权限白名单（~/.dsh/permission-guard.json），策略档位（policy）决定拦截松紧：\n- follow（默认）跟随会话官方权限预设：danger-full-access（Full Access）→ 除 never 红线外全部放行；read-only → 只放行只读操作；workspace-write → 按下方白名单\n- strict        始终按白名单四级拦截（auto / give-command / confirm / never），不跟随会话预设\n- read-only     无条件只放行只读操作\n\n四级能力边界：auto 可自动执行；give-command 只给命令不代跑；confirm 先讲清等确认（默认层级，未列入白名单的操作一律需确认）；never 红线绝不执行。bash/pwsh 命令按逐命令匹配（Windows 会话为 pwsh）。被拦截时不要绕过；按层级提示用户。可用 permission_status 查看白名单，permission_reload 重载配置（只读操作，auto 放行）。若用户修改了 permission-guard.json 中的放行条目，先 permission_reload 使新配置生效，再重试被拦截的操作。'
+const GUIDANCE = '## 权限分级（dsh-permission-guard）\n\n当前会话启用逐命令权限白名单（~/.dsh/permission-guard.json），策略档位（policy）决定拦截松紧：\n- follow（默认）跟随会话官方权限预设（读 sandboxPolicy.resolve / approval.effectivePolicy 服务）：danger-full-access（Full Access）→ 除 never 红线外全部放行；read-only → 只放行只读操作；workspace-write 或无会话状态（agentless 调用）→ 按下方白名单（由 onUnknownPolicy 决定，且会告警一次，不再静默降级）\n- strict        始终按白名单四级拦截（auto / give-command / confirm / never），不跟随会话预设\n- read-only     无条件只放行只读操作\n\n四级能力边界：auto 可自动执行；give-command 只给命令不代跑；confirm 先讲清等确认（默认层级，未列入白名单的操作一律需确认）；never 红线绝不执行。bash/pwsh 命令按逐命令匹配（Windows 会话为 pwsh）。被拦截时不要绕过；按层级提示用户。可用 permission_status 查看白名单，permission_reload 重载配置（只读操作，auto 放行）。若用户修改了 permission-guard.json 中的放行条目，先 permission_reload 使新配置生效，再重试被拦截的操作。'
 
 const OBJ = { type: 'object', additionalProperties: false, properties: { ok: { type: 'boolean' }, config: { type: 'object' }, error: { type: 'string' } } }
 
 export function apply(ctx) {
   const disposers = []
   let config = loadConfigCached(true)
+
+  // One-shot notice: `follow` could not read the session's knobs, so it is
+  // gating by allowlist instead. Reported loudly because the previous silent
+  // version looked exactly like "Full Access, yet everything is refused"
+  // (2026-09-18 incident).
+  let warnedUnknownPolicy = false
+  const noteUnknownPolicy = (reason) => {
+    if (warnedUnknownPolicy) return
+    warnedUnknownPolicy = true
+    ctx.logger?.warn?.(
+      '[dsh-permission-guard] follow 无法读取会话权限状态（' + reason + '）——已按白名单处理；'
+      + '如需一律放行，把 ~/.dsh/permission-guard.json 的 onUnknownPolicy 设为 "allow"。'
+    )
+  }
 
   // Global guard: checked before every tool execution.
   disposers.push(ctx.tools.guard((exec) => {
@@ -313,11 +399,32 @@ export function apply(ctx) {
     if (policy === 'read-only') return readonlyDenial(config, key, 'read-only 档')
 
     // follow: mirror the session's official permission preset.
-    const mode = lastEventValue(exec, 'sandbox/mode')
-    const approval = lastEventValue(exec, 'approval/policy')
-    if (mode === 'danger-full-access' || approval === 'never') return undefined
-    if (mode === 'read-only') return readonlyDenial(config, key, '只读会话')
-    // workspace-write (or no session state): the allowlist logic.
+    // Preferred source: the host policy services (dsh 0.1.6). Fallback: the
+    // 0.1.5-style session-event scan, kept for older harnesses.
+    let state = sessionPolicyOf(exec?.agent)
+    if (state === undefined) {
+      const mode = lastEventValue(exec, 'sandbox/mode')
+      const approval = lastEventValue(exec, 'approval/policy')
+      if (mode !== undefined || approval !== undefined) state = { mode, approval }
+    }
+    if (state !== undefined) {
+      if (state.mode === 'danger-full-access' || state.approval === 'never') return undefined
+      if (state.mode === 'read-only') return readonlyDenial(config, key, '只读会话')
+      // workspace-write: the allowlist logic.
+      return denialFor(decide(config, key), key)
+    }
+
+    // Agentless call, or a harness whose providers are unreadable. An agentless
+    // call belongs to no session, so the deployment default is the honest
+    // reference; failing that, the configured posture — announced, never silent.
+    const deploymentMode = deploymentDefaultMode(ctx)
+    if (deploymentMode === 'danger-full-access') return undefined
+    if (deploymentMode === 'read-only') return readonlyDenial(config, key, '只读会话（部署默认）')
+    if ((config.onUnknownPolicy || 'allowlist') === 'allow') {
+      noteUnknownPolicy('onUnknownPolicy=allow')
+      return undefined
+    }
+    noteUnknownPolicy(exec?.agent === undefined ? 'agentless 调用' : '策略服务不可读')
     return denialFor(decide(config, key), key)
   }))
 
@@ -386,6 +493,8 @@ export const __internals = {
   matchAny,
   capabilityKey,
   lastEventValue,
+  sessionPolicyOf,
+  deploymentDefaultMode,
   decide,
   denialFor,
   readonlyDenial,

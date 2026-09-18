@@ -23,9 +23,21 @@
 
 | 档位 | 行为 |
 |---|---|
-| `follow`（默认） | 跟随会话官方预设：`danger-full-access`（Full Access / approval=never）→ 除 `never` 红线外全部放行；`read-only` → 只放行只读操作；`workspace-write` → 按下方四级白名单 |
+| `follow`（默认） | 跟随会话官方预设（从 `sandboxPolicy` / `approval` 服务读取，见下）：`danger-full-access`（Full Access / approval=never）→ 除 `never` 红线外全部放行；`read-only` → 只放行只读操作；`workspace-write` → 按下方四级白名单 |
 | `strict` | 始终按四级白名单拦截，不跟随会话预设 |
 | `read-only` | 无条件只放行只读操作（auto 白名单条目），其余一律拦截 |
+
+### `follow` 的状态来源（2026-09-18 修复）
+
+`follow` 需要知道「当前会话的 sandbox 模式与 approval 策略」。它从**调用方 agent 的上下文**读官方服务（与 `dsh-api-terminal-controller` 解析 cwd 的方式一致）：
+
+- `agent.ctx.get('sandboxPolicy').resolve({ session }).mode` — `dsh-sandbox-policy` 注册的服务；内部把该会话最后一条 `sandbox/mode` 事件经 **`sandboxMode` 会话投影**折叠，再回落到部署默认。
+- `agent.ctx.get('approval').effectivePolicy(session)` — `dsh-user-approval` 注册的服务，取值 `ask` / `never`。
+
+**为什么改**：旧实现读 `agent.session.events`。该数组在 dsh 0.1.6 已不存在（会话事件由 `session.surface` 承载，模式折叠成会话投影），于是 `follow` 每次都读不到、**静默退化成白名单**；叠加「本会话审批被禁用」——需确认的操作会被自动拒绝——表现就是**权限明明是 Full Access 却处处被拦**。现在读不到时不再静默：告警一次，并按 `onUnknownPolicy` 处理。
+
+- **`onUnknownPolicy`**（默认 `allowlist`）：`follow` 完全读不到状态时（agentless 调用，或环境里没有策略服务）的兜底。`allowlist` = 继续按四级白名单；`allow` = 直接放行。
+- **agentless 调用**（没有 `exec.agent` 的执行，例如 `skill` / `present` / `findings_*` / `memory_*` / `job_*` 这类元工具）不属于任何会话：先按部署默认模式（`sandboxPolicy.defaultMode`）判定，再按 `onUnknownPolicy`。注意这些工具的键就是**工具名**，所以想让它们免确认，要么把它们列进 `tiers.auto`，要么把 `onUnknownPolicy` 设为 `allow`。
 
 `never` 红线在任何档位下都生效。档位可通过 HTTP 路由读写（供 dsh-hub 设置卡与会话左下角权限 chip）：
 
@@ -60,6 +72,8 @@
 
 ```jsonc
 {
+  "policy": "follow",                  // 档位：follow / strict / read-only
+  "onUnknownPolicy": "allowlist",      // follow 读不到会话状态时：allowlist / allow
   "defaultTier": "confirm",            // 未命中任何规则的默认层级
   "rules": [                           // 兜底规则（tiers 未命中后按序匹配）
     { "match": "bash=*", "tier": "confirm" },
