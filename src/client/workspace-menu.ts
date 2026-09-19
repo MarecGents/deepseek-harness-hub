@@ -26,6 +26,13 @@ export interface WorkspaceMenuParams {
   workspace: WorkspaceViewLike
   /** Plugin client runtime (workspaces service). */
   ctx: unknown
+  /**
+   * The workspace row the menu is anchored to. Same role as `anchor` in
+   * `SessionMenuParams` (session-menu.ts): only scrolls of the container that
+   * owns this element dismiss the menu (2026-09-19, mirrors the session-menu
+   * fix). Deliberately plain text — SessionMenuParams is not imported here.
+   */
+  anchor?: Element
 }
 
 /** Cleanup of the open menu (undefined while closed). */
@@ -65,6 +72,7 @@ export function openWorkspaceMenu(params: WorkspaceMenuParams): void {
       startSession?: (workspaceId?: string) => void
     }
   }
+  const { anchor } = params
 
   const menu = document.createElement('div')
   menu.className = 'mg-ctxmenu'
@@ -99,10 +107,14 @@ export function openWorkspaceMenu(params: WorkspaceMenuParams): void {
   }
 
   document.body.append(menu)
-  // Keep the menu inside the viewport (clamp after layout).
-  const rect = menu.getBoundingClientRect()
-  menu.style.left = `${Math.max(4, Math.min(params.x, window.innerWidth - rect.width - 4))}px`
-  menu.style.top = `${Math.max(4, Math.min(params.y, window.innerHeight - rect.height - 4))}px`
+  // Keep the menu inside the viewport (clamp after layout); reused by the
+  // resize handler so a resize re-anchors instead of dismissing.
+  const place = (): void => {
+    const rect = menu.getBoundingClientRect()
+    menu.style.left = `${Math.max(4, Math.min(params.x, window.innerWidth - rect.width - 4))}px`
+    menu.style.top = `${Math.max(4, Math.min(params.y, window.innerHeight - rect.height - 4))}px`
+  }
+  place()
 
   const onOutside = (event: PointerEvent): void => {
     if (event.target instanceof Node && menu.contains(event.target)) return
@@ -111,19 +123,28 @@ export function openWorkspaceMenu(params: WorkspaceMenuParams): void {
   const onKey = (event: KeyboardEvent): void => {
     if (event.key === 'Escape') closeWorkspaceMenu()
   }
-  const onClose = (): void => { closeWorkspaceMenu() }
+  // Same tightening as session-menu.ts (2026-09-19): only a scroll of the
+  // container that owns the anchored row dismisses; resize re-anchors; window
+  // blur no longer closes (spurious blur in the Tauri shell killed the menu).
+  const onScroll = (event: Event): void => {
+    const target = event.target
+    if (anchor !== undefined && anchor.isConnected) {
+      if (target instanceof Node && (target === document || target.contains(anchor))) closeWorkspaceMenu()
+      return
+    }
+    if (target === document) closeWorkspaceMenu()
+  }
+  const onResize = (): void => place()
   window.addEventListener('pointerdown', onOutside, true)
   window.addEventListener('keydown', onKey, true)
-  window.addEventListener('resize', onClose)
-  window.addEventListener('blur', onClose)
-  window.addEventListener('scroll', onClose, true)
+  window.addEventListener('resize', onResize)
+  window.addEventListener('scroll', onScroll, true)
 
   activeCleanup = () => {
     window.removeEventListener('pointerdown', onOutside, true)
     window.removeEventListener('keydown', onKey, true)
-    window.removeEventListener('resize', onClose)
-    window.removeEventListener('blur', onClose)
-    window.removeEventListener('scroll', onClose, true)
+    window.removeEventListener('resize', onResize)
+    window.removeEventListener('scroll', onScroll, true)
     menu.remove()
   }
 }
