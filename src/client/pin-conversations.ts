@@ -696,6 +696,7 @@ export function installPinnedConversations(ctx: unknown): () => void {
           y: event.clientY,
           id,
           title,
+          anchor: item,
           pinned: true,
           ctx: runtime,
           onTogglePin: () => togglePin(id),
@@ -839,7 +840,7 @@ export function installPinnedConversations(ctx: unknown): () => void {
         if (ws !== undefined) {
           event.preventDefault()
           event.stopPropagation()
-          openWorkspaceMenu({ x: event.clientX, y: event.clientY, workspace: ws, ctx: runtime })
+          openWorkspaceMenu({ x: event.clientX, y: event.clientY, workspace: ws, anchor: wrow, ctx: runtime })
         } else {
           // The ungrouped bucket (aria-expanded row with no backing workspace)
           // has no actions per official design — swallow the event so the
@@ -861,6 +862,7 @@ export function installPinnedConversations(ctx: unknown): () => void {
       y: event.clientY,
       id: match.id,
       title: summary.displayTitle ?? match.id,
+      anchor: row,
       pinned: pinnedSet.has(match.id),
       ctx: runtime,
       onTogglePin: () => togglePin(match.id),
@@ -895,6 +897,7 @@ export function installPinnedConversations(ctx: unknown): () => void {
       y: rect.bottom + 4,
       id: match.id,
       title: summary.displayTitle ?? match.id,
+      anchor: row,
       pinned: pinnedSet.has(match.id),
       ctx: runtime,
       onTogglePin: () => togglePin(match.id),
