@@ -12,7 +12,7 @@
 
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import clsx from 'clsx'
-import { IconChevronDownOutline14, Menu } from '@deepseek-ai/dsh-client-ui-primitives'
+import { IconChevronDownOutlineRegular, Menu } from '@deepseek-ai/dsh-client-ui-primitives'
 import { CARD_CSS_CLASSES as c } from './style.ts'
 import { SKINS, DEFAULT_SKIN_ID, applySkin, markSkinUserPicked, type DshSkin } from './skins.ts'
 import { t, useLocaleLang, type HubKey } from './locale.ts'
@@ -419,7 +419,7 @@ export function DesktopSettingsCard(_props: DesktopSettingsCardProps): ReactNode
           <span className={c.description}>{description}</span>
         </span>
         {dirty ? <span className={c.pending}>{COPY.unsaved}</span> : null}
-        <IconChevronDownOutline14 className={clsx(c.chevron, groupOpen[key] && c.chevronOpen)} />
+        <IconChevronDownOutlineRegular className={clsx(c.chevron, groupOpen[key] && c.chevronOpen)} />
       </button>
       {groupOpen[key] ? <div className={c.body}>{body}</div> : null}
     </li>
@@ -563,7 +563,7 @@ export function DesktopSettingsCard(_props: DesktopSettingsCardProps): ReactNode
                         {skinId === DEFAULT_SKIN_ID
                           ? t('settings.skinDefaultName')
                           : skinName(skinId)}
-                        <IconChevronDownOutline14 />
+                        <IconChevronDownOutlineRegular />
                       </button>
                     )}
                   />
@@ -603,7 +603,7 @@ export function DesktopSettingsCard(_props: DesktopSettingsCardProps): ReactNode
                         {backgroundId === DEFAULT_BACKGROUND_ID
                           ? COPY.backgroundDefaultName
                           : (BACKGROUNDS.find((background) => background.id === backgroundId)?.name ?? backgroundId)}
-                        <IconChevronDownOutline14 />
+                        <IconChevronDownOutlineRegular />
                       </button>
                     )}
                   />
@@ -668,7 +668,7 @@ export function DesktopSettingsCard(_props: DesktopSettingsCardProps): ReactNode
                         onClick={() => { setPermissionPolicyMenuOpen((v) => !v) }}
                       >
                         {permissionPolicyLabel(permissionPolicy)}
-                        <IconChevronDownOutline14 />
+                        <IconChevronDownOutlineRegular />
                       </button>
                     )}
                   />

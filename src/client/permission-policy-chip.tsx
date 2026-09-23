@@ -12,7 +12,7 @@
  */
 
 import { useEffect, useState, type CSSProperties } from 'react'
-import { IconChevronDownOutline14, Menu } from '@deepseek-ai/dsh-client-ui-primitives'
+import { IconChevronDownOutlineRegular, Menu } from '@deepseek-ai/dsh-client-ui-primitives'
 import { t, useLocaleLang } from './locale.ts'
 
 /** Policy tier values — must match the dsh-permission-guard plugin exactly. */
@@ -161,7 +161,7 @@ export function PermissionPolicyChip({ sessionId }: PermissionPolicyChipProps) {
         >
           <span style={{ ...dotStyle, background: tierDot(policy) }} aria-hidden />
           <span>{permissionPolicyLabel(policy)}</span>
-          <IconChevronDownOutline14 />
+          <IconChevronDownOutlineRegular />
         </button>
       )}
     />

@@ -16,11 +16,11 @@
 import { Component, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
 import clsx from 'clsx'
 import {
-  IconCheckOutline16,
-  IconChevronDownOutline14,
-  IconChevronLeftOutline14,
-  IconChevronRightOutline14,
-  IconWarningOutline16,
+  IconCheckOutlineRegular,
+  IconChevronDownOutlineRegular,
+  IconChevronLeftOutlineRegular,
+  IconChevronRightOutlineRegular,
+  IconWarningOutlineRegular,
   Toast,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
@@ -471,7 +471,7 @@ function ModelSelectNested({ locked, available, directory, load, select, configu
 
   const backCell = (ref: (node: HTMLButtonElement | null) => void) => (
     <button ref={ref} type="button" role="menuitem" className={c.cell} onClick={goBack}>
-      <IconChevronLeftOutline14 className={c.back} />
+      <IconChevronLeftOutlineRegular className={c.back} />
       <span className={c.cellLabel}>{t('menu.back')}</span>
     </button>
   )
@@ -501,7 +501,7 @@ function ModelSelectNested({ locked, available, directory, load, select, configu
         {state.groups.map((group) => (
           <button key={group.id} ref={providerCellRef(group.id)} type="button" role="menuitem" className={c.cell} onClick={() => openModels(group.id)}>
             <span className={c.cellLabel}>{group.name}</span>
-            <IconChevronRightOutline14 className={c.cellChevron} />
+            <IconChevronRightOutlineRegular className={c.cellChevron} />
           </button>
         ))}
       </div>
@@ -524,7 +524,7 @@ function ModelSelectNested({ locked, available, directory, load, select, configu
                   openModels(group.id)
                 }}>
                 <span className={c.cellLabel}>{group.name}</span>
-                <IconChevronRightOutline14 className={clsx(c.cellChevron, active && c.chevronLeft)} />
+                <IconChevronRightOutlineRegular className={clsx(c.cellChevron, active && c.chevronLeft)} />
               </button>
             )
           })}
@@ -546,7 +546,7 @@ function ModelSelectNested({ locked, available, directory, load, select, configu
                     <span className={c.modelName}>{model.name}</span>
                     {model.description !== undefined && <span className={c.description}>{model.description}</span>}
                   </span>
-                  <span className={c.check}>{selected ? <IconCheckOutline16 /> : null}</span>
+                  <span className={c.check}>{selected ? <IconCheckOutlineRegular /> : null}</span>
                 </button>
               )
             })}
@@ -562,7 +562,7 @@ function ModelSelectNested({ locked, available, directory, load, select, configu
       {reasoning === undefined && configureEfforts !== undefined && (
         <button ref={leftRef()} type="button" role="menuitem" className={c.cell} disabled={busy} onClick={configure}>
           <span className={c.cellLabel}>{configuring ? t('config.busy') : t('config.efforts')}</span>
-          <IconChevronRightOutline14 className={c.cellChevron} />
+          <IconChevronRightOutlineRegular className={c.cellChevron} />
         </button>
       )}
       {reasoning !== undefined && state.error !== null && lastActionRef.current === 'load' && (
@@ -579,7 +579,7 @@ function ModelSelectNested({ locked, available, directory, load, select, configu
             <span className={c.modelName}>{level.label}</span>
             {level.description !== undefined && <span className={c.description}>{level.description}</span>}
           </span>
-          <span className={c.check}>{effectiveEffort === level.effort ? <IconCheckOutline16 /> : null}</span>
+          <span className={c.check}>{effectiveEffort === level.effort ? <IconCheckOutlineRegular /> : null}</span>
         </button>
       ))}
     </>
@@ -593,14 +593,14 @@ function ModelSelectNested({ locked, available, directory, load, select, configu
           title={modelLabel} disabled={locked}
           onClick={() => { if (open && (pane === 'providers' || pane === 'model')) close(); else showProviders() }}>
           <span className={c.triggerLabel}>{modelLabel}</span>
-          <IconChevronDownOutline14 className={clsx(c.chevron, open && (pane === 'providers' || pane === 'model') && c.chevronOpen)} />
+          <IconChevronDownOutlineRegular className={clsx(c.chevron, open && (pane === 'providers' || pane === 'model') && c.chevronOpen)} />
         </button>
         <button ref={effortTriggerRef} type="button" className={c.triggerEffort} aria-label={t('menu.effort')}
           aria-haspopup="menu" aria-expanded={open && pane === 'effort'} aria-controls={open ? `${id}-menu` : undefined}
           title={effortLabel} disabled={locked}
           onClick={() => { if (open && pane === 'effort') close(); else showEffort() }}>
           <span className={c.triggerLabel}>{effortLabel}</span>
-          <IconChevronDownOutline14 className={clsx(c.chevron, open && pane === 'effort' && c.chevronOpen)} />
+          <IconChevronDownOutlineRegular className={clsx(c.chevron, open && pane === 'effort' && c.chevronOpen)} />
         </button>
       </div>
       {open && (
@@ -612,7 +612,7 @@ function ModelSelectNested({ locked, available, directory, load, select, configu
         </div>
       )}
       {toast !== null && (
-        <Toast key={toast.seq} text={toast.text} icon={<IconWarningOutline16 />}
+        <Toast key={toast.seq} text={toast.text} icon={<IconWarningOutlineRegular />}
           anchor={rootRef.current?.closest<HTMLElement>('[data-composer-card]') ?? null}
           onDone={() => setToast(null)} />
       )}

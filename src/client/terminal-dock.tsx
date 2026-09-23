@@ -21,13 +21,13 @@
  */
 import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import {
-  IconCloseOutline16,
-  IconDarkOutline16,
-  IconFullscreenOutline16,
-  IconLightOutline16,
-  IconPlusOutline16,
-  IconSettingsOutline16,
-  IconTriangleRightFill14,
+  IconCloseOutlineRegular,
+  IconDarkOutlineRegular,
+  IconFullscreenOutlineRegular,
+  IconLightOutlineRegular,
+  IconPlusOutlineRegular,
+  IconSettingsOutlineRegular,
+  IconTriangleRightFillRegular,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import { Terminal } from '@xterm/xterm'
 import { XTERM_CSS } from './xterm-css.ts'
@@ -418,7 +418,7 @@ export function TerminalPage(): ReactNode {
         {tabs.map((t) => (
           <button key={t.id} type="button" style={t.id === activeId ? TABACTIVE : TABBASE} onClick={() => setActiveTab(t.id)} title={t.cwd}>
             <span style={{ display: 'inline-flex', flex: 'none', color: 'var(--dsw-alias-state-success-primary, #22c55e)' }}>
-              <IconTriangleRightFill14 size={10} />
+              <IconTriangleRightFillRegular size={10} />
             </span>
             <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>{t.title}</span>
             <span
@@ -431,18 +431,18 @@ export function TerminalPage(): ReactNode {
                 if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); void closeTab(t.id) }
               }}
             >
-              <IconCloseOutline16 size={12} />
+              <IconCloseOutlineRegular size={12} />
             </span>
           </button>
         ))}
         <button type="button" style={TABBASE} onClick={() => void createTab()} title="新建终端">
-          <IconPlusOutline16 size={14} />
+          <IconPlusOutlineRegular size={14} />
         </button>
         <button type="button" style={TABBASE} onClick={() => setSettingsOpen(!settingsOpen)} title="设置">
-          <IconSettingsOutline16 size={14} />
+          <IconSettingsOutlineRegular size={14} />
         </button>
         <button type="button" style={TABBASE} onClick={() => setMaximized(!maximized)} title={maximized ? '还原' : '最大化'}>
-          <IconFullscreenOutline16 size={14} />
+          <IconFullscreenOutlineRegular size={14} />
         </button>
         <span style={{ flex: 1 }} />
         <button type="button" style={BTN} onClick={() => { ptyClosePanel() }}>关闭</button>
@@ -467,7 +467,7 @@ export function TerminalPage(): ReactNode {
           </div>
           <button type="button" style={BTN} onClick={toggleTheme}>
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-              {prefs.dark ? <IconLightOutline16 size={14} /> : <IconDarkOutline16 size={14} />}
+              {prefs.dark ? <IconLightOutlineRegular size={14} /> : <IconDarkOutlineRegular size={14} />}
               {prefs.dark ? '浅色主题' : '深色主题'}
             </span>
           </button>

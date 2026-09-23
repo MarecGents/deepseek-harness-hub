@@ -17,21 +17,21 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
 import clsx from 'clsx'
 import {
-  IconBranchOutline16,
-  IconCheckOutline16,
-  IconCodeOutline16,
-  IconCopyOutline16,
-  IconDataOutline16,
-  IconDownloadOutline16,
-  IconEditOutline16,
-  IconFolderClose16,
-  IconFolderOpen16,
-  IconLinkOutline16,
-  IconPanelLeftOutline16,
-  IconPlayOutline16,
-  IconRightUpOutline16,
-  IconSendOutline14,
-  IconThinkOutline16,
+  IconBranchOutlineRegular,
+  IconCheckOutlineRegular,
+  IconCodeOutlineRegular,
+  IconCopyOutlineRegular,
+  IconDataOutlineRegular,
+  IconDownloadOutlineRegular,
+  IconEditOutlineRegular,
+  IconFolderCloseRegular,
+  IconFolderOpenRegular,
+  IconLinkOutlineRegular,
+  IconPanelLeftOutlineRegular,
+  IconPlayOutlineRegular,
+  IconRightUpOutlineRegular,
+  IconSendOutlineRegular,
+  IconThinkOutlineRegular,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import { RIGHT_SIDEBAR_CSS_CLASSES as c } from './right-sidebar-style.ts'
 import { ptyOpen, ptyRetarget } from './pty-store.ts'
@@ -302,8 +302,8 @@ function TreeNode({ entry, depth, onContext }: {
       >
         <span className={c.treeIcon}>
           {expandable
-            ? (open ? <IconFolderOpen16 size={16} /> : <IconFolderClose16 size={16} />)
-            : <IconCodeOutline16 size={16} />}
+            ? (open ? <IconFolderOpenRegular size={16} /> : <IconFolderCloseRegular size={16} />)
+            : <IconCodeOutlineRegular size={16} />}
         </span>
         <span className={c.treeName}>{entry.name}</span>
       </div>
@@ -342,18 +342,18 @@ function ContextMenu({ x, y, entry, root, onClose }: {
     }
   }
   if (entry.isDirectory) {
-    items.push({ label: '打开（展开/折叠）', icon: <IconFolderOpen16 size={14} />, run: toggleDir })
-    items.push({ label: '在资源管理器中打开', icon: <IconFolderOpen16 size={14} />, run: () => { openInExplorer(entry) } })
-    items.push({ label: '路径引用', icon: <IconLinkOutline16 size={14} />, run: () => { insertReferenceIntoComposer(reference) } })
-    items.push({ label: '复制目录', icon: <IconCopyOutline16 size={14} />, run: () => { copyText(entry.path) } })
-    items.push({ label: '在此打开终端', icon: <IconCodeOutline16 size={14} />, run: () => { void ptyOpen(entry.path) } })
+    items.push({ label: '打开（展开/折叠）', icon: <IconFolderOpenRegular size={14} />, run: toggleDir })
+    items.push({ label: '在资源管理器中打开', icon: <IconFolderOpenRegular size={14} />, run: () => { openInExplorer(entry) } })
+    items.push({ label: '路径引用', icon: <IconLinkOutlineRegular size={14} />, run: () => { insertReferenceIntoComposer(reference) } })
+    items.push({ label: '复制目录', icon: <IconCopyOutlineRegular size={14} />, run: () => { copyText(entry.path) } })
+    items.push({ label: '在此打开终端', icon: <IconCodeOutlineRegular size={14} />, run: () => { void ptyOpen(entry.path) } })
   } else {
-    items.push({ label: '打开', icon: <IconPlayOutline16 size={14} />, run: () => { void openInOs(entry.path) } })
-    items.push({ label: '在资源管理器中打开', icon: <IconFolderOpen16 size={14} />, run: () => { openInExplorer(entry) } })
-    items.push({ label: '路径引用', icon: <IconLinkOutline16 size={14} />, run: () => { insertReferenceIntoComposer(reference) } })
-    items.push({ label: '复制文件夹目录', icon: <IconCopyOutline16 size={14} />, run: () => { copyText(parentDir(entry.path)) } })
-    items.push({ label: '复制文件路径', icon: <IconCopyOutline16 size={14} />, run: () => { copyText(entry.path) } })
-    items.push({ label: '在此打开终端', icon: <IconCodeOutline16 size={14} />, run: () => { void ptyOpen(parentDir(entry.path)) } })
+    items.push({ label: '打开', icon: <IconPlayOutlineRegular size={14} />, run: () => { void openInOs(entry.path) } })
+    items.push({ label: '在资源管理器中打开', icon: <IconFolderOpenRegular size={14} />, run: () => { openInExplorer(entry) } })
+    items.push({ label: '路径引用', icon: <IconLinkOutlineRegular size={14} />, run: () => { insertReferenceIntoComposer(reference) } })
+    items.push({ label: '复制文件夹目录', icon: <IconCopyOutlineRegular size={14} />, run: () => { copyText(parentDir(entry.path)) } })
+    items.push({ label: '复制文件路径', icon: <IconCopyOutlineRegular size={14} />, run: () => { copyText(entry.path) } })
+    items.push({ label: '在此打开终端', icon: <IconCodeOutlineRegular size={14} />, run: () => { void ptyOpen(parentDir(entry.path)) } })
   }
   return (
     <div className={c.menu} data-rs-menu role="menu" style={{ left: x, top: y }}>
@@ -547,10 +547,10 @@ export function RightSidebar({ ctx }: RightSidebarProps): ReactNode {
         <>
           <div className={c.topRow}>
             <button type="button" className={c.topBtn} onClick={() => { openFolderInOs(effectivePath) }}>
-              <IconFolderOpen16 size={14} /> 打开工作区文件夹
+              <IconFolderOpenRegular size={14} /> 打开工作区文件夹
             </button>
             <button type="button" className={c.topBtn} onClick={() => { void ptyOpen(effectivePath || undefined) }}>
-              <IconCodeOutline16 size={14} /> 终端
+              <IconCodeOutlineRegular size={14} /> 终端
             </button>
           </div>
           <div className={c.header}>
@@ -569,7 +569,7 @@ export function RightSidebar({ ctx }: RightSidebarProps): ReactNode {
               ))}
             </div>
             <button type="button" className={c.toggle} data-tip="收起侧边栏" aria-label="收起右侧栏" onClick={() => { setOpen(false) }}>
-              <IconPanelLeftOutline16 className={c.toggleIcon} size={16} />
+              <IconPanelLeftOutlineRegular className={c.toggleIcon} size={16} />
             </button>
           </div>
           <div className={c.body}>
@@ -619,17 +619,17 @@ export function RightSidebar({ ctx }: RightSidebarProps): ReactNode {
       ) : (
         <div className={c.rail}>
           <button type="button" className={c.toggle} data-tip="展开侧边栏" aria-label="展开右侧栏" onClick={() => { setOpen(true) }}>
-            <IconPanelLeftOutline16 className={c.toggleIcon} size={18} />
+            <IconPanelLeftOutlineRegular className={c.toggleIcon} size={18} />
           </button>
           <div className={c.railItems}>
             <button type="button" className={c.railItem} data-tip="概览" aria-label="概览" onClick={() => { setTab('overview'); setOpen(true) }}>
-              <IconDataOutline16 size={18} />
+              <IconDataOutlineRegular size={18} />
             </button>
             <button type="button" className={c.railItem} data-tip="文件" aria-label="文件" onClick={() => { setTab('files'); setOpen(true) }}>
-              <IconFolderOpen16 size={18} />
+              <IconFolderOpenRegular size={18} />
             </button>
             <button type="button" className={c.railItem} data-tip="Git" aria-label="Git" onClick={() => { setTab('git'); setOpen(true) }}>
-              <IconBranchOutline16 size={18} />
+              <IconBranchOutlineRegular size={18} />
             </button>
           </div>
         </div>
@@ -735,33 +735,33 @@ function Overview(props: {
       <div className={c.section}>
         <div className={c.sectionTitle}>会话统计</div>
         <div className={c.statGrid}>
-          <StatCard icon={IconDataOutline16} label="轮次 / 步数" value={`${stats?.turns ?? 0} 轮 · ${stats?.steps ?? 0} 步`} />
-          <StatCard icon={IconThinkOutline16} label="LLM 耗时" value={formatDuration(stats?.llmMs ?? 0)} />
-          <StatCard icon={IconCodeOutline16} label="工具调用" value={formatDuration(stats?.toolMs ?? 0)} />
-          <StatCard icon={IconPlayOutline16} label="首 token 平均" value={formatDuration(ttftAvg ?? 0)} />
-          <StatCard icon={IconRightUpOutline16} label="速度" value={`${formatTokensPerSecond(tps ?? 0)} tok/s`} />
-          <StatCard icon={IconCheckOutline16} label="缓存命中" value={`${cacheHit ?? 0}%`} />
-          <StatCard icon={IconDownloadOutline16} label="输入 Tokens" value={`${formatTokens(inputTokens ?? 0)} tok`} />
-          <StatCard icon={IconSendOutline14} label="输出 Tokens" value={`${formatTokens(outputTokens ?? 0)} tok`} />
+          <StatCard icon={IconDataOutlineRegular} label="轮次 / 步数" value={`${stats?.turns ?? 0} 轮 · ${stats?.steps ?? 0} 步`} />
+          <StatCard icon={IconThinkOutlineRegular} label="LLM 耗时" value={formatDuration(stats?.llmMs ?? 0)} />
+          <StatCard icon={IconCodeOutlineRegular} label="工具调用" value={formatDuration(stats?.toolMs ?? 0)} />
+          <StatCard icon={IconPlayOutlineRegular} label="首 token 平均" value={formatDuration(ttftAvg ?? 0)} />
+          <StatCard icon={IconRightUpOutlineRegular} label="速度" value={`${formatTokensPerSecond(tps ?? 0)} tok/s`} />
+          <StatCard icon={IconCheckOutlineRegular} label="缓存命中" value={`${cacheHit ?? 0}%`} />
+          <StatCard icon={IconDownloadOutlineRegular} label="输入 Tokens" value={`${formatTokens(inputTokens ?? 0)} tok`} />
+          <StatCard icon={IconSendOutlineRegular} label="输出 Tokens" value={`${formatTokens(outputTokens ?? 0)} tok`} />
         </div>
       </div>
       <div className={c.section}>
         <div className={c.sectionTitle}>本轮对话 Token</div>
         <div className={c.statGrid}>
-          <StatCard icon={IconDownloadOutline16} label="本轮输入" value={`${formatTokens(billedInputTokens(turn))} tok`} />
-          <StatCard icon={IconSendOutline14} label="本轮输出" value={`${formatTokens(turn.outputTokens)} tok`} />
-          <StatCard icon={IconCheckOutline16} label="本轮缓存命中" value={`${turnCache}%`} />
-          <StatCard icon={IconDataOutline16} label="本轮总计" value={`${formatTokens(turnTotalValue)} tok`} />
+          <StatCard icon={IconDownloadOutlineRegular} label="本轮输入" value={`${formatTokens(billedInputTokens(turn))} tok`} />
+          <StatCard icon={IconSendOutlineRegular} label="本轮输出" value={`${formatTokens(turn.outputTokens)} tok`} />
+          <StatCard icon={IconCheckOutlineRegular} label="本轮缓存命中" value={`${turnCache}%`} />
+          <StatCard icon={IconDataOutlineRegular} label="本轮总计" value={`${formatTokens(turnTotalValue)} tok`} />
         </div>
       </div>
       <div className={c.section}>
         <div className={c.sectionTitle}>工作区</div>
         {loading ? <div className={c.empty}>加载中…</div> : (
           <div className={c.statGrid}>
-            <StatCard icon={IconFolderOpen16} label="文件" value={String(fileCount)} />
-            <StatCard icon={IconFolderClose16} label="文件夹" value={String(dirCount)} />
-            <StatCard icon={IconBranchOutline16} label="Git" value={git?.isGit ? (git.branch || '仓库') : '非 Git'} />
-            <StatCard icon={IconEditOutline16} label="变更" value={String(git?.changes.length ?? 0)} />
+            <StatCard icon={IconFolderOpenRegular} label="文件" value={String(fileCount)} />
+            <StatCard icon={IconFolderCloseRegular} label="文件夹" value={String(dirCount)} />
+            <StatCard icon={IconBranchOutlineRegular} label="Git" value={git?.isGit ? (git.branch || '仓库') : '非 Git'} />
+            <StatCard icon={IconEditOutlineRegular} label="变更" value={String(git?.changes.length ?? 0)} />
           </div>
         )}
       </div>
@@ -798,7 +798,7 @@ function GitTab({ git, loading }: { git: GitInfo | null; loading: boolean }): Re
     <div>
       <div className={c.section}>
         <div className={c.gitBranchCard}>
-          <IconBranchOutline16 className={c.gitBranchIcon} size={16} />
+          <IconBranchOutlineRegular className={c.gitBranchIcon} size={16} />
           <span className={c.gitBranchName}>{git.branch || 'HEAD'}</span>
           {git.head !== '' && <span className={c.gitBranchHead}>{git.head.slice(0, 7)}</span>}
         </div>
