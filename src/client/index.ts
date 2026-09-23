@@ -41,9 +41,6 @@ import { installConversationRail, refreshConversationRailPalette } from './conve
 import { installModelSelect } from './model-select.tsx'
 import { PermissionPolicyChip, type PermissionPolicyChipProps } from './permission-policy-chip.tsx'
 import { SessionTabs } from './SessionTabs.tsx'
-import { bindPtyRuntime, fetchShells, ptyToggle } from './pty-store.ts'
-import { syncHostPrefs } from './terminal-prefs.ts'
-import { TerminalPage } from './terminal-dock.tsx'
 import { showContextMenu, closeContextMenu, buildSelectionMenu, buildEditMenu, buildLinkMenu } from './context-menu.ts'
 import { installLinkHandler } from './link-handler.ts'
 
@@ -373,8 +370,9 @@ export function apply(ctx: ClientContext): void {
   // back: the two imports at the top of this file, the
   // `injectRightSidebarStyle()` call next to `injectCardStyle()`, and this
   // ctx.effect block (see git history or index.ts.bak-sidebar-retire-20260918).
-  //
-  // Note the terminal entry survives: Ctrl+J toggles the bottom dock
+  // The bottom terminal dock was retired 2026-09-23: this profile loads the
+  // official right-sidebar terminal (ui-sidebar-terminal), so the hub’s own
+  // PTY dock, its host routes and its node-pty dependency were removed.
   // (onTerminalKey below) and the dock mounts independently.
 
   // Title-bar session tabs (顶部会话标签栏): a browser-style tab strip at the
@@ -398,54 +396,6 @@ export function apply(ctx: ClientContext): void {
     console.warn('[dsh-hub] session tabs mount failed:', error)
   }
 
-  // Interactive terminal (交互终端): Ctrl+J toggles the bottom dock; the
-  // right-click "Open terminal here" entry also calls ptyToggle(cwd). The
-  // dock renders in a body portal; keydown guard keeps the xterm textarea's
-  // own Ctrl+J (PSReadLine history search) working inside the terminal.
-  try {
-    bindPtyRuntime(ctx)
-  } catch (error) {
-    console.warn('[dsh-hub] pty runtime bind failed:', error)
-  }
-  // Detect the shells available on this machine so the terminal settings only
-  // list shells that actually exist (absent shells are never offered).
-  try {
-    void fetchShells()
-  } catch (error) {
-    console.warn('[dsh-hub] pty shells fetch failed:', error)
-  }
-  // Restore terminal preferences from the HOST (survives the random per-launch
-  // web origin — localStorage would silently reset; Bug-3).
-  try {
-    void syncHostPrefs()
-  } catch (error) {
-    console.warn('[dsh-hub] pty prefs sync failed:', error)
-  }
-  const onTerminalKey = (event: KeyboardEvent): void => {
-    if (!((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'j')) return
-    const target = event.target as HTMLElement | null
-    // Inside the terminal's own xterm textarea: let PSReadLine handle it.
-    if (target?.closest('[data-dsh-hub-terminal]') !== null) return
-    event.preventDefault()
-    void ptyToggle()
-  }
-  try {
-    ctx.effect(() => {
-      window.addEventListener('keydown', onTerminalKey)
-      const host = document.createElement('div')
-      host.id = 'dsh-hub-terminal-dock'
-      document.body.appendChild(host)
-      const root: Root = createRoot(host)
-      root.render(createElement(TerminalPage))
-      return () => {
-        window.removeEventListener('keydown', onTerminalKey)
-        root.unmount()
-        host.remove()
-      }
-    }, 'dsh-hub: terminal dock mount')
-  } catch (error) {
-    console.warn('[dsh-hub] terminal dock mount failed:', error)
-  }
 
   // Disable the default browser context menu (its 返回 / 另存为 items navigate
   // the webview back to the placeholder or do nothing useful — Bug-2) and
