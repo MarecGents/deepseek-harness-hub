@@ -129,11 +129,24 @@ pub fn set_window_size(
     }
 }
 
+/// 已知提示音种类（纯校验，便于单测；须与 `models/sound.ts` 的
+/// `TaskSoundKind` 逐项一致）。
+///
+/// 同步纪律：新增一种音效要改四端（本白名单、`shell-init.js` 的
+/// `MG_SOUND_URLS`、`models/sound.ts` 联合类型、`session-runtime.ts` 触发点），
+/// 漏掉本处或 JS 映射表都**不报错**——表现为事件照发、就是不出声。
+/// 逐项清单见 `assets/sounds/README.md`。
+const SOUND_KINDS: [&str; 5] = ["start", "success", "subagent-success", "attention", "error"];
+
+/// 校验提示音种类是否在白名单内。
+fn is_known_sound_kind(kind: &str) -> bool {
+    SOUND_KINDS.contains(&kind)
+}
+
 /// 提示音播放（Q4 唯一实现）：Node 侧（tauri-shell.ts）经 DSH_CMD 上行 →
 /// 此处 eval 到浏览器执行 HTMLAudio（Node 进程无 Audio，D-2 通道）。
 pub fn play_sound(app: &tauri::AppHandle, kind: String) -> Result<(), String> {
-    let valid = matches!(kind.as_str(), "start" | "success" | "attention" | "error");
-    if !valid {
+    if !is_known_sound_kind(&kind) {
         return Err(format!("unknown sound kind: {kind}"));
     }
     if let Some(win) = app.get_webview_window("main") {
@@ -237,7 +250,29 @@ pub fn window_toggle_visible(app: &tauri::AppHandle) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{resize_action, validate_open_target, ResizeAction};
+    use super::{
+        is_known_sound_kind, resize_action, validate_open_target, ResizeAction, SOUND_KINDS,
+    };
+
+    #[test]
+    fn accepts_every_declared_sound_kind() {
+        // 每个白名单项都必须被接受——否则该音效在真机上静默无声。
+        for kind in SOUND_KINDS {
+            assert!(is_known_sound_kind(kind), "declared kind rejected: {kind}");
+        }
+    }
+
+    #[test]
+    fn rejects_unknown_sound_kinds() {
+        // 覆盖历史四段与拼写变体：subagent-success 是 0.1.7 新增的第 5 段，
+        // 早期版本只有 4 段，故这里同时确认旧种类没被误删。
+        for kind in ["start", "success", "attention", "error"] {
+            assert!(is_known_sound_kind(kind), "legacy kind rejected: {kind}");
+        }
+        for bad in ["subagent_success", "subagent", "", "SUCCESS", "unknown"] {
+            assert!(!is_known_sound_kind(bad), "unexpectedly accepted: {bad}");
+        }
+    }
 
     #[test]
     fn boot_sync_skips_when_maximized_and_not_allowed() {

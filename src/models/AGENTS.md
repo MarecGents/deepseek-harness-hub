@@ -10,7 +10,7 @@
 | `pipe.ts` | **Model** | 管道协议类型/常量：`TrayCommand`/`MgTrayFrame`/`DshCmdPayload`/`DshCmdName`/`MG_TRAY_PREFIX`/`DSH_CMD_PREFIX` |
 | `shell-config.ts` | **Model** | `ShellConfig` 接口 + `DEFAULT_SHELL_CONFIG`（配置三处一致的单一来源） |
 | `plugin-config.ts` | **Model** | `PluginConfig` 接口（Cordis 插件 Config 的纯类型单一来源） |
-| `sound.ts` | **Model** | 提示音类型：`TaskSoundKind` = start/success/attention/error（session-runtime ↔ Tauri play_sound 共享） |
+| `sound.ts` | **Model** | 提示音类型：`TaskSoundKind` = start/success/subagent-success/attention/error（session-runtime ↔ Tauri play_sound 共享） |
 
 ## Model 层红线
 
@@ -18,5 +18,6 @@
 2. **单一来源**：跨层共享的类型只在此定义一次；原定义处（如 config-api 的 ShellConfig、tray 的 TrayCommand）改为 import + re-export 保持消费方兼容。
 3. **协议同步**：`pipe.ts` 的命令名/帧结构变更必须同步 `src-tauri/src/managers/node.rs` 分发表 ↔ `src/managers/tauri-shell.ts` ↔ `src/controllers/tray-pipe.ts`。
 4. **配置三处一致**：新增 `ShellConfig` 字段必须同步 ① 本文件接口 ② `DEFAULT_SHELL_CONFIG` ③ config-api POST 白名单——漏一处 = 保存静默丢失。
+5. **音效种类四端一致**：新增 `TaskSoundKind` 必须同步 ① 本文件联合类型 ② `controllers/session-runtime.ts` 触发点 ③ `src-tauri/src/managers/window_ops.rs` 的 `matches!` 白名单 ④ `src-tauri/src/shell-init.js` 的 `MG_SOUND_URLS`——③④ 漏任一处都是静默无声（无报错），清单见 `assets/sounds/README.md`。
 
 > 新增共享类型先判断归属（管道协议 → pipe.ts；壳配置 → shell-config.ts；其它 → 按领域命名新文件）。单一模块私有类型留在原模块。

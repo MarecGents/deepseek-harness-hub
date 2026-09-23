@@ -5,5 +5,5 @@
  * @module dsh-hub/models/sound
  * @category Model（纯类型/常量，无副作用）
  */
-/** Shell event sound kind (start / success / attention / error). */
-export type TaskSoundKind = 'start' | 'success' | 'attention' | 'error';
+/** Shell event sound kind (start / success / attention / error / subagent-success). */
+export type TaskSoundKind = 'start' | 'success' | 'attention' | 'error' | 'subagent-success';

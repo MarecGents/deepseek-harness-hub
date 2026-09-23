@@ -63,7 +63,7 @@
 - **对话定位条（rail）**：中栏左缘竖排小横条 minimap（每段对话一条，点击跳转；位置按段序近似，数据源官方 ConversationSnapshot turnTimings，只读）。**时间窗真实 kind 预览（修 #35）**：hover 预览按 turnTimings 时间窗 [startTime, endTime) + node.turn 对齐真实节点 kind（user/steering/context/assistant/command/compaction）提取开场文本，替换原 turn-tail 死代码（命令轮次回退助手回复）。**自适应配色**：采样 rail 下方的实际背景（皮肤表面色 × 背景图 cover 数学混合），按采样色相派生 tick 深/浅色调（WCAG 对比度择优，≥7:1）与激活态强调色——每套皮肤/背景图得到自己的 rail 色板，非固定两色；tick 附 1px 对比描边兜底。
 - **置顶会话**：会话行 hover 置顶（同名会话安全跳过、不误标）；置顶区常驻列表顶部（可独立滚动）；持久化于 `$DSH_HOME/dsh-hub/pins.json`（localStorage 兜底）。注：多标签/多实例下 pins 为整体替换语义（最后写者胜）；同标签内 PUT 依赖 fetch 顺序保序。
 - **会话完成通知 + 事件提示音**：
-  - **提示音**（独立开关）：用户提交问题（开始音）、任务正常完成（完成音）、AI 请求批准（需要你）、任务出错（出错音）——**四段原创合成音效**（`scripts/synthesize-sounds.mjs` 生成，无第三方素材），窗口隐藏到托盘时依然可闻。
+  - **提示音**（独立开关）：用户提交问题（开始音）、任务正常完成（完成音）、子代理完成（轻滴声，按 `delegationDepth > 0` 与主任务完成音分流）、AI 请求批准（需要你）、任务出错（出错音）——**五段原创合成音效**（`scripts/synthesize-sounds.mjs` 生成，无第三方素材），窗口隐藏到托盘时依然可闻。
   - **Toast**：任务完成/出错时弹 Windows 原生通知（notify-rust 直弹，`wait_for_action` 点击回窗），30s 冷却。**点击跳会话**：点击 toast 回窗口并跳到对应会话（`mg:shell-command` focus-session 事件 + `__mgShellReady` 300ms×20 重试）。**聚焦会话策略**：正在查看的会话完成时只响提示音不弹 Toast（结果就在眼前）；后台会话完成或窗口隐藏时仍弹 Toast。
 - **独立进程身份**：桌面壳为单一 Tauri 原生应用（`cargo tauri build` NSIS 安装），任务管理器显示 DeepSeek Harness Hub 图标与名称；WebView2 时代 `dsh-hub.exe` / `dsh-hub-guard.exe`（node.exe 复制 + rcedit 打补丁）机制已删除。
 - **启动门控**：仅当通过本项目启动时注入桌面壳与插件页面；普通 `dsh web` 完全不受影响。
