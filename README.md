@@ -9,6 +9,9 @@
 > - **已知遗留**：composer 模型/思考强度菜单的宽度与定位仍在迭代中（未完全收敛）；CI workflow（frontend/rust）存在历史失败记录（lock 同步、Windows-only 构建脚本、行尾校验等，部分已修复）
 > - **升级 dsh 前**：先读 [REFERENCE.md](REFERENCE.md) §2 的破坏性变更审计（含 0.1.6 / 0.1.7 新增条目）
 >
+> 🧩 **想复刻整套环境？** 本仓只是桌面壳；完整的「壳 + 插件 + 技能 + 框架 preset」组合环境见
+> **[dustinmoon78/dsh-env](https://github.com/dustinmoon78/dsh-env)** —— 把那个仓库地址交给你的 AI 助手，说「照这个仓库把我的环境配好」即可按 Phase 重建。
+>
 > **版本状态（2026-09-06）**：**`0.1.6`**——Tauri 2.x 壳 + dsh web 插件层（dsh 0.1.2-rc.1 适配 + composer 模型与思考强度 seat 修复）。NSIS 安装器**安装即用**（安装期自动下载私有 Node + dsh + 插件到安装目录，无需系统预装 Node），首启自动进 dsh UI；卸载走快速通道并清理自有 profile 条目（保留 `.dsh` 本体与用户数据）。功能全貌见 [FUNCTIONS.md](FUNCTIONS.md)（11 大类、每项带来源与测试状态）：会话标签栏、交互终端（自定义 Shell）、对话定位条、置顶会话、右键菜单全量接管 + 双语 i18n、15 套皮肤 + 背景图 + 桌面图标六面同步、权限策略、composer 内联思考强度声明、四个独立插件、壳内拖放恢复、启动 Splash 皮肤配色。`0.0.2-rc.*` 与 `0.0.1-rc.14`（WebView2 壳 `dev-v1`，已冻结）为历史版本。
 
 [![npm version](https://img.shields.io/npm/v/@marecgents/dsh-hub)](https://www.npmjs.com/package/@marecgents/dsh-hub)
