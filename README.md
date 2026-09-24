@@ -1,20 +1,20 @@
 ># **`@marecgents/dsh-hub`** —— DeepSeek Harness（`dsh`）的桌面端框架：以原生 Tauri 2.x 窗口运行 dsh Web UI，提供托盘、主题同步、窗口记忆、右侧栏与系统通知。
 >
-> ## ⚠️ 项目已归档（2026-09-08）
+> ## ✅ 开发中（2026-09-24 起自持维护）
 >
-> **本仓库已归档，停止主动开发。** 归档原因：dsh 生态处于快速破坏性变更期（0.1.2-rc.1 → 0.1.3-alpha.1 连续破坏面），桌面壳 + 插件双轨适配成本持续走高，开发进度过于艰难，经仓库所有者决定归档。
+> **本项目由 `dustinmoon78` 独立维护并持续开发。** 原上游 `MarecGents/deepseek-harness-hub` 已于 2026-09-08 停止主动开发，本项目从其归档点接管，继续适配 dsh 内核演进（当前基线 **dsh 0.1.7-alpha.2**）。
 >
-> - **最后版本**：`0.1.6`（Tauri 2.x 壳 + dsh 0.1.2-rc.1 适配，NSIS 安装器可用）
-> - **分支状态**：`dev-v2` 与 `main` 均冻结在归档点；`dev-v1`（WebView2 时代）保持永久冻结
+> - **当前版本**：`0.1.6`（Tauri 2.x 壳 + dsh 0.1.7 适配，NSIS 安装器可用）
+> - **分支状态**：`dev-v3` 为活跃开发线；`main` 跟随最新；`dev-v1`（WebView2 时代）/ `dev-v2`（归档点）保持冻结存档
 > - **已知遗留**：composer 模型/思考强度菜单的宽度与定位仍在迭代中（未完全收敛）；CI workflow（frontend/rust）存在历史失败记录（lock 同步、Windows-only 构建脚本、行尾校验等，部分已修复）
-> - **后续指引**：如需恢复开发，从 `dev-v2` 归档点继续；升级 dsh 前先读 [REFERENCE.md](REFERENCE.md) §2 的破坏性变更审计（0.1.2-rc.1 / 0.1.3-alpha.1）
+> - **升级 dsh 前**：先读 [REFERENCE.md](REFERENCE.md) §2 的破坏性变更审计（含 0.1.6 / 0.1.7 新增条目）
 >
 > **版本状态（2026-09-06）**：**`0.1.6`**——Tauri 2.x 壳 + dsh web 插件层（dsh 0.1.2-rc.1 适配 + composer 模型与思考强度 seat 修复）。NSIS 安装器**安装即用**（安装期自动下载私有 Node + dsh + 插件到安装目录，无需系统预装 Node），首启自动进 dsh UI；卸载走快速通道并清理自有 profile 条目（保留 `.dsh` 本体与用户数据）。功能全貌见 [FUNCTIONS.md](FUNCTIONS.md)（11 大类、每项带来源与测试状态）：会话标签栏、交互终端（自定义 Shell）、对话定位条、置顶会话、右键菜单全量接管 + 双语 i18n、15 套皮肤 + 背景图 + 桌面图标六面同步、权限策略、composer 内联思考强度声明、四个独立插件、壳内拖放恢复、启动 Splash 皮肤配色。`0.0.2-rc.*` 与 `0.0.1-rc.14`（WebView2 壳 `dev-v1`，已冻结）为历史版本。
 
 [![npm version](https://img.shields.io/npm/v/@marecgents/dsh-hub)](https://www.npmjs.com/package/@marecgents/dsh-hub)
 [![npm rc](https://img.shields.io/npm/v/@marecgents/dsh-hub/rc)](https://www.npmjs.com/package/@marecgents/dsh-hub)
 [![license](https://img.shields.io/npm/l/@marecgents/dsh-hub)](LICENSE)
-[![GitHub stars](https://img.shields.io/github/stars/MarecGents/deepseek-harness-hub?style=social)](https://github.com/MarecGents/deepseek-harness-hub)
+[![GitHub stars](https://img.shields.io/github/stars/dustinmoon78/deepseek-harness-hub?style=social)](https://github.com/dustinmoon78/deepseek-harness-hub)
 [![dsh-plugin](https://img.shields.io/badge/dsh-plugin-DeepSeek%20Harness-blue)](https://github.com/topics/dsh-plugin)
 [![platform](https://img.shields.io/badge/platform-Windows%20%7C%20Tauri-0078d4)]()
 
@@ -24,9 +24,10 @@
 
 | 分支 | 状态 | 说明 |
 |---|---|---|
-| `main` | **已归档冻结**（2026-09-08） | 归档点 = dev-v2 同步；不再接收更新 |
+| `dev-v3` | **活跃开发线**（推荐） | 当前主线：0.1.7 适配 + 音效 + 功能精简；日常提交都落这里 |
+| `main` | **跟随最新** | 与 `dev-v3` 同步推进（新仓可直接推送） |
 | `dev-v1` | **永久冻结**（WebView2 时代存档） | 不再接收任何更新/同步；历史收尾 = `0.0.1-rc.13/rc.14`（WebView2 最终版） |
-| `dev-v2` | **已归档冻结**（2026-09-08） | 归档点 = `0.1.6`（T1 调试版，未发布 npm）；恢复开发从此分支继续 |
+| `dev-v2` | **归档冻结**（2026-09-08 上游归档点） | 归档点 = `0.1.6`（T1 调试版，未发布 npm）；仅作历史参照 |
 
 ---
 
@@ -83,7 +84,7 @@
 ### 方式二：手动 / 从源码安装
 
 ```sh
-git clone https://github.com/MarecGents/deepseek-harness-hub.git
+git clone https://github.com/dustinmoon78/deepseek-harness-hub.git
 cd deepseek-harness-hub
 npm install
 npm run build
