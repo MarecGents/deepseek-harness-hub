@@ -39,7 +39,6 @@ import { installPinnedConversations } from './pin-conversations.ts'
 import { installWorkspaceDragGuard } from './workspace-drag-guard.ts'
 import { installConversationRail, refreshConversationRailPalette } from './conversation-rail.ts'
 import { installModelSelect } from './model-select.tsx'
-import { PermissionPolicyChip, type PermissionPolicyChipProps } from './permission-policy-chip.tsx'
 import { SessionTabs } from './SessionTabs.tsx'
 import { showContextMenu, closeContextMenu, buildSelectionMenu, buildEditMenu, buildLinkMenu } from './context-menu.ts'
 import { installLinkHandler } from './link-handler.ts'
@@ -54,20 +53,6 @@ import { installLinkHandler } from './link-handler.ts'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface SlotMap {
-    /**
-     * Left end of the composer tool row, beside the official permission-preset
-     * chip — the seat for the dsh-hub permission-policy tier chip.
-     * 0.1.2-rc.1: the slot no longer injects an owner (renders `{}`); the
-     * chip reads the standard `sessionId` prop from SessionStandardProps.
-     */
-    'conversation.input.left': { kind: 'list'; scope: 'session' }
-    /**
-     * One top-level page of the settings dialog (nav rail). Declared at
-     * runtime by ui-settings-general; mirrors its contract (order sorts the
-     * nav, label renders the nav cell, inject supplies section props).
-     * 2026-09-01 audit: the legacy plugin-item declaration was removed — the
-     * settings card ships as a first-class section now.
-     */
     'settings.section': { kind: 'list'; scope: 'root'; owner: SettingsSectionOwnerProps }
   }
 }
@@ -335,26 +320,7 @@ export function apply(ctx: ClientContext): void {
     console.warn('[dsh-hub] settings section injection failed:', error)
   }
 
-  // Permission-policy chip: a small control at the left end of the composer
-  // tool row (official `conversation.input.left` slot), beside the official
-  // permission-preset chip. Selects the dsh-permission-guard plugin's policy
-  // tier (follow/strict/read-only); the plugin's own route persists it.
-  // 0.1.2-rc.1: the slot no longer injects a session owner — the chip reads
-  // the standard `sessionId` prop from SessionStandardProps.
-  try {
-    slots.inject('conversation.input.left', function* () {
-      yield slots.register({
-        name: 'conversation.input.left',
-        // list slot: identified by id (not the keyed card's key).
-        id: 'dsh-hub-permission-policy',
-        priority: 20,
-      }, (props: PermissionPolicyChipProps) => PermissionPolicyChip({ sessionId: props.sessionId }))
-    })
-  } catch (error) {
-    // A chip failure must never take down the tray bridge.
-    console.warn('[dsh-hub] permission-policy chip injection failed:', error)
-  }
-
+  // Title-bar session tabs (顶部会话标签栏): a browser-style tab strip at the top, portaled into the titlebar (#dsh-hub-titlebar .tb-title). The host
   // Right sidebar: RETIRED 2026-09-18 (decision 退役自研右栏). The hub's own
   // right sidebar (概览 / 文件 / Git) was written against dsh 0.1.5's
   // `sessions.list.current`. dsh 0.1.6-alpha.2 removed that field from

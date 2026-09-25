@@ -46,7 +46,7 @@
 | D1 | 对话定位条（rail） | 对话列左侧 20px 悬浮条：每轮对话一根可点击刻度，点击滚动定位到该轮；hover 显示该轮开场文本预览（时间窗真实 kind：user/steering/context/assistant/command/compaction） | PR #27/#35 | 🔶 点击跳转实测；hover 预览未系统回归 |
 | D2 | rail 自适应配色 | 刻度条配色按当前皮肤/背景图自动推导（per-skin/background 调色板，非两套固定色）；皮肤/背景切换自动重读 | PR #30 | 🔶 抽查个别皮肤 |
 | D3 | 模型嵌套菜单 | composer 模型 seat 替换为 provider→model 两级菜单（官方 slot `conversation.input.model` priority -1 阴影；**0.1.6 起**采用 scoped `ctx.inject` 等待 `modelDirectories` 服务就绪后注册，服务缺失仍降级内置 seat，不 PENDING 整个插件） | PR #33 | ✅ 注册链 0.1.2-rc.1 验证 |
-| D4 | 权限策略 chip | 会话左下角（官方权限 chip 旁）快捷切换 dsh-permission-guard 档位，带档位色点（蓝=跟随/橙=严格/绿=只读） | rc.14 | 🔶 |
+| D4 | 权限策略 chip | **2026-09-25 随 dsh-permission-guard 退役移除**：原会话左下角 dsh-permission-guard 档位切换 chip（蓝=跟随/橙=严格/绿=只读） | rc.14 | — |
 | D5 | 右键菜单语义 | WebView2 原生右键禁用，DOM 全量接管，四层优先级：对象行→专属菜单；对话文本选中→复制菜单（复制/添加到任务/辅助对话）；链接→链接菜单（浏览器打开/复制地址）；输入框→编辑菜单（撤销/重做/剪切/复制/粘贴/删除/全选）；空白→刷新菜单。链接左键→默认浏览器打开（`open_url` Tauri 命令）；全量 zh/en i18n | v0.2.0 | ✅ |
 
 ## E. 外观系统
@@ -90,7 +90,7 @@
 | # | 插件 | 描述 | 来源 | 测试 |
 |---|------|------|------|------|
 | I1 | dsh-usage-stats | 全会话 token 用量统计：扫描全部会话日志按 provider/model/天聚合，设置页可视化（汇总/各模型卡片/按天表格/趋势图/单价与费用估算/汇率），HTTP API（overview/prices，后台预热 + stale-while-revalidate） | PR #34 | ✅（#95/#96 修复后全链实测） |
-| I2 | dsh-permission-guard | 逐命令权限白名单 + 四级拦截（auto/give-command/confirm/never）+ **policy 档位**（follow 联动会话官方预设：Full Access 只留 never 红线；read-only；strict）+ HTTP 路由 + systemPrompt 指南 | PR #37 | 🔶 决策矩阵模拟验证；真机会话拦截 🔶 |
+| I2 | dsh-permission-guard | **2026-09-25 退役卸载**：原逐命令权限白名单 + 四级拦截 + policy 档位插件，因本机常驻 Full Access、官方 permission-preset 已覆盖而整体移除（源码归档 `_archive/permission-guard-retired_20260925/`） | PR #37 | — |
 | I3 | dsh-project-memory | 每项目持久记忆（FACT.md + JOURNAL.jsonl 自动注入 systemPrompt.context）+ `memory_read`/`memory_log`/`memory_fact` 工具 | PR #36 | 🔶 |
 | I4 | dsh-findings-ledger | baseline 快照 + 变更对账 + 覆盖度报告（turn/end 自动出报告） | PR #38 | 🔶 |
 | I5 | composer inline 思考强度声明 | 自定义模型无 Host reasoning 元数据时，在默认 composer 模型选择 seat 的「思考强度」面板内声明标准档位；写入官方 `llm-pi-ai` settings namespace 后由 Host catalog 返回正式 efforts，仍通过共享 `modelDirectories.select` 提交；不新增设置页、不单独分发插件 | 0.1.6 | 🔶 门禁通过；真机 composer 交互待验证 |
@@ -138,7 +138,7 @@
 | #34 | dsh-usage-stats 插件 | ✅ 已落地 | I1 |
 | #35 | rail hover 开场文本预览 | ✅ 已落地（M1 数据源修复） | D1 |
 | #36 | dsh-project-memory 插件 | ✅ 已落地 | I3 |
-| #37 | dsh-permission-guard 插件 | ✅ 已落地 | I2 |
+| #37 | dsh-permission-guard 插件 | ✅ 已落地（2026-09-25 退役） | I2 |
 | #38 | dsh-findings-ledger 插件 | ✅ 已落地 | I4 |
 | #39 | ZCode 式交互终端 + 会话标签条 + 工作区选择 | ✅ 已落地 | H1/B2 |
 | #40 | 终端/标签条/工作区/定位条/外观中心 | ✅ 已落地（外观中心即 #26 的前置，以设置卡实现） | H1/D1/F1 |

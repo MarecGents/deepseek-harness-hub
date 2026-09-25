@@ -52,7 +52,7 @@
 - **S0 安全（M3）**：**Origin 白名单校验**——POST/PUT 等状态变更请求校验 `Origin`（loopback / `tauri:`），缺失 Origin 拒绝；GET/HEAD 跳过（DNS-rebinding 已由 Host 校验覆盖）（`server/host-guard.ts`，路由工厂共享）。
 - **工作区打开（M4）**：`POST /api/dsh-hub/workspace/open` 用 OS 默认方式打开文件/文件夹（host+origin+token 三重守卫，Windows `explorer.exe`）；壳 capability 放行 `dialog:allow-open`（M2，`src-tauri/capabilities/default.json`）。
 - **findings-ledger 插件（PR #38）**：独立 dsh 插件（`plugins/dsh-findings-ledger/`）——baseline 快照 + 变更对账 + 覆盖度报告。
-- **permission-guard 插件（PR #37）**：独立 dsh 插件（`plugins/dsh-permission-guard/`）——逐命令权限白名单 + 四级能力拦截（auto / give-command / confirm / never）。
+- **permission-guard 插件（PR #37，2026-09-25 退役）**：随壳入仓的逐命令权限白名单插件，因本机常驻 Full Access + 官方 permission-preset 已覆盖会话档位而整体卸载（源码归档 `G:/DSH/DH-dev/_archive/permission-guard-retired_20260925/`，随壳 chip/设置项一并移除）。
 - **project-memory 插件（PR #36）**：独立 dsh 插件（`plugins/dsh-project-memory/`）——每项目持久记忆（FACT.md + JOURNAL.jsonl，自动注入 systemPrompt.context + `memory_read`/`memory_log`/`memory_fact` 工具）。
 - **usage-stats 插件（PR #34）**：独立 dsh 插件（`plugins/dsh-usage-stats/`）——全会话 token 用量统计（按 provider/model 聚合 + 设置页可视化：汇总/各模型卡片/按天表格/趋势图/单价费用估算 + HTTP API；0.1.0 修复读取 500 与表格透背景图两处缺陷）；provider 名与服务端文案均双语（zh/en，跟随 dsh 语言设置，独立加载插件同样生效）。
   以上 4 个独立插件**双轨分发**（随 hub resources + 独立 npm 轨，package.json 均已 `private:false` 就绪），见 [BUILD.md §7](BUILD.md) 与 AGENTS.md §1.1。
@@ -60,7 +60,7 @@
 - **i18n（全量双语）**：hub 全部界面文案（设置卡/会话菜单/工作区菜单/皮肤名/空白右键菜单等）与 **usage-stats 插件**文案均收进 zh/en 词典（`src/client/locale.ts`；usage-stats 独立插件自带词典），语言源 = dsh 设置（General → Language）——官方 locale 插件写入的 `<html lang>`，切换即全量刷新。
 - **右键菜单语义**：WebView2 原生右键菜单已在 Rust 侧禁用（`SetAreDefaultContextMenusEnabled(false)`）；右键全部由 DOM 接管，四层优先级——**对象行（会话/工作区）→ 各自专属菜单**，**对话文本选中 → 复制菜单**（复制/添加到当前任务/在辅助对话中提问），**链接 → 链接菜单**（在浏览器中打开/复制链接地址），**输入框 → 编辑菜单**（撤销/重做/剪切/复制/粘贴/删除/全选），**空白处 → 刷新菜单**。链接左键点击在默认浏览器打开（`open_url` Tauri 命令）。
 - **壳内拖放恢复（0.1.0）**：关闭 Tauri 对 WebView2 拖放的文件专用覆盖——列表行拖拽排序（工作区/会话）、标签拖拽在壳内恢复浏览器同款行为；拖文件到输入区 = 官方附件上传，其他区域安全忽略（杜绝 file:// 导航）；拖拽状态 watchdog 兜底。
-- **权限策略档位（rc.14）**：`dsh-permission-guard` 的 policy 三档（follow 跟随会话官方预设 / strict 白名单 / read-only），设置页与会话左下角 chip 双入口切换。
+- **权限策略档位（rc.14，2026-09-25 退役）**：原 `dsh-permission-guard` 的 policy 三档（follow/strict/read-only）双入口切换，随插件整体卸载移除。
 - **性能（rc.15）**：会话后台预热（长会话冷开 ~2s → ~0.2s）+ 聊天流 `content-visibility`（长历史滚动不卡顿）。
 - **多实例保护**：启动时检测已有 dsh 实例（任意端口），默认拒绝共存以防会话数据损坏；确需共存可在设置中显式开启（附危险警告）。
 - **右侧栏**：概览（Token 统计）、文件树、Git 变更三页；收起后保留窄栏快捷按钮。
@@ -223,7 +223,6 @@ dsh-hub/
 ├── assets/                 # dsh favicon（SVG）+ backgrounds/（背景图）+ sounds/（提示音）
 ├── plugins/                # 独立 dsh 插件（双轨分发：独立 npm + 随 hub，见 BUILD.md §7）
 │   ├── dsh-findings-ledger/ # findings-ledger（PR #38）
-│   ├── dsh-permission-guard/ # permission-guard（PR #37）
 │   ├── dsh-project-memory/  # project-memory（PR #36）
 │   └── dsh-usage-stats/     # usage-stats（PR #34）
 ├── src-tauri/              # Tauri 2.x 壳（Rust，lib.rs 入口 + NSIS 打包）
