@@ -48,10 +48,8 @@ import { makeSessionPathsRoutes } from './server/session-paths-api.js'
 import { makeBackgroundsRoutes } from './server/backgrounds-api.js'
 import { makeSoundsRoutes } from './server/sounds-api.js'
 import { makeIconsRoutes } from './server/icons-api.js'
-import { makePtyRoutes } from './server/terminal-pty-api.js'
 import { installSessionWarmup } from './services/session-warmup.js'
 import { getToken } from './server/token.js'
-import { disposeAll as disposeAllPty } from './services/pty-manager.js'
 import { getFocusedSessionState, setupSessionRuntime, type SessionShellLike } from './controllers/session-runtime.ts'
 import { setupTrayPipe } from './controllers/tray-pipe.ts'
 import { effectiveConfig, getActiveCwd, newTaskInWeb, sendDshCmd, setActiveCwd } from './controllers/shell-runtime.ts'
@@ -142,7 +140,18 @@ export function apply(ctx: Context, config: Config): void {
   // Session warm-up: preload the persistence LRU in the background so opening
   // a long session skips the full decode (cold ≈2s → cache-hit ≈0.9s).
   // Best-effort; failure only logs.
-  ctx.effect(() => installSessionWarmup(ctx), 'dsh-hub: session warmup lifecycle')
+  //
+  // NOTE (2026-09-23, not a 0.1.7 regression): this always logs
+  // "sessionPersistence service unavailable" because `session-warmup.ts` needs
+  // `persistence.inspect(id)`, and that method has been gone from
+  // `dsh-session-persistence-jsonl` since 0.1.6 (0.1.5-rc.2 lacks it too — the
+  // service still exposes list/open/read/create). The service IS mounted, so the
+  // inject below resolves; the skip comes from the missing method. Porting the
+  // warm-up to the current API (list + open/read) is a separate task with a
+  // measurable claim to re-verify, so it is left as-is here.
+  ctx.inject(['sessionPersistence'], (scoped) => {
+    scoped.effect(() => installSessionWarmup(scoped), 'dsh-hub: session warmup lifecycle')
+  })
 
   // S0/M4: inject the per-process API token into the SPA so pty/config routes
   // can authenticate browser calls. dsh's frontend-static emits this table per
@@ -165,10 +174,30 @@ export function apply(ctx: Context, config: Config): void {
   // 0.1.2-rc.1: `installSettingsSection`/`settingsNamespace` were removed from
   // @deepseek-ai/dsh-settings — replaced by `ctx.settings.installSection`
   // (SettingsProvider instance method, ns as a plain lowercase-kebab string).
-  ctx.settings.installSection(ctx, SETTINGS_NS, Config, config, {
-    setSource: () => { /* future settings-backed values */ },
-    onChange: () => { /* future: apply live config changes */ },
-  })
+  // 0.1.7-alpha.2: the register face is gone entirely — `settings` is now
+  // `SettingsForms` (configure/describe/update/replace/mutate) with neither
+  // `register` nor `installSection`. Guard the CAPABILITY, never the version:
+  // an unguarded call throws a TypeError that aborts this whole entry, which
+  // also takes session runtime, the config routes and the __DSH_HUB_TOKEN__
+  // index injection down with it (0.1.7 only hard-fails on its own built-in
+  // required entries, so the damage is silent instead of a startup error).
+  // The 0.1.6 face is absent from the 0.1.7 `SettingsForms` type, so reach it
+  // through a capability-shaped local type: no `any`, no version check, and
+  // the runtime guard below is byte-for-byte the same as before.
+  const legacyInstallSection = (
+    ctx.settings as unknown as {
+      installSection?: (
+        ctx: unknown, ns: string, schema: unknown, config: unknown,
+        hooks: { setSource: () => void; onChange: () => void },
+      ) => void
+    }
+  ).installSection
+  if (typeof legacyInstallSection === 'function') {
+    legacyInstallSection(ctx, SETTINGS_NS, Config, config, {
+      setSource: () => { /* future settings-backed values */ },
+      onChange: () => { /* future: apply live config changes */ },
+    })
+  }
 
   // Session runtime controller: focus-cwd tracking, event sounds,
   // task-complete notifications.
@@ -202,13 +231,9 @@ export function apply(ctx: Context, config: Config): void {
       ...makeBackgroundsRoutes(),
       ...makeSoundsRoutes(),
       ...makeIconsRoutes(),
-      ...makePtyRoutes(),
     ].map((route) => server.register(route))
     routesDisposed = () => {
       for (const dispose of disposers) void dispose()
-      // PTY sessions (node-pty PowerShell) are process-bound — kill them all
-      // on teardown so hot reload / profile rebuild leaves no orphan shells.
-      disposeAllPty()
       routesDisposed = undefined
     }
   }

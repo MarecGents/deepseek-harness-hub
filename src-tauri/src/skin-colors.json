@@ -49,6 +49,76 @@
    "fg": "#e2dcff"
   }
  },
+ "rx-core": {
+  "light": {
+   "bg": "#f7f8fb",
+   "fg": "#111827"
+  },
+  "dark": {
+   "bg": "#090a0c",
+   "fg": "#f4f5f7"
+  }
+ },
+ "rx-graphite": {
+  "light": {
+   "bg": "#f4f3ef",
+   "fg": "#1a1a18"
+  },
+  "dark": {
+   "bg": "#0c0d10",
+   "fg": "#f1f1ef"
+  }
+ },
+ "rx-aurora": {
+  "light": {
+   "bg": "#f6f3fb",
+   "fg": "#1c1630"
+  },
+  "dark": {
+   "bg": "#0e0d18",
+   "fg": "#ecebf7"
+  }
+ },
+ "rx-slate": {
+  "light": {
+   "bg": "#f5f6f9",
+   "fg": "#131820"
+  },
+  "dark": {
+   "bg": "#0d0f12",
+   "fg": "#e7eaf0"
+  }
+ },
+ "rx-carbon": {
+  "light": {
+   "bg": "#f6f4f0",
+   "fg": "#1c1a16"
+  },
+  "dark": {
+   "bg": "#0e0d0c",
+   "fg": "#ede9e3"
+  }
+ },
+ "rx-nocturne": {
+  "light": {
+   "bg": "#f6f5fb",
+   "fg": "#191733"
+  },
+  "dark": {
+   "bg": "#101019",
+   "fg": "#eceaf3"
+  }
+ },
+ "rx-amber": {
+  "light": {
+   "bg": "#f7f8fb",
+   "fg": "#111827"
+  },
+  "dark": {
+   "bg": "#090a0c",
+   "fg": "#f4f5f7"
+  }
+ },
  "rx-noir-gold": {
   "light": {
    "bg": "#FDFAF2",

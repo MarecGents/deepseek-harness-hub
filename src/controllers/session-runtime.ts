@@ -78,6 +78,7 @@ export function setupSessionRuntime(ctx: Context, deps: SessionRuntimeDeps): voi
     // (approval/asked), task complete (turn/end → completed), task error
     // (turn/end → error). Q4：声音永远触发（不按 depth 过滤，子任务也响）；
     // soundEnabled 设置项仍可整体关闭（持久化值优先，实时生效）。
+    // 子代理完成用更轻的 subagent-success 音效（短促滴声）。
     const soundEnabled = deps.getSoundEnabled()
     if (soundEnabled) {
       const e = event as { type?: string; data?: { reason?: { kind?: string } } } | undefined
@@ -88,7 +89,10 @@ export function setupSessionRuntime(ctx: Context, deps: SessionRuntimeDeps): voi
         shell?.playSound('attention')
       } else if (e?.type === 'turn/end') {
         const kind = e.data?.reason?.kind
-        if (kind === 'completed') shell?.playSound('success')
+        if (kind === 'completed') {
+          // depth > 0 = 子代理完成，用轻音效；depth 0 = 主任务完成，用正常音效
+          shell?.playSound(depth > 0 ? 'subagent-success' : 'success')
+        }
         else if (kind === 'error') shell?.playSound('error')
       }
     }

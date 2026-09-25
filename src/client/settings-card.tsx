@@ -12,13 +12,12 @@
 
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import clsx from 'clsx'
-import { IconChevronDownOutline14, Menu } from '@deepseek-ai/dsh-client-ui-primitives'
+import { IconChevronDownOutlineRegular, Menu } from '@deepseek-ai/dsh-client-ui-primitives'
 import { CARD_CSS_CLASSES as c } from './style.ts'
 import { SKINS, DEFAULT_SKIN_ID, applySkin, markSkinUserPicked, type DshSkin } from './skins.ts'
 import { t, useLocaleLang, type HubKey } from './locale.ts'
 import { authHeaders } from './api-auth.ts'
 import { BACKGROUNDS, DEFAULT_BACKGROUND_ID, applyBackground, markBackgroundUserPicked } from './backgrounds.ts'
-import { PERMISSION_POLICIES, permissionPolicyLabel, fetchPolicy, savePolicy, type PermissionPolicy } from './permission-policy-chip.tsx'
 import { refreshConversationRailPalette } from './conversation-rail.ts'
 import { DESKTOP_ICONS, DEFAULT_DESKTOP_ICON_ID } from './desktop-icons.ts'
 
@@ -141,9 +140,6 @@ export function DesktopSettingsCard(_props: DesktopSettingsCardProps): ReactNode
   const [backgroundMenuOpen, setBackgroundMenuOpen] = useState(false)
   const [desktopIconId, setDesktopIconId] = useState<string>(DEFAULT_DESKTOP_ICON_ID)
   const [desktopIconFailed, setDesktopIconFailed] = useState(false)
-  const [permissionPolicy, setPermissionPolicy] = useState<PermissionPolicy | null>(null)
-  const [permissionPolicyMenuOpen, setPermissionPolicyMenuOpen] = useState(false)
-  const [permissionPolicyFailed, setPermissionPolicyFailed] = useState(false)
   // Re-render on dsh language switch: skin names/descriptions are dictionary
   // driven and must follow Settings → General → Language immediately.
   useLocaleLang()
@@ -218,12 +214,6 @@ export function DesktopSettingsCard(_props: DesktopSettingsCardProps): ReactNode
       setBackgroundId(initial === null ? DEFAULT_BACKGROUND_ID : initial.background)
       setDesktopIconId(initial === null || typeof initial.desktopIcon !== 'string' ? DEFAULT_DESKTOP_ICON_ID : initial.desktopIcon)
       setLoading(false)
-    })
-    // Permission-policy tier comes from the dsh-permission-guard plugin route
-    // (independent of the shell config API); null stays hidden.
-    void fetchPolicy().then((p) => {
-      if (!alive) return
-      if (p !== null) setPermissionPolicy(p)
     })
     return () => { alive = false }
   }, [])
@@ -387,21 +377,6 @@ export function DesktopSettingsCard(_props: DesktopSettingsCardProps): ReactNode
     })
   }
 
-  /** Apply the permission-policy tier immediately via the plugin route. */
-  const onPickPermissionPolicy = (id: string): void => {
-    if (id === permissionPolicy) return
-    const previous = permissionPolicy
-    setPermissionPolicyFailed(false)
-    setPermissionPolicy(id as PermissionPolicy)
-    void savePolicy(id as PermissionPolicy).then((ok) => {
-      if (!ok) {
-        // Persist failed — restore the previous tier.
-        setPermissionPolicy(previous)
-        setPermissionPolicyFailed(true)
-      }
-    })
-  }
-
   // 三个独立下拉卡片（分辨率 / 常规设置 / 外观设置）+ 权限策略单列 + 底部保存栏。
   // 与「设置→插件」页的终端/Agent循环/网页搜索同构：每个卡片独立折叠，
   // 卡片头 = 名称 + 描述两行（官方 PluginCard 同款），列表 gap 10px。
@@ -419,7 +394,7 @@ export function DesktopSettingsCard(_props: DesktopSettingsCardProps): ReactNode
           <span className={c.description}>{description}</span>
         </span>
         {dirty ? <span className={c.pending}>{COPY.unsaved}</span> : null}
-        <IconChevronDownOutline14 className={clsx(c.chevron, groupOpen[key] && c.chevronOpen)} />
+        <IconChevronDownOutlineRegular className={clsx(c.chevron, groupOpen[key] && c.chevronOpen)} />
       </button>
       {groupOpen[key] ? <div className={c.body}>{body}</div> : null}
     </li>
@@ -563,7 +538,7 @@ export function DesktopSettingsCard(_props: DesktopSettingsCardProps): ReactNode
                         {skinId === DEFAULT_SKIN_ID
                           ? t('settings.skinDefaultName')
                           : skinName(skinId)}
-                        <IconChevronDownOutline14 />
+                        <IconChevronDownOutlineRegular />
                       </button>
                     )}
                   />
@@ -603,7 +578,7 @@ export function DesktopSettingsCard(_props: DesktopSettingsCardProps): ReactNode
                         {backgroundId === DEFAULT_BACKGROUND_ID
                           ? COPY.backgroundDefaultName
                           : (BACKGROUNDS.find((background) => background.id === backgroundId)?.name ?? backgroundId)}
-                        <IconChevronDownOutline14 />
+                        <IconChevronDownOutlineRegular />
                       </button>
                     )}
                   />
@@ -643,40 +618,6 @@ export function DesktopSettingsCard(_props: DesktopSettingsCardProps): ReactNode
                 {desktopIconFailed ? <p className={c.failed} role="status">{COPY.desktopIconApplyFailed}</p> : null}
               </div>
             ))}
-            {/* Permission policy — plugin tier picker (dsh-permission-guard). 无法归入以上分组的选项，单独列出。 */}
-            {permissionPolicy !== null && (
-              <div className={c.section}>
-                <div className={c.fieldRow}>
-                  <span className={c.fieldLabel}>{t('settings.permissionLabel')}</span>
-                  <Menu
-                    open={permissionPolicyMenuOpen}
-                    onClose={() => { setPermissionPolicyMenuOpen(false) }}
-                    items={PERMISSION_POLICIES.map((id) => ({ id, label: permissionPolicyLabel(id) }))}
-                    selectedId={permissionPolicy}
-                    onSelect={(id) => {
-                      onPickPermissionPolicy(id)
-                      setPermissionPolicyMenuOpen(false)
-                    }}
-                    align="end"
-                    portal
-                    anchor={(
-                      <button
-                        type="button"
-                        className={c.selectPill}
-                        aria-haspopup="menu"
-                        aria-expanded={permissionPolicyMenuOpen}
-                        onClick={() => { setPermissionPolicyMenuOpen((v) => !v) }}
-                      >
-                        {permissionPolicyLabel(permissionPolicy)}
-                        <IconChevronDownOutline14 />
-                      </button>
-                    )}
-                  />
-                </div>
-                <div className={c.hint}>{t('settings.permissionHint')}</div>
-                {permissionPolicyFailed ? <p className={c.failed} role="status">{t('settings.permissionApplyFailed')}</p> : null}
-              </div>
-            )}
           </>
         )}
       <div className={c.footer}>

@@ -15,7 +15,9 @@
  *    `/api/dsh-hub/session-paths/paths?id=...`（server/session-paths-api.ts）；
  *  - 工作区路径优先取 sessions.byId[id].cwd，缺省回退 workspaces items 的 path。
  *
- * 挂载为 body portal 浮层；点击外部 / Esc / 滚动 / 失焦即关闭；disposer 移除。
+ * 挂载为 body portal 浮层；关闭条件（2026-09-19 收紧，见 openSessionMenu）：
+ * 菜单外 pointerdown、Esc、以及「锚定行所在容器的滚动」；窗口 resize 改为重新
+ * 贴边而不是关闭，窗口 blur 不再关闭。disposer 移除。
  * 本模块是纯动作库（open/close），事件接线在 pin-conversations.ts（官方行
  * 右键 + 官方 ⋯ 菜单截获 + 置顶项右键）。
  *
@@ -66,6 +68,14 @@ export interface SessionMenuParams {
   pinned?: boolean
   /** Plugin client runtime (sessions/workspaces services). */
   ctx: unknown
+  /**
+   * Element the menu is anchored to (the row / tab that was right-clicked).
+   * Decides whether a scroll dismisses the menu: only scrolls of the container
+   * that actually owns this element count, so an unrelated scroll (streaming
+   * transcript, right sidebar, terminal) no longer kills the menu mid-use.
+   * Omit to keep the legacy document-scroller-only behaviour.
+   */
+  anchor?: Element
   /** Toggle the pin state (pin-conversations owns the pins store). Optional: the pin item is hidden when omitted. */
   onTogglePin?: () => void
   /** Enter the inline rename editor. Optional: the rename item is hidden when omitted. */
@@ -167,7 +177,7 @@ export function openSessionMenu(params: SessionMenuParams): void {
   // Pin / rename items render only when the owning module (pin-conversations)
   // supplies the callbacks — SessionTabs (no pins store) omits them.
   // Destructure to local consts so TS narrowing survives the closure.
-  const { pinned, onTogglePin, onRename } = params
+  const { pinned, onTogglePin, onRename, anchor } = params
   if (onTogglePin !== undefined) {
     entries.push({ label: pinned ? t('menu.unpinTask') : t('menu.pinTask'), run: () => onTogglePin() })
   }
@@ -258,12 +268,17 @@ export function openSessionMenu(params: SessionMenuParams): void {
 
   document.body.appendChild(menu)
 
-  // Clamp inside the viewport (menu measures only after attachment).
-  const rect = menu.getBoundingClientRect()
-  const left = Math.min(params.x, window.innerWidth - rect.width - 8)
-  const top = Math.min(params.y, window.innerHeight - rect.height - 8)
-  menu.style.left = `${Math.max(8, left)}px`
-  menu.style.top = `${Math.max(8, top)}px`
+  // Clamp inside the viewport (the menu can only be measured after attachment).
+  // Also reused by the resize handler: a resize re-anchors the menu instead of
+  // dismissing it.
+  const place = (): void => {
+    const rect = menu.getBoundingClientRect()
+    const left = Math.min(params.x, window.innerWidth - rect.width - 8)
+    const top = Math.min(params.y, window.innerHeight - rect.height - 8)
+    menu.style.left = `${Math.max(8, left)}px`
+    menu.style.top = `${Math.max(8, top)}px`
+  }
+  place()
   firstItem?.focus({ preventScroll: true })
 
   const onOutside = (event: MouseEvent): void => {
@@ -276,21 +291,35 @@ export function openSessionMenu(params: SessionMenuParams): void {
       closeSessionMenu()
     }
   }
-  const onClose = (): void => closeSessionMenu()
+  // 2026-09-19 fix: the menu used to close on ANY scroll (capture phase on
+  // window). A scroll that has nothing to do with the anchored row — the
+  // streaming transcript, the right sidebar, the terminal — killed the menu
+  // before the user could click「归档」(Bug: 菜单自己消失，点不到). Only a
+  // scroll of the container that actually owns the anchor row dismisses now;
+  // without an anchor, only the document scroller counts.
+  const onScroll = (event: Event): void => {
+    const target = event.target
+    if (anchor !== undefined && anchor.isConnected) {
+      if (target instanceof Node && (target === document || target.contains(anchor))) closeSessionMenu()
+      return
+    }
+    if (target === document) closeSessionMenu()
+  }
+  // Window blur is deliberately NOT a dismissal trigger any more: in the Tauri
+  // shell spurious blur events (shell focus juggling / theme sync) closed the
+  // menu mid-use. An outside pointerdown or Esc still dismisses it.
+  const onResize = (): void => place()
   window.addEventListener('pointerdown', onOutside, true)
   window.addEventListener('keydown', onKey, true)
-  window.addEventListener('resize', onClose)
-  window.addEventListener('blur', onClose)
-  // Any scroll (the sidebar list scrolls independently) dismisses the menu.
-  window.addEventListener('scroll', onClose, true)
+  window.addEventListener('resize', onResize)
+  window.addEventListener('scroll', onScroll, true)
 
   activeDisposer = () => {
     menu.remove()
     window.removeEventListener('pointerdown', onOutside, true)
     window.removeEventListener('keydown', onKey, true)
-    window.removeEventListener('resize', onClose)
-    window.removeEventListener('blur', onClose)
-    window.removeEventListener('scroll', onClose, true)
+    window.removeEventListener('resize', onResize)
+    window.removeEventListener('scroll', onScroll, true)
   }
 }
 

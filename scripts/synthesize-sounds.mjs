@@ -7,10 +7,11 @@
  * per project decision — see assets/sounds/README.md).
  *
  * Events:
- *  - start     提问: quick ascending two-note (E5→A5)
- *  - success   完成: three-note ascending arpeggio (C5→E5→G5)
- *  - attention 需要你: two-tone alert (A5→E5)
- *  - error     出错: descending minor figure (F4→C#4→A3)
+ *  - start            提问: quick ascending two-note (E5→A5)
+ *  - success          完成: three-note ascending arpeggio (C5→E5→G5)
+ *  - subagent-success 子代理完成: single short high note (A5), lighter than success
+ *  - attention        需要你: two-tone alert (A5→E5)
+ *  - error            出错: descending minor figure (F4→C#4→A3)
  */
 
 import { mkdirSync, writeFileSync } from 'node:fs'
@@ -84,6 +85,11 @@ const EVENTS = {
     { freq: 659.25, offset: 0.16, duration: 0.16, volume: 0.30 },
     { freq: 783.99, offset: 0.33, duration: 0.30, volume: 0.32 },
   ]),
+  // 子代理完成：单音短促滴声，音量刻意压低（0.20 vs 完成音 0.30+）——
+  // 子任务完成是背景事件，密集触发时不该盖过主任务完成音。
+  'dsh-hub-subagent-success': compose([
+    { freq: 880.00, offset: 0.00, duration: 0.13, volume: 0.20 },
+  ], 0.08),
   'dsh-hub-attention': compose([
     { freq: 880.00, offset: 0.00, duration: 0.16, volume: 0.34 },
     { freq: 659.25, offset: 0.18, duration: 0.24, volume: 0.32 },

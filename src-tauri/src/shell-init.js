@@ -418,6 +418,7 @@ function injectTitleBar() {
 const MG_SOUND_URLS = {
   start: '/api/dsh-hub/sounds/dsh-hub-start.wav',
   success: '/api/dsh-hub/sounds/dsh-hub-success.wav',
+  'subagent-success': '/api/dsh-hub/sounds/dsh-hub-subagent-success.wav',
   attention: '/api/dsh-hub/sounds/dsh-hub-attention.wav',
   error: '/api/dsh-hub/sounds/dsh-hub-error.wav',
 };

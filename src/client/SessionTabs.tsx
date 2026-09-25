@@ -232,11 +232,15 @@ export function SessionTabs({ ctx }: SessionTabsProps): ReactNode {
   const onContextMenu = (id: string, e: ReactMouseEvent<HTMLDivElement>): void => {
     e.preventDefault()
     e.stopPropagation()
+    // Read currentTarget into a local const: React clears it after dispatch, so
+    // capturing the event object would hand the menu a null anchor.
+    const tabEl = e.currentTarget
     openSessionMenu({
       x: e.clientX,
       y: e.clientY,
       id,
       title: byId[id]?.displayTitle ?? byId[id]?.title ?? id,
+      anchor: tabEl,
       ctx,
       onRename: () => beginRename(id),
     })

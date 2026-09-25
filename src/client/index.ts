@@ -33,19 +33,13 @@ import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import { DesktopSettingsCard, type DesktopSettingsCardProps } from './settings-card.tsx'
 import { injectCardStyle, injectChatVisibilityStyle } from './style.ts'
 import { t } from './locale.ts'
-import { RightSidebar } from './right-sidebar.tsx'
-import { injectRightSidebarStyle } from './right-sidebar-style.ts'
 import { applySkin, fetchStoredSkin, hasUserPickedSkin } from './skins.ts'
 import { applyBackground, fetchStoredBackground, hasUserPickedBackground } from './backgrounds.ts'
 import { installPinnedConversations } from './pin-conversations.ts'
 import { installWorkspaceDragGuard } from './workspace-drag-guard.ts'
 import { installConversationRail, refreshConversationRailPalette } from './conversation-rail.ts'
 import { installModelSelect } from './model-select.tsx'
-import { PermissionPolicyChip, type PermissionPolicyChipProps } from './permission-policy-chip.tsx'
 import { SessionTabs } from './SessionTabs.tsx'
-import { bindPtyRuntime, fetchShells, ptyToggle } from './pty-store.ts'
-import { syncHostPrefs } from './terminal-prefs.ts'
-import { TerminalPage } from './terminal-dock.tsx'
 import { showContextMenu, closeContextMenu, buildSelectionMenu, buildEditMenu, buildLinkMenu } from './context-menu.ts'
 import { installLinkHandler } from './link-handler.ts'
 
@@ -59,20 +53,6 @@ import { installLinkHandler } from './link-handler.ts'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface SlotMap {
-    /**
-     * Left end of the composer tool row, beside the official permission-preset
-     * chip — the seat for the dsh-hub permission-policy tier chip.
-     * 0.1.2-rc.1: the slot no longer injects an owner (renders `{}`); the
-     * chip reads the standard `sessionId` prop from SessionStandardProps.
-     */
-    'conversation.input.left': { kind: 'list'; scope: 'session' }
-    /**
-     * One top-level page of the settings dialog (nav rail). Declared at
-     * runtime by ui-settings-general; mirrors its contract (order sorts the
-     * nav, label renders the nav cell, inject supplies section props).
-     * 2026-09-01 audit: the legacy plugin-item declaration was removed — the
-     * settings card ships as a first-class section now.
-     */
     'settings.section': { kind: 'list'; scope: 'root'; owner: SettingsSectionOwnerProps }
   }
 }
@@ -293,9 +273,9 @@ export function apply(ctx: ClientContext): void {
     console.warn('[dsh-hub] model-select install failed:', error)
   }
 
-  // Inject the card + right-sidebar stylesheets (idempotent).
+  // Inject the card stylesheet (idempotent). The right-sidebar stylesheet went
+  // with the sidebar itself (退役 2026-09-18, see the block further down).
   injectCardStyle()
-  injectRightSidebarStyle()
   // Long-history rendering aid: content-visibility on chat rows (browser
   // skips off-screen layout/paint when a session's DOM grows large).
   injectChatVisibilityStyle()
@@ -340,46 +320,26 @@ export function apply(ctx: ClientContext): void {
     console.warn('[dsh-hub] settings section injection failed:', error)
   }
 
-  // Permission-policy chip: a small control at the left end of the composer
-  // tool row (official `conversation.input.left` slot), beside the official
-  // permission-preset chip. Selects the dsh-permission-guard plugin's policy
-  // tier (follow/strict/read-only); the plugin's own route persists it.
-  // 0.1.2-rc.1: the slot no longer injects a session owner — the chip reads
-  // the standard `sessionId` prop from SessionStandardProps.
-  try {
-    slots.inject('conversation.input.left', function* () {
-      yield slots.register({
-        name: 'conversation.input.left',
-        // list slot: identified by id (not the keyed card's key).
-        id: 'dsh-hub-permission-policy',
-        priority: 20,
-      }, (props: PermissionPolicyChipProps) => PermissionPolicyChip({ sessionId: props.sessionId }))
-    })
-  } catch (error) {
-    // A chip failure must never take down the tray bridge.
-    console.warn('[dsh-hub] permission-policy chip injection failed:', error)
-  }
-
-  // Right sidebar: mount a body portal like dsh-better-sidebar. This keeps
-  // the sidebar independent of the official details column (so blank/new
-  // conversations can still expand it) and lets the official details panel
-  // coexist immediately to its left when dsh opens tool details.
-  try {
-    ctx.effect(() => {
-      const host = document.createElement('div')
-      host.id = 'dsh-hub-right-sidebar-root'
-      host.setAttribute('data-dsh-hub-right-sidebar', '')
-      document.body.appendChild(host)
-      const root: Root = createRoot(host)
-      root.render(createElement(RightSidebar, { ctx }))
-      return () => {
-        root.unmount()
-        host.remove()
-      }
-    }, 'dsh-hub: right sidebar mount')
-  } catch (error) {
-    console.warn('[dsh-hub] right sidebar mount failed:', error)
-  }
+  // Title-bar session tabs (顶部会话标签栏): a browser-style tab strip at the top, portaled into the titlebar (#dsh-hub-titlebar .tb-title). The host
+  // Right sidebar: RETIRED 2026-09-18 (decision 退役自研右栏). The hub's own
+  // right sidebar (概览 / 文件 / Git) was written against dsh 0.1.5's
+  // `sessions.list.current`. dsh 0.1.6-alpha.2 removed that field from
+  // SessionListState ("view selection remains outside the Controller"), so
+  // `sessions?.current` was permanently undefined and EVERY figure in the
+  // panel — context tokens, turns/steps, LLM time, workspace file counts —
+  // silently read 0. Meanwhile 0.1.6 ships its own right sidebar family
+  // (dsh-client-ui-sidebar / -right / -files / -browser / -documentpreview /
+  // -terminal), so ours was dead weight on top of a first-class one.
+  //
+  // The implementation is kept unmodified in ./right-sidebar.tsx and
+  // ./right-sidebar-style.ts. Restoring the sidebar needs exactly three things
+  // back: the two imports at the top of this file, the
+  // `injectRightSidebarStyle()` call next to `injectCardStyle()`, and this
+  // ctx.effect block (see git history or index.ts.bak-sidebar-retire-20260918).
+  // The bottom terminal dock was retired 2026-09-23: this profile loads the
+  // official right-sidebar terminal (ui-sidebar-terminal), so the hub’s own
+  // PTY dock, its host routes and its node-pty dependency were removed.
+  // (onTerminalKey below) and the dock mounts independently.
 
   // Title-bar session tabs (顶部会话标签栏): a browser-style tab strip at the
   // top, portaled into the titlebar (#dsh-hub-titlebar .tb-title). The host
@@ -402,54 +362,6 @@ export function apply(ctx: ClientContext): void {
     console.warn('[dsh-hub] session tabs mount failed:', error)
   }
 
-  // Interactive terminal (交互终端): Ctrl+J toggles the bottom dock; the
-  // right-click "Open terminal here" entry also calls ptyToggle(cwd). The
-  // dock renders in a body portal; keydown guard keeps the xterm textarea's
-  // own Ctrl+J (PSReadLine history search) working inside the terminal.
-  try {
-    bindPtyRuntime(ctx)
-  } catch (error) {
-    console.warn('[dsh-hub] pty runtime bind failed:', error)
-  }
-  // Detect the shells available on this machine so the terminal settings only
-  // list shells that actually exist (absent shells are never offered).
-  try {
-    void fetchShells()
-  } catch (error) {
-    console.warn('[dsh-hub] pty shells fetch failed:', error)
-  }
-  // Restore terminal preferences from the HOST (survives the random per-launch
-  // web origin — localStorage would silently reset; Bug-3).
-  try {
-    void syncHostPrefs()
-  } catch (error) {
-    console.warn('[dsh-hub] pty prefs sync failed:', error)
-  }
-  const onTerminalKey = (event: KeyboardEvent): void => {
-    if (!((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'j')) return
-    const target = event.target as HTMLElement | null
-    // Inside the terminal's own xterm textarea: let PSReadLine handle it.
-    if (target?.closest('[data-dsh-hub-terminal]') !== null) return
-    event.preventDefault()
-    void ptyToggle()
-  }
-  try {
-    ctx.effect(() => {
-      window.addEventListener('keydown', onTerminalKey)
-      const host = document.createElement('div')
-      host.id = 'dsh-hub-terminal-dock'
-      document.body.appendChild(host)
-      const root: Root = createRoot(host)
-      root.render(createElement(TerminalPage))
-      return () => {
-        window.removeEventListener('keydown', onTerminalKey)
-        root.unmount()
-        host.remove()
-      }
-    }, 'dsh-hub: terminal dock mount')
-  } catch (error) {
-    console.warn('[dsh-hub] terminal dock mount failed:', error)
-  }
 
   // Disable the default browser context menu (its 返回 / 另存为 items navigate
   // the webview back to the placeholder or do nothing useful — Bug-2) and

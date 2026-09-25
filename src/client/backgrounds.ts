@@ -118,30 +118,6 @@ export function applyBackground(backgroundId: string): void {
     // needed); only its content root gets the translucent layer (10%).
     `#root > div > div[style*="grid-template-columns"] [data-slot="details"] > div{` +
     `background-color:color-mix(in srgb, var(--dsw-alias-bg-base) 90%, transparent) !important;` +
-    `}` +
-    // dsh-hub's own right sidebar is a body portal OUTSIDE #root. Translucent
-    // backgrounds on its fixed panel do NOT sample what is behind it in
-    // WebView2/Chromium compositing (pixel-verified: color-mix and opacity
-    // both read as solid), so the image is painted ON the panel itself as a
-    // multi-layer background: a 90% sidebar-fill gradient layer on TOP of the
-    // (masked) image yields the same ~10% show-through as the left bar.
-    // background-attachment: fixed keeps the image aligned with the frame.
-    `#dsh-hub-right-sidebar-root .mg-rs-root{` +
-    `background-image:` +
-    `linear-gradient(color-mix(in srgb, var(--dsw-specific-sidebar-fill) 90%, transparent), color-mix(in srgb, var(--dsw-specific-sidebar-fill) 90%, transparent)),` +
-    `linear-gradient(rgba(0,0,0,.25),rgba(0,0,0,.25)),` +
-    `url("${background.url}") !important;` +
-    `background-size:cover,cover,cover !important;` +
-    `background-position:center !important;` +
-    `background-repeat:no-repeat !important;` +
-    `background-attachment:fixed !important;` +
-    `}` +
-    // The panel's inner surfaces (cards, containers) must not stack another
-    // layer over the painted image — make them transparent so the image shows.
-    // The tree-node CONTEXT MENU is excluded: it must stay OPAQUE (Bug-4 —
-    // a translucent menu over arbitrary page content is unreadable).
-    `#dsh-hub-right-sidebar-root .mg-rs-root [class*="mg-rs-"]:not(.mg-rs-menu){` +
-    `background-color:transparent !important;` +
     `}`
 }
 

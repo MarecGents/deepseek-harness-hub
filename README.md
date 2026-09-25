@@ -1,20 +1,23 @@
 ># **`@marecgents/dsh-hub`** —— DeepSeek Harness（`dsh`）的桌面端框架：以原生 Tauri 2.x 窗口运行 dsh Web UI，提供托盘、主题同步、窗口记忆、右侧栏与系统通知。
 >
-> ## ⚠️ 项目已归档（2026-09-08）
+> ## ✅ 开发中（2026-09-24 起自持维护）
 >
-> **本仓库已归档，停止主动开发。** 归档原因：dsh 生态处于快速破坏性变更期（0.1.2-rc.1 → 0.1.3-alpha.1 连续破坏面），桌面壳 + 插件双轨适配成本持续走高，开发进度过于艰难，经仓库所有者决定归档。
+> **本项目由 `dustinmoon78` 独立维护并持续开发。** 原上游 `MarecGents/deepseek-harness-hub` 已于 2026-09-08 停止主动开发，本项目从其归档点接管，继续适配 dsh 内核演进（当前基线 **dsh 0.1.7-alpha.2**）。
 >
-> - **最后版本**：`0.1.6`（Tauri 2.x 壳 + dsh 0.1.2-rc.1 适配，NSIS 安装器可用）
-> - **分支状态**：`dev-v2` 与 `main` 均冻结在归档点；`dev-v1`（WebView2 时代）保持永久冻结
+> - **当前版本**：`0.1.6`（Tauri 2.x 壳 + dsh 0.1.7 适配，NSIS 安装器可用）
+> - **分支状态**：`dev-v3` 为活跃开发线；`main` 跟随最新；`dev-v1`（WebView2 时代）/ `dev-v2`（归档点）保持冻结存档
 > - **已知遗留**：composer 模型/思考强度菜单的宽度与定位仍在迭代中（未完全收敛）；CI workflow（frontend/rust）存在历史失败记录（lock 同步、Windows-only 构建脚本、行尾校验等，部分已修复）
-> - **后续指引**：如需恢复开发，从 `dev-v2` 归档点继续；升级 dsh 前先读 [REFERENCE.md](REFERENCE.md) §2 的破坏性变更审计（0.1.2-rc.1 / 0.1.3-alpha.1）
+> - **升级 dsh 前**：先读 [REFERENCE.md](REFERENCE.md) §2 的破坏性变更审计（含 0.1.6 / 0.1.7 新增条目）
+>
+> 🧩 **想复刻整套环境？** 本仓只是桌面壳；完整的「壳 + 插件 + 技能 + 框架 preset」组合环境见
+> **[dustinmoon78/dsh-env](https://github.com/dustinmoon78/dsh-env)** —— 把那个仓库地址交给你的 AI 助手，说「照这个仓库把我的环境配好」即可按 Phase 重建。
 >
 > **版本状态（2026-09-06）**：**`0.1.6`**——Tauri 2.x 壳 + dsh web 插件层（dsh 0.1.2-rc.1 适配 + composer 模型与思考强度 seat 修复）。NSIS 安装器**安装即用**（安装期自动下载私有 Node + dsh + 插件到安装目录，无需系统预装 Node），首启自动进 dsh UI；卸载走快速通道并清理自有 profile 条目（保留 `.dsh` 本体与用户数据）。功能全貌见 [FUNCTIONS.md](FUNCTIONS.md)（11 大类、每项带来源与测试状态）：会话标签栏、交互终端（自定义 Shell）、对话定位条、置顶会话、右键菜单全量接管 + 双语 i18n、15 套皮肤 + 背景图 + 桌面图标六面同步、权限策略、composer 内联思考强度声明、四个独立插件、壳内拖放恢复、启动 Splash 皮肤配色。`0.0.2-rc.*` 与 `0.0.1-rc.14`（WebView2 壳 `dev-v1`，已冻结）为历史版本。
 
 [![npm version](https://img.shields.io/npm/v/@marecgents/dsh-hub)](https://www.npmjs.com/package/@marecgents/dsh-hub)
 [![npm rc](https://img.shields.io/npm/v/@marecgents/dsh-hub/rc)](https://www.npmjs.com/package/@marecgents/dsh-hub)
 [![license](https://img.shields.io/npm/l/@marecgents/dsh-hub)](LICENSE)
-[![GitHub stars](https://img.shields.io/github/stars/MarecGents/deepseek-harness-hub?style=social)](https://github.com/MarecGents/deepseek-harness-hub)
+[![GitHub stars](https://img.shields.io/github/stars/dustinmoon78/deepseek-harness-hub?style=social)](https://github.com/dustinmoon78/deepseek-harness-hub)
 [![dsh-plugin](https://img.shields.io/badge/dsh-plugin-DeepSeek%20Harness-blue)](https://github.com/topics/dsh-plugin)
 [![platform](https://img.shields.io/badge/platform-Windows%20%7C%20Tauri-0078d4)]()
 
@@ -24,9 +27,10 @@
 
 | 分支 | 状态 | 说明 |
 |---|---|---|
-| `main` | **已归档冻结**（2026-09-08） | 归档点 = dev-v2 同步；不再接收更新 |
+| `dev-v3` | **活跃开发线**（推荐） | 当前主线：0.1.7 适配 + 音效 + 功能精简；日常提交都落这里 |
+| `main` | **跟随最新** | 与 `dev-v3` 同步推进（新仓可直接推送） |
 | `dev-v1` | **永久冻结**（WebView2 时代存档） | 不再接收任何更新/同步；历史收尾 = `0.0.1-rc.13/rc.14`（WebView2 最终版） |
-| `dev-v2` | **已归档冻结**（2026-09-08） | 归档点 = `0.1.6`（T1 调试版，未发布 npm）；恢复开发从此分支继续 |
+| `dev-v2` | **归档冻结**（2026-09-08 上游归档点） | 归档点 = `0.1.6`（T1 调试版，未发布 npm）；仅作历史参照 |
 
 ---
 
@@ -48,7 +52,7 @@
 - **S0 安全（M3）**：**Origin 白名单校验**——POST/PUT 等状态变更请求校验 `Origin`（loopback / `tauri:`），缺失 Origin 拒绝；GET/HEAD 跳过（DNS-rebinding 已由 Host 校验覆盖）（`server/host-guard.ts`，路由工厂共享）。
 - **工作区打开（M4）**：`POST /api/dsh-hub/workspace/open` 用 OS 默认方式打开文件/文件夹（host+origin+token 三重守卫，Windows `explorer.exe`）；壳 capability 放行 `dialog:allow-open`（M2，`src-tauri/capabilities/default.json`）。
 - **findings-ledger 插件（PR #38）**：独立 dsh 插件（`plugins/dsh-findings-ledger/`）——baseline 快照 + 变更对账 + 覆盖度报告。
-- **permission-guard 插件（PR #37）**：独立 dsh 插件（`plugins/dsh-permission-guard/`）——逐命令权限白名单 + 四级能力拦截（auto / give-command / confirm / never）。
+- **permission-guard 插件（PR #37，2026-09-25 退役）**：随壳入仓的逐命令权限白名单插件，因本机常驻 Full Access + 官方 permission-preset 已覆盖会话档位而整体卸载（源码归档 `G:/DSH/DH-dev/_archive/permission-guard-retired_20260925/`，随壳 chip/设置项一并移除）。
 - **project-memory 插件（PR #36）**：独立 dsh 插件（`plugins/dsh-project-memory/`）——每项目持久记忆（FACT.md + JOURNAL.jsonl，自动注入 systemPrompt.context + `memory_read`/`memory_log`/`memory_fact` 工具）。
 - **usage-stats 插件（PR #34）**：独立 dsh 插件（`plugins/dsh-usage-stats/`）——全会话 token 用量统计（按 provider/model 聚合 + 设置页可视化：汇总/各模型卡片/按天表格/趋势图/单价费用估算 + HTTP API；0.1.0 修复读取 500 与表格透背景图两处缺陷）；provider 名与服务端文案均双语（zh/en，跟随 dsh 语言设置，独立加载插件同样生效）。
   以上 4 个独立插件**双轨分发**（随 hub resources + 独立 npm 轨，package.json 均已 `private:false` 就绪），见 [BUILD.md §7](BUILD.md) 与 AGENTS.md §1.1。
@@ -56,14 +60,14 @@
 - **i18n（全量双语）**：hub 全部界面文案（设置卡/会话菜单/工作区菜单/皮肤名/空白右键菜单等）与 **usage-stats 插件**文案均收进 zh/en 词典（`src/client/locale.ts`；usage-stats 独立插件自带词典），语言源 = dsh 设置（General → Language）——官方 locale 插件写入的 `<html lang>`，切换即全量刷新。
 - **右键菜单语义**：WebView2 原生右键菜单已在 Rust 侧禁用（`SetAreDefaultContextMenusEnabled(false)`）；右键全部由 DOM 接管，四层优先级——**对象行（会话/工作区）→ 各自专属菜单**，**对话文本选中 → 复制菜单**（复制/添加到当前任务/在辅助对话中提问），**链接 → 链接菜单**（在浏览器中打开/复制链接地址），**输入框 → 编辑菜单**（撤销/重做/剪切/复制/粘贴/删除/全选），**空白处 → 刷新菜单**。链接左键点击在默认浏览器打开（`open_url` Tauri 命令）。
 - **壳内拖放恢复（0.1.0）**：关闭 Tauri 对 WebView2 拖放的文件专用覆盖——列表行拖拽排序（工作区/会话）、标签拖拽在壳内恢复浏览器同款行为；拖文件到输入区 = 官方附件上传，其他区域安全忽略（杜绝 file:// 导航）；拖拽状态 watchdog 兜底。
-- **权限策略档位（rc.14）**：`dsh-permission-guard` 的 policy 三档（follow 跟随会话官方预设 / strict 白名单 / read-only），设置页与会话左下角 chip 双入口切换。
+- **权限策略档位（rc.14，2026-09-25 退役）**：原 `dsh-permission-guard` 的 policy 三档（follow/strict/read-only）双入口切换，随插件整体卸载移除。
 - **性能（rc.15）**：会话后台预热（长会话冷开 ~2s → ~0.2s）+ 聊天流 `content-visibility`（长历史滚动不卡顿）。
 - **多实例保护**：启动时检测已有 dsh 实例（任意端口），默认拒绝共存以防会话数据损坏；确需共存可在设置中显式开启（附危险警告）。
 - **右侧栏**：概览（Token 统计）、文件树、Git 变更三页；收起后保留窄栏快捷按钮。
 - **对话定位条（rail）**：中栏左缘竖排小横条 minimap（每段对话一条，点击跳转；位置按段序近似，数据源官方 ConversationSnapshot turnTimings，只读）。**时间窗真实 kind 预览（修 #35）**：hover 预览按 turnTimings 时间窗 [startTime, endTime) + node.turn 对齐真实节点 kind（user/steering/context/assistant/command/compaction）提取开场文本，替换原 turn-tail 死代码（命令轮次回退助手回复）。**自适应配色**：采样 rail 下方的实际背景（皮肤表面色 × 背景图 cover 数学混合），按采样色相派生 tick 深/浅色调（WCAG 对比度择优，≥7:1）与激活态强调色——每套皮肤/背景图得到自己的 rail 色板，非固定两色；tick 附 1px 对比描边兜底。
 - **置顶会话**：会话行 hover 置顶（同名会话安全跳过、不误标）；置顶区常驻列表顶部（可独立滚动）；持久化于 `$DSH_HOME/dsh-hub/pins.json`（localStorage 兜底）。注：多标签/多实例下 pins 为整体替换语义（最后写者胜）；同标签内 PUT 依赖 fetch 顺序保序。
 - **会话完成通知 + 事件提示音**：
-  - **提示音**（独立开关）：用户提交问题（开始音）、任务正常完成（完成音）、AI 请求批准（需要你）、任务出错（出错音）——**四段原创合成音效**（`scripts/synthesize-sounds.mjs` 生成，无第三方素材），窗口隐藏到托盘时依然可闻。
+  - **提示音**（独立开关）：用户提交问题（开始音）、任务正常完成（完成音）、子代理完成（轻滴声，按 `delegationDepth > 0` 与主任务完成音分流）、AI 请求批准（需要你）、任务出错（出错音）——**五段原创合成音效**（`scripts/synthesize-sounds.mjs` 生成，无第三方素材），窗口隐藏到托盘时依然可闻。
   - **Toast**：任务完成/出错时弹 Windows 原生通知（notify-rust 直弹，`wait_for_action` 点击回窗），30s 冷却。**点击跳会话**：点击 toast 回窗口并跳到对应会话（`mg:shell-command` focus-session 事件 + `__mgShellReady` 300ms×20 重试）。**聚焦会话策略**：正在查看的会话完成时只响提示音不弹 Toast（结果就在眼前）；后台会话完成或窗口隐藏时仍弹 Toast。
 - **独立进程身份**：桌面壳为单一 Tauri 原生应用（`cargo tauri build` NSIS 安装），任务管理器显示 DeepSeek Harness Hub 图标与名称；WebView2 时代 `dsh-hub.exe` / `dsh-hub-guard.exe`（node.exe 复制 + rcedit 打补丁）机制已删除。
 - **启动门控**：仅当通过本项目启动时注入桌面壳与插件页面；普通 `dsh web` 完全不受影响。
@@ -83,7 +87,7 @@
 ### 方式二：手动 / 从源码安装
 
 ```sh
-git clone https://github.com/MarecGents/deepseek-harness-hub.git
+git clone https://github.com/dustinmoon78/deepseek-harness-hub.git
 cd deepseek-harness-hub
 npm install
 npm run build
@@ -219,7 +223,6 @@ dsh-hub/
 ├── assets/                 # dsh favicon（SVG）+ backgrounds/（背景图）+ sounds/（提示音）
 ├── plugins/                # 独立 dsh 插件（双轨分发：独立 npm + 随 hub，见 BUILD.md §7）
 │   ├── dsh-findings-ledger/ # findings-ledger（PR #38）
-│   ├── dsh-permission-guard/ # permission-guard（PR #37）
 │   ├── dsh-project-memory/  # project-memory（PR #36）
 │   └── dsh-usage-stats/     # usage-stats（PR #34）
 ├── src-tauri/              # Tauri 2.x 壳（Rust，lib.rs 入口 + NSIS 打包）
@@ -252,6 +255,14 @@ npm run build:client
 ```
 
 > ⚠️ 执行 `npm i` 新依赖会清掉 `build-client` 建立的 SDK junction（`@deepseek-ai/dsh-*`），装完必须重新运行 `npm run build:client`。
+
+> `build:client` 结束前会归一化产物（`//#region` 与 sourcemap 的绝对路径、`sourcesContent` 行尾），使 `lib/` 在不同机器/目录构建下字节一致——这是 verify-release P3「lib 零漂移」成立的前提。若归一化后仍有绝对路径残留，构建直接失败并打印命中条目（见 `docs/关键踩坑记录.md` #110）。
+
+> client bundle 的 external 名单（打包期不内联、由 dsh 宿主的冻结模块表在运行时代答的包）来自仓库快照 `scripts/dsh-platform-modules.json`，**不是**探测本机 dsh——本机 `dsh` 版本差异会让产物不一致。dsh 升级后刷新快照并核对：
+> ```sh
+> node scripts/dsh-platform-modules.mjs --write-snapshot   # 从本机 dsh 重新提取（会改快照，确认后再提交）
+> node scripts/verify-platform-modules.mjs                 # 对账：快照里的条目本机 dsh 必须都能答（见踩坑 #111）
+> ```
 
 ## 依赖
 

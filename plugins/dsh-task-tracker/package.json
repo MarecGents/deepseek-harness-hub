@@ -1,7 +1,7 @@
 {
-  "name": "@dsh-external/dsh-permission-guard",
+  "name": "@dsh-external/dsh-task-tracker",
   "version": "0.0.1",
-  "description": "逐命令权限白名单 + 四级拦截（auto/give-command/confirm/never）——PR #37 落地修订版",
+  "description": "任务状态追踪（TASKS.md 注入上下文 + task_create/update/complete/list 工具，解决长对话中模型丢失任务状态的问题）",
   "private": false,
   "type": "module",
   "main": "./lib/index.js",
@@ -15,13 +15,13 @@
   "scripts": {
     "check": "node --check lib/index.js"
   },
-  "peerDependencies": {
-    "@deepseek-ai/cordis": "^4.0.1"
-  },
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
     }
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.0.1"
   },
   "license": "BSD-3-Clause",
   "publishConfig": {

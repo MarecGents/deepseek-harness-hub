@@ -39,6 +39,8 @@ mod node;
 mod notify;
 #[path = "helpers/quit.rs"]
 mod quit;
+#[path = "helpers/run_log.rs"]
+mod run_log;
 #[path = "managers/single_instance.rs"]
 mod single_instance;
 #[path = "helpers/state.rs"]
@@ -663,6 +665,9 @@ fn maybe_smoke_exit(app: &tauri::App) {
 
 pub fn run() {
     let log_dir = state::dsh_home().join("dsh-hub").join("logs");
+    // 2026-09-18：日志插件打开 dsh.log 时会把同名文件截断（09:33 一次壳退出后
+    // 现场直接归零、无从查因），故在注册插件前先把上一份轮转走。
+    run_log::rotate_run_log(&log_dir);
 
     tauri::Builder::default()
         // X1 日志三目标。
